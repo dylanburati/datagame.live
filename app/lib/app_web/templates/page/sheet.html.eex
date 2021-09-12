@@ -1,0 +1,333 @@
+<section class="mt-8">
+  <div class="flex flex-row pb-2">
+    <h2 id="sheet-title" class="text-oneline">Loading sheet...</h2>
+    <span class="flex-grow" style="width: 1rem;"></span>
+    <button id="refresh" class="bg-blue interactable">Refresh</button>
+  </div>
+  <div id="control-container" class="hidden flex flex-row align-center flex-wrap border-b-1">
+    <button class="bg-surface font-sm mb-2 p-1 mr-2 interactable" style="min-width: 3.5ex">🔍</button>
+    <select class="interactable mb-2 py-1-5" aria-label="Deck Picker"></select>
+    <input type="text" class="hidden mb-2" style="width: 200px;" placeholder="Search">
+    <span class="flex-grow" style="width: 1rem;"></span>
+    <nav role="navigation" class="mb-2" aria-label="Pagination Navigation">
+      <ul class="pagination">
+      </ul>
+    </nav>
+  </div>
+  <p id="error-box" class="text-red hidden"></p>
+  <table id="sheet-table">
+  </table>
+</section>
+
+<script>
+const effects = [];
+
+const checkEffects = () => {
+  effects.forEach(effect => {
+    const { func, depFunc, last } = effect;
+    const deps = depFunc();
+    let mismatch = !last || deps.length !== last.length;
+    for (let i = 0; !mismatch && i < deps.length; i++) {
+      mismatch = mismatch || deps[i] !== last[i];
+    }
+    if (mismatch) {
+      effect.last = deps;
+      func();
+    }
+  })
+};
+
+const useEffect = (func, depFunc) => {
+  effects.push({ func, depFunc, last: undefined });
+  checkEffects();
+}
+
+const setter = (setState) => {
+  return x => {
+    setState(x);
+    checkEffects();
+  };
+}
+
+const apiUrl = "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :show, "") %>";
+const titleEl = document.getElementById('sheet-title');
+const controls = document.getElementById('control-container');
+const controlSwitcher = document.querySelector('#control-container button');
+const searchInput = document.querySelector('#control-container input');
+const pagination = document.querySelector('#control-container nav ul');
+const deckPicker = document.querySelector('#control-container select');
+const errorBox = document.getElementById('error-box');
+const table = document.getElementById('sheet-table');
+const refreshBtn = document.getElementById('refresh');
+let refreshEnabled = true;
+let sheetData = null;
+const setSheetData = setter(val => { sheetData = val; });
+let tableData = null;
+const setTableData = setter(val => { tableData = val; });
+let currentPage = 1;
+const setCurrentPage = setter(val => { currentPage = val; });
+let deckName = null;
+const setDeckName = setter(val => { deckName = val; });
+let query = '';
+const setQuery = setter(val => {
+  query = val;
+  searchInput.value = val;
+});
+
+let pageSize = 50;
+
+function modify(el, removeChildren, attrs, children) {
+  if (removeChildren) {
+    Array.from(el.children).forEach(c => c.remove());
+  }
+  if (attrs.style) {
+    Object.assign(el.style, attrs.style);
+  }
+  for (const k in attrs) {
+    if (k.startsWith('on')) {
+      el.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+    } else if (k !== 'style') {
+      if (attrs[k] === true) el.setAttribute(k, '');
+      else if (attrs[k] !== false) el.setAttribute(k, attrs[k]);
+    }
+  }
+  for (let child of children) {
+    if (typeof child === 'string' || typeof child === 'number') {
+      el.insertAdjacentText('beforeend', String(child));
+    } else {
+      el.appendChild(child);
+    }
+  }
+  return el;
+}
+
+function h(tagName, attrs, ...children) {
+  const el = document.createElement(tagName);
+  const childArr = [];
+  children.forEach(item => {
+    if (Array.isArray(item)) {
+      childArr.push(...item);
+    } else {
+      childArr.push(item);
+    }
+  });
+  return modify(el, false, attrs, childArr);
+}
+
+function repaginate() {
+  if (tableData == null) return;
+
+  const longestCol = Math.max(...tableData.map(arr => arr.rows.length));
+  const pageTotal = Math.ceil((longestCol - 1) / pageSize);
+
+  const getMiddle = n => {
+    switch (n) {
+      case 1: return [n + 1, n + 2].filter(x => x < pageTotal);
+      case 2: return [n, n + 1, n + 2].filter(x => x < pageTotal);
+      case pageTotal - 1: return [n - 2, n - 1, n].filter(x => x > 1);
+      case pageTotal: return [n - 2, n - 1].filter(x => x > 1);
+      default: return [n - 1, n, n + 1];
+    }
+  };
+
+  const pages = getMiddle(currentPage);
+  if (pages[0] > 1) {
+    if (pages[0] > 2) {
+      pages.unshift('...')
+    }
+    pages.unshift(1);
+  }
+  if (pages[pages.length - 1] < pageTotal) {
+    if (pages[pages.length - 1] < pageTotal - 1) {
+      pages.push('...');
+    }
+    pages.push(pageTotal);
+  }
+
+  const oldPageLinks = {};
+  const separators = {};
+  Array.from(pagination.children).forEach((child, i) => {
+    if (child.textContent === '...') {
+      const which = i === 1 ? 'left' : 'right';
+      separators[which] = child;
+    } else {
+      oldPageLinks[child.textContent] = child;
+    }
+  });
+  pagination.replaceChildren(
+    ...pages.map((pg, i) => {
+      if (pg === '...') {
+        const which = i === 1 ? 'left' : 'right';
+        return separators[which] || h('span', { style: { margin: '0 0.25rem' } }, '...');
+      }
+      const attrs = {
+        active: pg === currentPage,
+        class: 'interactable',
+        onClick: () => {
+          setCurrentPage(pg);
+        },
+      };
+      if (String(pg) in oldPageLinks) {
+        if (pg === currentPage) {
+          oldPageLinks[String(pg)].querySelector('button').setAttribute('active', '');
+        } else {
+          oldPageLinks[String(pg)].querySelector('button').removeAttribute('active');
+        }
+      }
+      return oldPageLinks[String(pg)] || h('li', {}, h('button', attrs, pg));
+    })
+  );
+}
+
+useEffect(repaginate, () => [deckName, tableData, currentPage]);
+
+function populateTable() {
+  if (tableData == null) {
+    modify(table, true, {}, []);
+    return;
+  }
+
+  const longestCol = Math.max(...tableData.map(arr => arr.rows.length));
+  const rowNums = new Array(pageSize).fill(0)
+    .map((_, i) => (currentPage - 1) * pageSize + i)
+    .filter(e => e < longestCol);
+  modify(table, true, {}, [
+    h('thead', {},
+      tableData.map(col =>
+        h('th', {}, col.name)
+      )
+    ),
+    h('tbody', {},
+      rowNums.map(n =>
+        h('tr', {},
+          tableData.map(({ rows }) =>
+            h('td', { class: 'text-sm p-1' }, n < rows.length ? rows[n] : '')
+          )
+        )
+      )
+    )
+  ]);
+}
+
+useEffect(populateTable, () => [tableData, currentPage]);
+
+function calculateTableData() {
+  if (!sheetData || !deckName) {
+    setTableData(null);
+    return;
+  }
+  const deck = sheetData.decks.find(d => d.title === deckName);
+  if (!deck) {
+    setTableData(null);
+    return;
+  }
+
+  const showCols = [];
+  const disabledRows = new Set();
+  const disableMapCol = deck.values.find(col => col[0] === 'Disable?');
+  if (disableMapCol !== undefined) {
+    disableMapCol.forEach((e, i) => {
+      if (e && i > 0) disabledRows.add(i);
+    });
+  } else {
+    console.warn("No column named 'Disable?'")
+  }
+  const filteredRows = new Set();
+  let stopAtCol = deck.values.findIndex(col => col[0] === 'Notes');
+  if (stopAtCol === -1) {
+    stopAtCol = deck.length - 1;
+    console.warn("No column named 'Notes'");
+  }
+  if (query) {
+    const queryL = query.toLowerCase();
+    for (const col of deck.values.slice(0, stopAtCol + 1)) {
+      if (col[0] !== 'Disable?') {
+        col.forEach((cell, i) => {
+          if (i > 0 && cell.toLowerCase().includes(queryL)) {
+            filteredRows.add(i - 1);
+          }
+        });
+      }
+    }
+  }
+  for (const col of deck.values.slice(0, stopAtCol + 1)) {
+    if (col[0] !== 'Disable?') {
+      showCols.push({
+        name: col[0],
+        rows: col.slice(1).filter((_, i) =>
+          !disabledRows.has(i) && (!query || filteredRows.has(i))
+        ),
+      });
+    }
+  }
+  setTableData(showCols);
+}
+
+useEffect(calculateTableData, () => [deckName, sheetData, query]);
+
+useEffect(() => {
+  if (sheetData == null) {
+    return;
+  }
+  modify(deckPicker, true, {},
+    sheetData.decks.map(d => h('option', { value: d.title }, d.title.replace('Deck:', '', 1)))
+  );
+}, () => [sheetData]);
+
+async function refresh() {
+  refreshEnabled = false;
+  titleEl.textContent = "Loading sheet...";
+  errorBox.classList.add('hidden');
+  controls.classList.add('hidden');
+  setSheetData(null);
+  setCurrentPage(1);
+  setDeckName(null);
+  setQuery('');
+
+  try {
+    const response = await fetch(`${apiUrl}${new URL(window.location).searchParams.get('id')}`);
+    const json = await response.json();
+    if (json.error) {
+      throw new Error(json.error);
+    } else {
+      controls.classList.remove('hidden');
+      titleEl.textContent = json.title;
+      setDeckName(json.decks[0].title);
+      setSheetData(json);
+    }
+  } catch (err) {
+    errorBox.classList.remove('hidden');
+    titleEl.textContent = 'Error';
+    errorBox.textContent = err;
+  } finally {
+    refreshEnabled = true;
+  }
+}
+refresh();
+
+refreshBtn.addEventListener('click', () => {
+  if (refreshEnabled) {
+    refresh();
+  }
+});
+
+deckPicker.addEventListener('change', evt => {
+  setDeckName(evt.target.selectedOptions[0].value);
+  setQuery('');
+});
+
+controlSwitcher.addEventListener('click', evt => {
+  if (Array.from(searchInput.classList).includes('hidden')) {
+    controlSwitcher.textContent = '☰'
+  } else {
+    controlSwitcher.textContent = '🔍'
+  }
+  searchInput.classList.toggle('hidden');
+  deckPicker.classList.toggle('hidden');
+});
+
+searchInput.addEventListener('input', evt => {
+  setQuery(evt.target.value);
+  setCurrentPage(1);
+});
+</script>

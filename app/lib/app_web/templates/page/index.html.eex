@@ -1,0 +1,31 @@
+<section class="mt-8">
+  <div class="card flex flex-row flex-wrap p-2">
+    <form id="gsheet-link-form" class="flex-basis-1 lg:flex-basis-5/13 border-b-1 lg:border-b-0 lg:border-r-1 p-3">
+      <input type="text" name="link" required placeholder="Paste a Google Sheet link" class="block interactable">
+
+      <button class="bg-green text-white interactable" type="submit">Import</button>
+    </form>
+    <div class="p-3">
+      promo promo promo promo
+    </div>
+  </div>
+</section>
+
+<script type="text/javascript">
+const sheetPageUrl = "<%= Routes.page_url(@conn, :sheet) %>";
+const form = document.getElementById('gsheet-link-form');
+form.elements.link.addEventListener('input', evt => {
+  evt.target.setCustomValidity('');
+});
+form.addEventListener('submit', evt => {
+  evt.preventDefault();
+  const input = evt.target.elements.link;
+  const href = input.value;
+  const match = /(?:https?:\/\/)?docs.google.com\/spreadsheets\/d\/([^/]*)/.exec(href);
+  if (match) {
+    window.location = `${sheetPageUrl}?id=${match[1]}`;
+  } else {
+    input.setCustomValidity('Not recognized as a Google Sheet URL');
+  }
+});
+</script>

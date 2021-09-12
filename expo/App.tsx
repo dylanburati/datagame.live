@@ -1,4 +1,5 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { Audio } from 'expo-av';
 import { StatusBar } from 'expo-status-bar';
 import { Accelerometer } from 'expo-sensors';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -10,9 +11,7 @@ import {
   Text,
   TouchableOpacity,
   View,
-  ViewProps,
 } from 'react-native';
-import { Defs, LinearGradient, Rect, Stop, Svg } from 'react-native-svg';
 
 const lutDeg: number[] = [];
 const lutTan: number[] = [];
@@ -56,7 +55,7 @@ function fastAtan(y: number, x: number) {
   return Math.sign(ratio) * lutDeg[binarySearch(lutTan, Math.abs(ratio))];
 }
 
-enum GameState {
+enum GameStage {
   NOT_LEVEL = 'NOT_LEVEL',
   READY = 'READY',
   QUESTION = 'QUESTION',
@@ -65,7 +64,43 @@ enum GameState {
   FINISHED = 'FINISHED',
 }
 
-type GameData = number;
+function shouldShowTimer(gs: GameStage) {
+  return gs !== GameStage.NOT_LEVEL && gs !== GameStage.FINISHED;
+}
+
+function timerFormat(gs: GameStage, secondsLeft: number) {
+  if (gs === GameStage.READY) {
+    return (secondsLeft - 60).toString();
+  }
+  const minutePart = Math.floor(secondsLeft / 60);
+  const secondPart = (secondsLeft % 60).toString().padStart(2, '0');
+  return `${minutePart > 0 ? minutePart : ''}:${secondPart}`;
+}
+
+function isAngleNeutral(angle: number) {
+  return angle >= -10 && angle <= 20;
+}
+
+function isAngleDown(angle: number) {
+  return angle <= -50;
+}
+
+function isAngleUp(angle: number) {
+  return angle >= 60;
+}
+
+type GameState = {
+  stage: GameStage;
+  question: {
+    label: string;
+  };
+  previousAnswered: boolean | undefined;
+};
+
+type GameData = {
+  label: string;
+  answered: boolean;
+}[];
 
 type GameScreenProps = {
   topic: string;
@@ -80,7 +115,22 @@ function GameScreen({
   setGameData,
   exitGame,
 }: GameScreenProps) {
-  const [gameState, setGameState] = useState(GameState.NOT_LEVEL);
+  const sounds = useRef({
+    confirm: new Audio.Sound(),
+    skip: new Audio.Sound(),
+  }).current;
+  const [gameState, setGameState] = useState<GameState>({
+    stage: GameStage.NOT_LEVEL,
+    question: {
+      label: 'question 1',
+    },
+    previousAnswered: undefined,
+  });
+  const switchStage = useCallback(
+    (gs: GameStage) => setGameState((val) => ({ ...val, stage: gs })),
+    []
+  );
+  const [startTime, setStartTime] = useState(0);
   const [accel, setAccel] = useState({
     x: 0,
     y: 0,
@@ -103,53 +153,126 @@ function GameScreen({
     };
   }, []);
 
-  const angle = fastAtan(accel.z, accel.x);
+  const angle = fastAtan(-accel.z, accel.x);
+  const elapsed = Date.now() - startTime;
+  const secondsLeft = Math.ceil(60 - elapsed / 1000);
   useEffect(() => {
-    switch (gameState) {
-      case GameState.NOT_LEVEL:
-      case GameState.FEEDBACK_NOT_LEVEL:
-        if (angle >= -20 && angle <= 10) {
-          setGameState(GameState.QUESTION);
+    switch (gameState.stage) {
+      case GameStage.NOT_LEVEL:
+        if (isAngleNeutral(angle)) {
+          switchStage(GameStage.READY);
+          setStartTime(Date.now() + 3000);
         }
         break;
-      case GameState.QUESTION:
-        if (angle <= -60) {
-          setGameState(GameState.FEEDBACK);
-          setGameData(gameData + 1);
-          setBgColor('#33ff99');
-          fadeAnim.setValue(1);
-          Animated.timing(fadeAnim, {
-            toValue: 0,
-            duration: 800,
-            useNativeDriver: false,
-          }).start(() =>
-            setGameState(
-              angle >= -20 && angle <= 10
-                ? GameState.QUESTION
-                : GameState.FEEDBACK_NOT_LEVEL
-            )
-          );
-        } else if (angle >= 50) {
-          setGameState(GameState.FEEDBACK);
-          setBgColor('#fcd34d');
-          fadeAnim.setValue(1);
-          Animated.timing(fadeAnim, {
-            toValue: 0,
-            duration: 800,
-            useNativeDriver: false,
-          }).start(() =>
-            setGameState(
-              angle >= -20 && angle <= 10
-                ? GameState.QUESTION
-                : GameState.FEEDBACK_NOT_LEVEL
-            )
-          );
+      case GameStage.READY:
+        if (secondsLeft <= 60) {
+          switchStage(GameStage.QUESTION);
         }
+        break;
+      case GameStage.QUESTION:
+        const skipped = isAngleUp(angle);
+        const confirmed = isAngleDown(angle);
+        if (skipped || confirmed) {
+          setGameState({
+            ...gameState,
+            stage: GameStage.FEEDBACK,
+            previousAnswered: confirmed,
+          });
+          setGameData([
+            ...gameData,
+            { label: gameState.question.label, answered: confirmed },
+          ]);
+          setBgColor(confirmed ? '#33ff99' : '#fcd34d');
+          fadeAnim.setValue(1);
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: false,
+          }).start(() => switchStage(GameStage.FEEDBACK_NOT_LEVEL));
+        }
+        break;
+      case GameStage.FEEDBACK:
+        break;
+      case GameStage.FEEDBACK_NOT_LEVEL:
+        if (isAngleNeutral(angle)) {
+          setGameState({
+            ...gameState,
+            stage: GameStage.QUESTION,
+            question: {
+              label: `question ${Math.floor(100 * Math.random() + 1)}`,
+            },
+          });
+        }
+        break;
+      case GameStage.FINISHED:
         break;
       default:
         break;
     }
-  }, [angle, fadeAnim, gameData, gameState, setGameData, setGameState]);
+    if (secondsLeft < 0 && gameState.stage !== GameStage.NOT_LEVEL) {
+      switchStage(GameStage.FINISHED);
+    }
+  }, [
+    angle,
+    exitGame,
+    fadeAnim,
+    gameData,
+    gameState,
+    secondsLeft,
+    setGameData,
+    setGameState,
+    switchStage,
+  ]);
+
+  useEffect(() => {
+    if (gameState.stage !== GameStage.FEEDBACK) {
+      return;
+    }
+    let shouldPlay = true;
+    const soundEffect = async () => {
+      if (gameState.previousAnswered) {
+        await sounds.confirm.loadAsync(require('./assets/YES.wav'));
+        if (shouldPlay) {
+          await sounds.confirm.playAsync();
+        }
+      } else {
+        await sounds.skip.loadAsync(require('./assets/BeOS-ScrubAlert.aiff'));
+        if (shouldPlay) {
+          await sounds.skip.playAsync();
+        }
+      }
+    };
+
+    soundEffect();
+    if (gameState.previousAnswered) {
+      return () => {
+        sounds.confirm.unloadAsync();
+      };
+    }
+    return () => {
+      sounds.skip.unloadAsync();
+    };
+  }, [gameState.previousAnswered, gameState.stage, sounds]);
+
+  let mainText = 'HOLD UP TO YOUR FOREHEAD';
+  const { stage } = gameState;
+  switch (stage) {
+    case GameStage.READY:
+      mainText = 'GET READY. . .';
+      break;
+    case GameStage.QUESTION:
+    case GameStage.FEEDBACK:
+      mainText = gameState.question.label;
+      break;
+    case GameStage.FEEDBACK_NOT_LEVEL:
+      mainText = 'HOLD PHONE LEVEL';
+      break;
+    case GameStage.FINISHED:
+      mainText = '';
+      break;
+    default:
+      break;
+  }
 
   return (
     <>
@@ -162,18 +285,56 @@ function GameScreen({
       />
       <View style={[styles.row, styles.p2]}>
         <Text>{topic}</Text>
-        <Text>{gameData}</Text>
+        <Text>
+          {gameData.reduce((a, curr) => a + (curr.answered ? 1 : 0), 0)}
+        </Text>
       </View>
       <View style={styles.container}>
-        <Text style={styles.text3Xl}>{angle}°</Text>
+        {stage === GameStage.FINISHED ? (
+          <View style={styles.itemsCenter}>
+            {gameData.map((item) => (
+              <Text
+                style={
+                  item.answered
+                    ? [styles.textMd]
+                    : [styles.textRed, styles.textMd]
+                }
+              >
+                {item.label}
+              </Text>
+            ))}
+            <TouchableOpacity
+              style={[styles.bgBlue, styles.p2, styles.mt4]}
+              onPress={() => exitGame(true)}
+            >
+              <Text style={styles.textWhite}>TAP TO RETURN</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.text3Xl}>{mainText}</Text>
+        )}
       </View>
       <View style={[styles.row, styles.p2]}>
-        <TouchableOpacity
-          style={[styles.bgRed, styles.p2]}
-          onLongPress={() => exitGame(false)}
+        <View
+          style={[styles.row, styles.flexBasisOneThird, styles.justifyStart]}
         >
-          <Text style={styles.textWhite}>HOLD TO QUIT</Text>
-        </TouchableOpacity>
+          {stage !== GameStage.FINISHED && (
+            <TouchableOpacity
+              style={[styles.bgRed, styles.p2]}
+              onLongPress={() => exitGame(false)}
+            >
+              <Text style={styles.textWhite}>HOLD TO QUIT</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <View
+          style={[styles.row, styles.flexBasisOneThird, styles.justifyCenter]}
+        >
+          {shouldShowTimer(stage) && (
+            <Text style={styles.textXl}>{timerFormat(stage, secondsLeft)}</Text>
+          )}
+        </View>
+        <View style={styles.flexBasisOneThird} />
       </View>
     </>
   );
@@ -196,6 +357,7 @@ function randomColor(x: number, l2: number) {
 
 export default function App() {
   const [selectionState, setSelectionState] = useState(SelectionState.NONE);
+  const [gameData, setGameData] = useState<GameData>([]);
   const [topic, setTopic] = useState<string>();
   const topicList = [
     'Music',
@@ -211,7 +373,10 @@ export default function App() {
       ScreenOrientation.lockAsync(
         ScreenOrientation.OrientationLock.LANDSCAPE_LEFT
       ).then(
-        () => setSelectionState(SelectionState.SELECTED),
+        () => {
+          setGameData([]);
+          setSelectionState(SelectionState.SELECTED);
+        },
         (err) => {
           console.error(err);
           setTopic(undefined);
@@ -222,43 +387,38 @@ export default function App() {
 
   return (
     <View style={styles.topContainer}>
-      {selectionState === SelectionState.NONE ? (
+      {selectionState === SelectionState.NONE && (
         <FlatList
           numColumns={3}
+          ListHeaderComponent={
+            <View style={[styles.row, styles.justifyCenter]}>
+              <Text
+                style={[
+                  styles.mt8,
+                  styles.mb4,
+                  styles.textLg,
+                  styles.fontWeightBold,
+                ]}
+              >
+                Decks
+              </Text>
+            </View>
+          }
           data={topicList}
           contentContainerStyle={styles.m4}
           keyExtractor={(item) => item}
           renderItem={({ item, index }) => (
-            <View style={[styles.flexBasisOneThird]}>
+            <View style={[styles.p2, styles.flexBasisOneThird]}>
               <TouchableOpacity
                 onPress={() => setTopic(item)}
-                style={[styles.button, styles.p2]}
+                style={[
+                  styles.button,
+                  styles.p2,
+                  { backgroundColor: randomColor(2 * index, 30) },
+                ]}
               >
-                <Svg width={'100%'} height={'100%'} style={[styles.absolute]}>
-                  <Defs>
-                    <LinearGradient id="grad" x1={0} y1={0} x2={0.5} y2={1}>
-                      <Stop
-                        offset={0}
-                        stopColor={randomColor(2 * index, 50)}
-                        stopOpacity={1}
-                      />
-                      <Stop
-                        offset={1}
-                        stopColor={randomColor(2 * index, 10)}
-                        stopOpacity={1}
-                      />
-                    </LinearGradient>
-                  </Defs>
-                  <Rect
-                    x={0}
-                    y={0}
-                    width={'100%'}
-                    height={'100%'}
-                    rx={8}
-                    fill="url(#grad)"
-                  />
-                </Svg>
                 <Text
+                  numberOfLines={5}
                   style={[styles.textCenter, styles.textLg, styles.textWhite]}
                 >
                   {item.toLocaleUpperCase()}
@@ -267,12 +427,12 @@ export default function App() {
             </View>
           )}
         />
-      ) : null}
-      {selectionState === SelectionState.SELECTED && topic !== undefined ? (
+      )}
+      {selectionState === SelectionState.SELECTED && topic !== undefined && (
         <GameScreen
           topic={topic}
-          gameData={0}
-          setGameData={() => {}}
+          gameData={gameData}
+          setGameData={setGameData}
           exitGame={() => {
             ScreenOrientation.lockAsync(
               ScreenOrientation.OrientationLock.DEFAULT
@@ -281,7 +441,7 @@ export default function App() {
             setSelectionState(SelectionState.NONE);
           }}
         />
-      ) : null}
+      )}
       <StatusBar style="auto" />
     </View>
   );
@@ -310,16 +470,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    fontSize: 20,
+  },
+  itemsCenter: {
+    alignItems: 'center',
   },
   itemsStretch: {
     alignItems: 'stretch',
   },
+  itemsEnd: {
+    alignItems: 'flex-end',
+  },
+  justifyStart: {
+    justifyContent: 'flex-start',
+  },
+  justifyCenter: {
+    justifyContent: 'center',
+  },
   flexBasisOneThird: {
-    flexBasis: '33.33%',
+    flex: 1, //: '33.33%',
   },
   absolute: {
     position: 'absolute',
+  },
+  bgBlue: {
+    backgroundColor: '#1D4ED8',
   },
   bgRed: {
     backgroundColor: '#f44',
@@ -333,8 +507,17 @@ const styles = StyleSheet.create({
   p2: {
     padding: 8,
   },
+  mt4: {
+    marginTop: 16,
+  },
+  mb4: {
+    marginBottom: 16,
+  },
   m4: {
     margin: 16,
+  },
+  mt8: {
+    marginTop: 32,
   },
   space4: {
     height: 16,
@@ -343,14 +526,26 @@ const styles = StyleSheet.create({
   textCenter: {
     textAlign: 'center',
   },
+  textMd: {
+    fontSize: 16,
+  },
   textLg: {
     fontSize: 20,
+  },
+  textXl: {
+    fontSize: 28,
   },
   text3Xl: {
     fontSize: 48,
   },
   textWhite: {
     color: '#fff',
+  },
+  textRed: {
+    color: '#DC2626',
+  },
+  fontWeightBold: {
+    fontWeight: 'bold',
   },
   wFull: {
     width: '100%',

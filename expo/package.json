@@ -10,6 +10,7 @@
   "dependencies": {
     "@react-native-community/eslint-config": "^3.0.1",
     "expo": "~42.0.1",
+    "expo-av": "~9.2.3",
     "expo-font": "~9.2.1",
     "expo-screen-orientation": "~3.2.1",
     "expo-sensors": "~10.2.2",
