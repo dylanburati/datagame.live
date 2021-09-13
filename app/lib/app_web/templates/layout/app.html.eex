@@ -4,16 +4,16 @@
     <meta charset="utf-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>App · Phoenix Framework</title>
+    <title>Datagame</title>
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
     <script defer type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </head>
-  <body>
+  <body class="mb-8">
     <header class="bg-black">
       <nav class="flex container align-center">
-        <img style="height: 40px;" src="/images/logo0.png" alt="Datagame">
+        <a href="/" style="line-height: 0"><img style="height: 55px;" src="/images/logo0.png" alt="Datagame"></a>
         <span class="flex-grow"></span>
-        <p>Peace of mind from prototype to production</p>
+        <a target="_blank" rel="noreferrer" href="https://dylanburati.github.io">About me</a>
       </nav>
     </header>
     <main role="main" class="container">

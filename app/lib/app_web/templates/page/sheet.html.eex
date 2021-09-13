@@ -2,10 +2,11 @@
   <div class="flex flex-row pb-2">
     <h2 id="sheet-title" class="text-oneline">Loading sheet...</h2>
     <span class="flex-grow" style="width: 1rem;"></span>
-    <button id="refresh" class="bg-blue interactable">Refresh</button>
+    <button id="refresh" class="bg-blue interactable mr-2">↻</button>
+    <button id="publish" class="bg-green interactable">Publish</button>
   </div>
-  <div id="control-container" class="hidden flex flex-row align-center flex-wrap border-b-1">
-    <button class="bg-surface font-sm mb-2 p-1 mr-2 interactable" style="min-width: 3.5ex">🔍</button>
+  <div id="control-container" class="hidden flex flex-row align-center flex-wrap mb-5">
+    <button class="bg-surface mb-2 p-1 mr-2 interactable" style="min-width: 3.5ex">🔍</button>
     <select class="interactable mb-2 py-1-5" aria-label="Deck Picker"></select>
     <input type="text" class="hidden mb-2" style="width: 200px;" placeholder="Search">
     <span class="flex-grow" style="width: 1rem;"></span>
@@ -15,11 +16,21 @@
     </nav>
   </div>
   <p id="error-box" class="text-red hidden"></p>
-  <table id="sheet-table">
-  </table>
+  <ul id="warning-list" class="hidden list-disc list-inside mb-5 px-5 py-2 border rounded border-yellow-400">
+  </ul>
+  <div id="publish-container" class="mb-5 hidden">
+    <pre class="bg-surface p-3 text-sm leading-tight"></pre>
+  </div>
+  <div style="overflow-x: auto">
+    <table id="sheet-table" class="border-t">
+    </table>
+  </div>
 </section>
 
-<script>
+<script type="text/javascript">
+const apiShowUrl = "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :show, "") %>";
+const apiCreateUrl = "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :create) %>";
+
 const effects = [];
 
 const checkEffects = () => {
@@ -49,7 +60,6 @@ const setter = (setState) => {
   };
 }
 
-const apiUrl = "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :show, "") %>";
 const titleEl = document.getElementById('sheet-title');
 const controls = document.getElementById('control-container');
 const controlSwitcher = document.querySelector('#control-container button');
@@ -57,9 +67,14 @@ const searchInput = document.querySelector('#control-container input');
 const pagination = document.querySelector('#control-container nav ul');
 const deckPicker = document.querySelector('#control-container select');
 const errorBox = document.getElementById('error-box');
+const warningList = document.getElementById('warning-list');
 const table = document.getElementById('sheet-table');
 const refreshBtn = document.getElementById('refresh');
+const publishBtn = document.getElementById('publish');
+const publishContainer = document.getElementById('publish-container');
+const publishCodeblock = publishContainer.querySelector('pre');
 let refreshEnabled = true;
+let publishEnabled = true;
 let sheetData = null;
 const setSheetData = setter(val => { sheetData = val; });
 let tableData = null;
@@ -117,8 +132,7 @@ function h(tagName, attrs, ...children) {
 function repaginate() {
   if (tableData == null) return;
 
-  const longestCol = Math.max(...tableData.map(arr => arr.rows.length));
-  const pageTotal = Math.ceil((longestCol - 1) / pageSize);
+  const pageTotal = Math.ceil((tableData.length - 1) / pageSize);
 
   const getMiddle = n => {
     switch (n) {
@@ -184,23 +198,32 @@ useEffect(repaginate, () => [deckName, tableData, currentPage]);
 function populateTable() {
   if (tableData == null) {
     modify(table, true, {}, []);
+    warningList.classList.add('hidden');
     return;
   }
 
-  const longestCol = Math.max(...tableData.map(arr => arr.rows.length));
+  const { deck, warnings } = tableData;
+  if (warnings.length) {
+    warningList.classList.remove('hidden');
+    modify(warningList, true, {},
+      warnings.map(txt => h('li', { class: 'text-sm' }, txt))
+    );
+  } else {
+    warningList.classList.add('hidden');
+  }
   const rowNums = new Array(pageSize).fill(0)
     .map((_, i) => (currentPage - 1) * pageSize + i)
-    .filter(e => e < longestCol);
+    .filter(e => e < tableData.length);
   modify(table, true, {}, [
     h('thead', {},
-      tableData.map(col =>
+      deck.map(col =>
         h('th', {}, col.name)
       )
     ),
     h('tbody', {},
       rowNums.map(n =>
         h('tr', {},
-          tableData.map(({ rows }) =>
+          deck.map(({ rows }) =>
             h('td', { class: 'text-sm p-1' }, n < rows.length ? rows[n] : '')
           )
         )
@@ -222,26 +245,42 @@ function calculateTableData() {
     return;
   }
 
+  const warnings = [];
+  const first = (arr) => arr.length ? arr[0] : null;
+  const tagLabelPos = deck.values.findIndex((col, i, arr) =>
+    first(col) === 'Column' && i + 1 < arr.length && first(arr[i + 1]) === 'Label'
+  );
+  const tagLabels = {};
+  if (tagLabelPos !== -1) {
+    const kCol = deck.values[tagLabelPos];
+    const vCol = deck.values[tagLabelPos + 1];
+    for (let i = 1; i < Math.min(kCol.length, vCol.length); i++) {
+      if (kCol[i].startsWith('Tag') && vCol[i]) {
+        tagLabels[kCol[i]] = vCol[i];
+      }
+    }
+  } else {
+    warnings.push("Tags don't have labels")
+  }
   const showCols = [];
   const disabledRows = new Set();
   const disableMapCol = deck.values.find(col => col[0] === 'Disable?');
   if (disableMapCol !== undefined) {
     disableMapCol.forEach((e, i) => {
-      if (e && i > 0) disabledRows.add(i);
+      if (e && i > 0) disabledRows.add(i - 1);
     });
   } else {
-    console.warn("No column named 'Disable?'")
+    warnings.push("No column named 'Disable?'");
   }
   const filteredRows = new Set();
   let stopAtCol = deck.values.findIndex(col => col[0] === 'Notes');
   if (stopAtCol === -1) {
-    stopAtCol = deck.length - 1;
-    console.warn("No column named 'Notes'");
+    warnings.push("No column named 'Notes'");
   }
   if (query) {
     const queryL = query.toLowerCase();
     for (const col of deck.values.slice(0, stopAtCol + 1)) {
-      if (col[0] !== 'Disable?') {
+      if (col.length > 1 && col[0] !== 'Disable?' && col[0] !== 'ID') {
         col.forEach((cell, i) => {
           if (i > 0 && cell.toLowerCase().includes(queryL)) {
             filteredRows.add(i - 1);
@@ -250,17 +289,139 @@ function calculateTableData() {
       }
     }
   }
+
+  let longCol = [];
+  let numRows = 0;
+  let popColCount = null;
+  let cardColCount = null;
+  const tagColCounts = {};
+  const countOccurrences = (acc, cur, i) => {
+    if (cur !== '' && !disabledRows.has(i)) {
+      acc.total += 1;
+      acc.grouped[cur] = (acc.grouped[cur] || 0) + 1;
+    }
+    return acc;
+  };
+  const countTagOccurrences = (acc, cur, i) => {
+    if (cur !== '' && !disabledRows.has(i)) {
+      acc.total += 1;
+      const tagList = cur.split(/\s*,\s*/);
+      for (const tag of tagList) {
+        acc.grouped[tag] = (acc.grouped[tag] || 0) + 1;
+      }
+      acc.multi = acc.multi || tagList.length > 1;
+    }
+    return acc;
+  };
+  const countTypes = (acc, cur, i) => {
+    if (!disabledRows.has(i)) {
+      const typ =
+        cur === ''
+          ? 'empty'
+          : Number.isNaN(parseFloat(cur, 10))
+          ? 'string'
+          : 'number'
+      acc[typ] = (acc[typ] || 0) + 1;
+    }
+    return acc;
+  };
   for (const col of deck.values.slice(0, stopAtCol + 1)) {
-    if (col[0] !== 'Disable?') {
-      showCols.push({
-        name: col[0],
+    if (col.length > 1 && col[0] !== 'Disable?' && col[0] !== 'ID') {
+      const colRep = {
+        name: tagLabels[col[0]] || col[0],
         rows: col.slice(1).filter((_, i) =>
           !disabledRows.has(i) && (!query || filteredRows.has(i))
         ),
-      });
+      };
+      showCols.push(colRep);
+      if (col.length > longCol.length) {
+        longCol = col;
+        numRows = colRep.rows.length;
+      }
+      if (col[0].startsWith('Tag')) {
+        if (!tagLabels[col[0]]) {
+          warnings.push(`Column '${col[0]}' needs a descriptive label`);
+        }
+        tagColCounts[col[0]] = col.slice(1).reduce(countTagOccurrences, {
+          total: 0,
+          grouped: {},
+          multi: false
+        });
+      } else if (col[0] === 'Popularity') {
+        popColCount = col.slice(1).reduce(countTypes, {});
+      } else if (col[0] === 'Card') {
+        cardColCount = col.slice(1).reduce(countOccurrences, {
+          total: 0,
+          grouped: {},
+        });
+      }
     }
   }
-  setTableData(showCols);
+  const enabledCount = longCol.length - 1 - disabledRows.size;
+  if (!cardColCount) {
+    warnings.unshift("Error: column 'Card' is required");
+  } else {
+    if (cardColCount.total < enabledCount) {
+      warnings.push(
+        `Column 'Card' is blank for ${enabledCount - cardColCount.total} cells - ` +
+        'these will be dropped'
+      );
+    }
+    Object.entries(cardColCount.grouped).filter(([k, v]) => v > 1).forEach(([card, c]) => {
+      warnings.push(`Card value '${card.replace(/\n/g, "⮐")}' appears ${c} times`);
+    });
+  }
+  if (!popColCount) {
+    warnings.push("Column 'Popularity' is not filled out");
+  } else {
+    if (popColCount['empty'] > 0) {
+      warnings.push(
+        `Column 'Popularity' is blank for ${popColCount['empty']} cells - ` +
+        'these will be considered as difficult as the least well-known card'
+      );
+    }
+    if (popColCount['string'] > 0) {
+      warnings.push(
+        `Column 'Popularity' is not a number for ${popColCount['string']} cells - ` +
+        'these will be considered as difficult as the least well-known card'
+      );
+    }
+  }
+  if (!tagColCounts['Tag1']) {
+    warnings.push("Column 'Tag1' is not filled out - the game customization sliders will be disabled");
+  } else {
+    counts1 = tagColCounts['Tag1'];
+    if (counts1.multi) {
+      warnings.push("Column 'Tag1' should not have multiple values in any cell");
+    }
+    if (counts1.total < enabledCount) {
+      warnings.push(
+        `Column 'Tag1' is blank for ${enabledCount - counts1.total} cells - ` +
+        "these will add a 'N/A' slider in the game customization menu"
+      );
+    }
+    const smallGroups = [];
+    Object.entries(counts1.grouped).forEach(([tag, size]) => {
+      if (size < 10) {
+        smallGroups.push(tag);
+      }
+    });
+    smallGroups.forEach(tag => {
+      warnings.push(`Fewer than 10 cards have the primary tag: ${tag}`);
+    });
+    const gCount = Object.keys(counts1.grouped).length;
+    if (gCount > 10) {
+      warnings.push(
+        `Column 'Tag1' has ${gCount} categories - the game customization menu only allows 10`
+      );
+    }
+  }
+  setTableData({
+    deck: showCols,
+    length: numRows,
+    warnings,
+    rowNumLookup: n => lut[n],
+  });
 }
 
 useEffect(calculateTableData, () => [deckName, sheetData, query]);
@@ -279,13 +440,14 @@ async function refresh() {
   titleEl.textContent = "Loading sheet...";
   errorBox.classList.add('hidden');
   controls.classList.add('hidden');
+  publishContainer.classList.add('hidden');
   setSheetData(null);
   setCurrentPage(1);
   setDeckName(null);
   setQuery('');
 
   try {
-    const response = await fetch(`${apiUrl}${new URL(window.location).searchParams.get('id')}`);
+    const response = await fetch(`${apiShowUrl}${new URL(window.location).searchParams.get('id')}`);
     const json = await response.json();
     if (json.error) {
       throw new Error(json.error);
@@ -329,5 +491,34 @@ controlSwitcher.addEventListener('click', evt => {
 searchInput.addEventListener('input', evt => {
   setQuery(evt.target.value);
   setCurrentPage(1);
+});
+
+async function publish() {
+  if (sheetData == null) return;
+
+  try {
+    publishEnabled = false;
+    const resp = await fetch(apiCreateUrl, {
+      method: "POST",
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(sheetData),
+    });
+    const json = await resp.json();
+    console.log(json);
+    publishContainer.classList.remove('hidden');
+    publishCodeblock.textContent = JSON.stringify(json, null, 2);
+  } catch (err) {
+    console.error(err);
+  } finally {
+    publishEnabled = true;
+  }
+}
+
+publishBtn.addEventListener('click', () => {
+  if (publishEnabled) {
+    publish();
+  }
 });
 </script>

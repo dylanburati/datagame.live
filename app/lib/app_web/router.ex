@@ -23,7 +23,7 @@ defmodule AppWeb.Router do
   scope "/api", AppWeb do
     pipe_through :api
 
-    resources "/sheet", SheetController, only: [:show]
+    resources "/sheet", SheetController, only: [:show, :create]
   end
 
   # Other scopes may use custom stacks.

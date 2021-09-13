@@ -1,6 +1,6 @@
 <section class="mt-8">
   <div class="card flex flex-row flex-wrap p-2">
-    <form id="gsheet-link-form" class="flex-basis-1 lg:flex-basis-5/13 border-b-1 lg:border-b-0 lg:border-r-1 p-3">
+    <form id="gsheet-link-form" class="flex-basis-1 lg:flex-basis-5/13 border-b lg:border-b-0 lg:border-r p-3">
       <input type="text" name="link" required placeholder="Paste a Google Sheet link" class="block interactable">
 
       <button class="bg-green text-white interactable" type="submit">Import</button>
