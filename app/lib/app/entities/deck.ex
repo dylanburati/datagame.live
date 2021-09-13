@@ -10,6 +10,7 @@ defmodule App.Entities.Deck do
     field :category_label, :string
     field :spreadsheet_id, :string
     field :title, :string
+    field :category_counts, {:array, :map}, virtual: true
 
     has_many :cards, Card
     has_many :card_tag_defs, CardTagDef

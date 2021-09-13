@@ -7,6 +7,7 @@ defmodule App.Entities.CardTagDef do
   schema "card_tag_def" do
     field :label, :string
     field :position, :integer
+    field :value_counts, {:array, :map}, virtual: true
 
     belongs_to :deck, Deck
 

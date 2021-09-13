@@ -117,7 +117,7 @@ defmodule App.Entities.SheetService do
     params = for {nm, val} <- Enum.zip(col_names, row), into: %{} do
       case nm do
         "Card" -> {:title, val}
-        "Disable?" -> {:is_disabled, val != ""}
+        "Disable?" -> {:is_disabled, is_binary(val) and val != ""}
         "Popularity" -> {:popularity, float_or_nil(val)}
         "ID" -> {:unique_id, val}
         "Tag1" -> {:tag1, val}

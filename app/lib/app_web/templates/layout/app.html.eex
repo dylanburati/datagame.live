@@ -11,7 +11,7 @@
   <body class="mb-8">
     <header class="bg-black">
       <nav class="flex container align-center">
-        <a href="/" style="line-height: 0"><img style="height: 55px;" src="/images/logo0.png" alt="Datagame"></a>
+        <a href="/" style="line-height: 0"><img style="height: 55px;" src="/images/logo1.png" alt="Datagame"></a>
         <span class="flex-grow"></span>
         <a target="_blank" rel="noreferrer" href="https://dylanburati.github.io">About me</a>
       </nav>

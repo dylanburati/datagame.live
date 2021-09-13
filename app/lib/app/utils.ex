@@ -44,4 +44,14 @@ defmodule App.Utils do
     dt = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
     Map.merge(map, %{inserted_at: dt, updated_at: dt})
   end
+
+  def maybe_put(map, false, _key, _val), do: map
+  def maybe_put(map, true, key, val) do
+    Map.put(map, key, val)
+  end
+
+  def maybe_put_lazy(map, false, _key, _supplier), do: map
+  def maybe_put_lazy(map, true, key, supplier) do
+    Map.put(map, key, supplier.())
+  end
 end
