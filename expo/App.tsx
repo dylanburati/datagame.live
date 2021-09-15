@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   lockAsync as lockOrientationAsync,
@@ -36,19 +36,34 @@ export function HomeScreen() {
   const [topicList, setTopicList] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(false);
   const { navigate } = useNavigationTyped();
+  const retryRef = useRef<number>();
+  const [retryCounter, setRetryCounter] = useState(1);
 
   useEffect(() => {
     const get = async () => {
       setLoading(true);
       try {
         setTopicList(await listDecks());
+        setRetryCounter(0);
       } catch (err) {
         console.error(err);
+        retryRef.current = setTimeout(
+          () => setRetryCounter((n) => n + 1),
+          1000 * Math.pow(1.6, retryCounter)
+        ) as any;
       } finally {
         setLoading(false);
       }
     };
-    get();
+    if (retryCounter > 0) {
+      get();
+    }
+  }, [retryCounter, retryRef]);
+
+  useEffect(() => {
+    if (retryRef.current) {
+      clearTimeout(retryRef.current);
+    }
   }, []);
 
   return (

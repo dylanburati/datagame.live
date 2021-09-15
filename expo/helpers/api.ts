@@ -3,6 +3,9 @@ import config from '../config';
 export type Deck = {
   id: number;
   title: string;
+  numEnabledCards: number;
+  canSelectDifficulty: boolean;
+  canSelectCategories: boolean;
   categoryCounts?: {
     name: string;
     count: number;
@@ -53,8 +56,18 @@ export async function inspectADeck(id: number) {
   return (await getJson(`${config.baseUrl}/api/decks/${id}`)) as Deck;
 }
 
-export async function createGame(deckId: number, difficulty: number) {
+export async function createGame(
+  deckId: number,
+  difficulty: number,
+  categoryFrequencies: Record<string, number>
+) {
+  const diffQ = difficulty.toFixed(1);
+  let categoryQ = Object.entries(categoryFrequencies)
+    .flatMap(([name, lvl]) => [name, lvl.toFixed(1)])
+    .join(',');
+  categoryQ = encodeURIComponent(categoryQ);
   return (await getJson(
-    `${config.baseUrl}/api/game/new/${deckId}` + `?difficulty=${difficulty}`
+    `${config.baseUrl}/api/game/new/${deckId}` +
+      `?difficulty=${diffQ}&categoryFreqs=${categoryQ}`
   )) as Deck;
 }

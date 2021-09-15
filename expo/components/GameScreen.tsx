@@ -159,6 +159,13 @@ export function GameScreen() {
     }
     if (gameState.stage !== GameStage.NOT_LEVEL && secondsLeft < 0) {
       switchStage(GameStage.FINISHED);
+      const question = gameState.cards.length ? gameState.cards[0] : null;
+      if (question && gameState.stage === GameStage.QUESTION) {
+        setGameData([
+          ...gameData,
+          { id: question.id, title: question.title, answered: false },
+        ]);
+      }
     }
   }, [
     angle,

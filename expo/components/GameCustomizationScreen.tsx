@@ -40,7 +40,7 @@ export function GameCustomizationScreen() {
   }, [topic]);
   const getCards = async () => {
     try {
-      const game = await createGame(topic, difficulty);
+      const game = await createGame(topic, difficulty, categoryFrequencies);
       if (topicRef.current === topic) {
         navigation.dispatch(StackActions.replace('Game', game));
       }
@@ -51,10 +51,19 @@ export function GameCustomizationScreen() {
 
   const categoryCounts = useMemo(() => {
     const arr = deck?.categoryCounts;
-    return arr
+    return arr && deck?.canSelectCategories
       ? arr.filter((c) => c.name).sort((a, b) => (a.name < b.name ? 1 : -1))
       : [];
   }, [deck]);
+  const largestCategory =
+    categoryCounts.length && deck
+      ? categoryCounts
+          .map((e) => ({
+            ...e,
+            percentage: (100 * e.count) / deck.numEnabledCards,
+          }))
+          .reduce((acc, cur) => (cur.count > acc.count ? cur : acc))
+      : null;
 
   return (
     <View style={styles.topContainer}>
@@ -126,23 +135,27 @@ export function GameCustomizationScreen() {
                   styles.bgPaperDarker,
                 ]}
               >
-                <Text>This doesn't do anything yet.</Text>
+                <Text>
+                  The most common category in the deck is{' '}
+                  {largestCategory?.name} (
+                  {largestCategory?.percentage.toFixed(0)}%), but you can turn
+                  the chances up or down for any category below.
+                </Text>
               </View>
             )}
             {categoryCounts.map(({ name }) => (
               <View key={name} style={[styles.row, styles.mx4]}>
                 <Text>
-                  {name} ({(10 * (categoryFrequencies[name] ?? 0.5)).toFixed(1)}
-                  )
+                  {name} ({(categoryFrequencies[name] || 0).toFixed(1)})
                 </Text>
                 <Slider
                   style={[styles.wHalf]}
                   onValueChange={(val) =>
                     setCategoryFrequencies((obj) => ({ ...obj, [name]: val }))
                   }
-                  value={0.5}
-                  minimumValue={0}
-                  maximumValue={1}
+                  value={0}
+                  minimumValue={-10}
+                  maximumValue={10}
                 />
               </View>
             ))}

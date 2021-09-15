@@ -1,6 +1,10 @@
 defmodule AppWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :app
 
+  if Mix.env == :prod do
+    plug Plug.SSL, rewrite_on: [:x_forwarded_proto, :x_forwarded_host, :x_forwarded_port]
+  end
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.

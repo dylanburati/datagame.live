@@ -27,6 +27,14 @@ defmodule App.Entities.Deck do
     timestamps()
   end
 
+  def can_select_difficulty?(deck) do
+    (deck.has_popularity_count / deck.enabled_count) >= 0.9
+  end
+
+  def can_select_categories?(deck) do
+    (deck.tag1_nunique > 1) and ((deck.has_tag1_count / deck.enabled_count) >= 0.9)
+  end
+
   @doc false
   def validations(deck) do
     deck

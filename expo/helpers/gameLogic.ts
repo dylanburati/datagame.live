@@ -16,7 +16,9 @@ export function timerFormat(gs: GameStage, secondsLeft: number) {
     return (secondsLeft - 60).toString();
   }
   const minutePart = Math.floor(secondsLeft / 60);
-  const secondPart = (secondsLeft % 60).toString().padStart(2, '0');
+  const secondPart = Math.max(secondsLeft % 60, 0)
+    .toString()
+    .padStart(2, '0');
   return `${minutePart > 0 ? minutePart : ''}:${secondPart}`;
 }
 
