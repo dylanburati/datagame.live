@@ -6,12 +6,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Datagame</title>
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
+    <script type="text/javascript">
+    window.pageRoutes = {
+      index: "<%= Routes.page_path(@conn, :index) %>",
+      sheet: "<%= Routes.page_path(@conn, :sheet) %>",
+    };
+    window.apiRoutes = {
+      show: "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :show, "") %>",
+      create: "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :create) %>",
+    };
+    </script>
     <script defer type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </head>
   <body class="mb-8">
     <header class="bg-black">
       <nav class="flex container align-center">
-        <a href="/" style="line-height: 0">
+        <a href="<%= Routes.page_path(@conn, :index) %>" style="line-height: 0">
           <img
             style="height: 55px;"
             src="<%= Routes.static_path(@conn, "/images/logo1.png") %>"

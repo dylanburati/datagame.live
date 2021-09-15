@@ -13,3 +13,11 @@ import "../css/app.scss"
 //     import socket from "./socket"
 //
 import "phoenix_html"
+
+import { SheetPage } from "./sheet";
+const url = new URL(window.location);
+console.log(url);
+if (url.pathname === window.pageRoutes.sheet) {
+  window.vm = new SheetPage();
+  console.log();
+}
