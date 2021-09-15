@@ -7,25 +7,6 @@ defmodule App.Entities.GameService do
   alias App.Entities.Deck
   alias App.Entities.DeckService
 
-  defp sample_wor(enum, limit, weight_func, limit) do
-    # https://timvieira.github.io/blog/post/2019/09/16/algorithms-for-sampling-without-replacement/
-    # Equivalent to scaling each weight by x_i ~ InverseExponential
-    # This eliminates the need to rescale after removing a selection, so the lowest w_i*x_i
-    # (=== highest 1/x_i/w_i) are a correct sample
-    case enum do
-      [] -> []
-      _ ->
-        selector = for item <- enum do
-          exp_distrib = :math.log(:rand.uniform())
-          {item, -exp_distrib / weight_func.(item)}
-        end
-        selector
-        |> Enum.sort(fn {_1, v1}, {_2, v2} -> v1 < v2 end)
-        |> Enum.take(limit)
-        |> Enum.map(fn {item, _} -> item end)
-    end
-  end
-
   defp full_score(deck, difficulty, category_boosts) do
     %{
       popularity_min: pmin,
