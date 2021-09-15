@@ -28,6 +28,21 @@ defmodule App.Utils do
     transpose_recur(enum_of_enums, total)
   end
 
+
+  def median_of_sorted_list([]), do: :error
+  def median_of_sorted_list([el]), do: el
+  def median_of_sorted_list(enum) do
+    n = length(enum)
+    mid = floor((n - 1) / 2)
+    # sl = Enum.sort(enum)
+    case rem(n, 2) do
+      0 ->
+        [m1 | [m2 | _]] = Enum.drop(enum, mid)
+        0.5 * (m1 + m2)
+      1 -> Enum.at(enum, mid)
+    end
+  end
+
   def float_or_nil(nil), do: nil
   def float_or_nil(str) do
     case Float.parse(str) do
@@ -35,6 +50,10 @@ defmodule App.Utils do
       :error -> nil
     end
   end
+
+  def non_empty_or_nil(nil), do: nil
+  def non_empty_or_nil(""), do: nil
+  def non_empty_or_nil(str), do: str
 
   def changeset_error_strings(kw_lst) do
     Enum.map(kw_lst, fn {k, {msg, _}} -> "#{k}: #{msg}" end)

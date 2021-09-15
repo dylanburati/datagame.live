@@ -4,7 +4,7 @@ defmodule AppWeb.GameView do
   import App.Utils
   alias AppWeb.DeckView
 
-  defp card_tag_json(label_map, []), do: %{}
+  defp card_tag_json(_label_map, []), do: %{}
   defp card_tag_json(label_map, [tag | remaining]) do
     card_tag_json(label_map, remaining)
     |> Map.update(label_map[tag.position], [], fn lst -> [tag.value | lst] end)

@@ -191,13 +191,13 @@ export function GameScreen() {
     };
 
     soundEffect();
-    if (gameState.previousAnswered) {
-      return () => {
-        sounds.confirm.unloadAsync();
-      };
-    }
     return () => {
-      sounds.skip.unloadAsync();
+      shouldPlay = false;
+      if (gameState.previousAnswered) {
+        sounds.confirm.unloadAsync();
+      } else {
+        sounds.skip.unloadAsync();
+      }
     };
   }, [gameState.previousAnswered, gameState.stage, sounds]);
 
@@ -236,14 +236,13 @@ export function GameScreen() {
         ]}
       />
       {stage === GameStage.FINISHED ? (
-        <ScrollView
-          contentContainerStyle={[styles.itemsCenter, styles.mt2, styles.mb8]}
-        >
+        <ScrollView contentContainerStyle={[styles.itemsCenter, styles.mt2]}>
           <Text style={[styles.textLg, styles.m4]}>
             {gameData.reduce((a, curr) => a + (curr.answered ? 1 : 0), 0)}
           </Text>
           {gameData.map((item) => (
             <Text
+              key={item.id}
               style={
                 item.answered
                   ? [styles.textMd]
@@ -254,7 +253,7 @@ export function GameScreen() {
             </Text>
           ))}
           <TouchableOpacity
-            style={[styles.bgBlue, styles.p2, styles.mt4]}
+            style={[styles.bgBlue, styles.p2, styles.mt4, styles.mb8]}
             onPress={() => navigation.goBack()}
           >
             <Text style={styles.textWhite}>TAP TO RETURN</Text>

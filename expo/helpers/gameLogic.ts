@@ -21,7 +21,7 @@ export function timerFormat(gs: GameStage, secondsLeft: number) {
 }
 
 export function isAngleNeutral(angle: number) {
-  return angle >= -10 && angle <= 20;
+  return angle >= -15 && angle <= 25;
 }
 
 export function isAngleDown(angle: number) {

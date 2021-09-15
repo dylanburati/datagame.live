@@ -5,7 +5,6 @@ defmodule AppWeb.GameController do
   alias App.Entities.GameService
 
   def new_game(conn, params = %{"id" => id}) do
-    IO.inspect(params)
     din = Map.get(params, "difficulty", 0)
     diff_lvl = cond do
       is_number(din) -> din

@@ -1,12 +1,22 @@
 <section class="mt-8">
-  <div class="card flex flex-row flex-wrap p-2">
-    <form id="gsheet-link-form" class="flex-basis-1 lg:flex-basis-5/13 border-b lg:border-b-0 lg:border-r p-3">
-      <input type="text" name="link" required placeholder="Paste a Google Sheet link" class="block interactable">
+  <div class="card bg-black flex flex-row flex-wrap lg:flex-nowrap p-2">
+    <div class="flex-basis-1 lg:flex-basis-5/13 p-3">
+      <form id="gsheet-link-form" class="mb-5 flex flex-row flex-wrap lg:flex-nowrap">
+        <input type="text" name="link" required placeholder="Paste a Google Sheet link" class="flex-1 interactable" style="min-width: 20rem;">
 
-      <button class="bg-green text-white interactable" type="submit">Import</button>
-    </form>
-    <div class="p-3">
-      promo promo promo promo
+        <button class="bg-green text-white interactable" type="submit" style="width: 100%">Import</button>
+      </form>
+      <p class="text-center text-xs mb-2">OR</p>
+      <p class="text-center leading-tight">
+        create a sheet from the
+        <a target="_blank" rel="noopener" href="https://docs.google.com/spreadsheets/d/1sPtgHK-dDX5t98qd_6rd8B_YbZrmvobi8nLhQMbRDMM/edit#gid=0">official template</a>
+      </p>
+    </div>
+    <div class="flex-1 border-t lg:border-t-0 lg:border-l">
+      <div class="p-3">
+        promo promo promo promo
+      </div>
+      <img src="/images/google-sheets-matrix.png" style="width: 100%; min-height: 560px; object-fit: cover; object-position: left;">
     </div>
   </div>
 </section>

@@ -13,6 +13,7 @@ import { GameCustomizationScreen } from './components/GameCustomizationScreen';
 import { RootStackParamList, useNavigationTyped } from './helpers/navigation';
 import { listDecks } from './helpers/api';
 import { styles } from './styles';
+import { Audio } from 'expo-av';
 
 function randomColor(x: number, l2: number) {
   let h = (511 * (x + 31) * (x + 31) + 3 * (x - 31)) % 360;
@@ -93,6 +94,12 @@ export function HomeScreen() {
 }
 
 export default function App() {
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+    });
+  }, []);
+
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName="Home">

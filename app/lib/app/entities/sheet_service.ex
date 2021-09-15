@@ -1,6 +1,7 @@
 defmodule App.Entities.SheetService do
   import String, except: [length: 1]
   import Ecto.Changeset
+  import Ecto.Query
   import App.Utils
 
   alias App.GToken
@@ -119,8 +120,8 @@ defmodule App.Entities.SheetService do
         "Card" -> {:title, val}
         "Disable?" -> {:is_disabled, is_binary(val) and val != ""}
         "Popularity" -> {:popularity, float_or_nil(val)}
-        "ID" -> {:unique_id, val}
-        "Tag1" -> {:tag1, val}
+        "ID" -> {:unique_id, non_empty_or_nil(val)}
+        "Tag1" -> {:tag1, non_empty_or_nil(val)}
         "Notes" -> {:notes, val}
         _ -> {:unused, nil}
       end
@@ -135,38 +136,99 @@ defmodule App.Entities.SheetService do
   end
 
   defp insert_deck(spreadsheet_id, title, labels, col_names, rows) do
-    deck_changeset = %Deck{}
-    |> change(%{
-      spreadsheet_id: spreadsheet_id,
-      title: title |> replace("Deck:", "", global: false) |> replace(":", " / "),
-      category_label: Map.get(labels, "Tag1", "Category"),
-    })
-    |> validate_required([:title, :spreadsheet_id, :category_label])
-    |> unique_constraint([:title, :spreadsheet_id])
-
     ctdefs = for {col_name, pos} <- Enum.with_index(["Tag2", "Tag3", "Tag4"], 2) do
       %{position: pos, label: Map.get(labels, col_name, col_name)}
     end
 
     {cards, card_tags} = Enum.unzip(deck_cards(col_names, rows))
+    card_user_ids = Enum.map(cards, &(&1.unique_id))
+    |> MapSet.new()
+    |> MapSet.delete(nil)
+    |> Enum.to_list()
+
+    deck_stats = %{}
+    |> Map.put(:enabled_count, Enum.count(cards, &(not &1.is_disabled)))
+    |> Map.put(
+      :has_popularity_count,
+      Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.popularity))))
+    )
+    |> Map.put(
+      :has_id_count,
+      Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.unique_id))))
+    )
+    |> Map.put(
+      :has_tag1_count,
+      Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.tag1))))
+    )
+    |> Map.put(:tag1_nunique, length(card_user_ids))
+
+    pop_series = Enum.map(cards, &(&1.popularity))
+    |> Enum.filter(&is_number/1)
+    |> Enum.sort(:desc)
+    deck_stats = case pop_series do
+      [] -> deck_stats
+      _ ->
+        deck_stats
+        |> Map.put(:popularity_min, pop_series |> List.last())
+        |> Map.put(:popularity_median, pop_series |> median_of_sorted_list())
+        |> Map.put(:popularity_max, pop_series |> List.first())
+    end
+
+    deck_changeset = %Deck{}
+    |> change(deck_stats)
+    |> change(%{
+      spreadsheet_id: spreadsheet_id,
+      title: title |> replace("Deck:", "", global: false) |> replace(":", " / "),
+      category_label: Map.get(labels, "Tag1", "Category"),
+    })
+    |> Deck.validations()
 
     Ecto.Multi.new
-    |> Ecto.Multi.insert(:deck, deck_changeset)
-    |> Ecto.Multi.insert_all(:card_tag_defs, CardTagDef, fn %{deck: deck} ->
-      Enum.map(ctdefs, &(Map.put(&1, :deck_id, deck.id) |> add_timestamps()))
-    end)
+    |> Ecto.Multi.insert(
+      :deck, deck_changeset,
+      on_conflict: {:replace_all_except, [:id, :inserted_at]},
+      conflict_target: [:title, :spreadsheet_id]
+    )
+    |> Ecto.Multi.delete_all(
+      :removed_card_tag_defs, fn %{deck: deck} ->
+        from(df in CardTagDef, where: df.deck_id == ^deck.id)
+      end
+    )
+    |> Ecto.Multi.insert_all(
+      :card_tag_defs, CardTagDef, fn %{deck: deck} ->
+        Enum.map(ctdefs, &(Map.put(&1, :deck_id, deck.id) |> add_timestamps()))
+      end
+    )
+    |> Ecto.Multi.delete_all(
+      :removed_card_tags, fn %{deck: deck} ->
+        from ct in CardTag,
+          join: c in Card, on: c.id == ct.card_id,
+          where: c.deck_id == ^deck.id
+      end
+    )
+    |> Ecto.Multi.delete_all(
+      :removed_cards,
+      fn %{deck: deck} -> from c in Card,
+        where: c.deck_id == ^deck.id,
+        where: is_nil(c.unique_id) or not (c.unique_id in ^card_user_ids)
+      end
+    )
     |> Ecto.Multi.insert_all(
       :cards,
       Card,
       fn %{deck: deck} -> Enum.map(cards, &(Map.put(&1, :deck_id, deck.id) |> add_timestamps())) end,
-      [returning: true]
+      returning: [:id],
+      on_conflict: {:replace_all_except, [:id, :inserted_at]},
+      conflict_target: [:deck_id, :unique_id]
     )
-    |> Ecto.Multi.insert_all(:card_tags, CardTag, fn %{cards: {_, dbcards}} ->
-      Enum.zip(dbcards, card_tags)
-      |> Enum.flat_map(fn {c, ctag_lst} ->
-        for ctag <- ctag_lst, do: Map.put(ctag, :card_id, c.id) |> add_timestamps()
-      end)
-    end)
+    |> Ecto.Multi.insert_all(
+      :card_tags, CardTag, fn %{cards: {_, dbcards}} ->
+        Enum.zip(dbcards, card_tags)
+        |> Enum.flat_map(fn {c, ctag_lst} ->
+          for ctag <- ctag_lst, do: Map.put(ctag, :card_id, c.id) |> add_timestamps()
+        end)
+      end
+    )
     |> Repo.transaction()
   end
 
@@ -191,16 +253,6 @@ defmodule App.Entities.SheetService do
             with {:ok, %{deck: deck, cards: {_, cards}}} <- insert_deck(spreadsheet_id, title, labels, col_names, rows) do
               {:ok, [%{deck | cards: cards} | lst], fails}
             else
-              {:error, :deck, changeset, _} ->
-                case Keyword.get(changeset.errors, :title) do
-                  {"has already been taken", _} ->
-                    {:ok, lst, [{spreadsheet_id, title, "Already exists"} | fails]}
-                  _ ->
-                    {:ok,
-                     lst,
-                     [{spreadsheet_id, title, changeset_error_strings(changeset.errors) |> Enum.join(". ")}
-                      | fails]}
-                end
               {:error, other, other_value, _} ->
                 IO.inspect(other_value)
                 IO.inspect(other)
