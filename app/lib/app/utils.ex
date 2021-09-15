@@ -1,13 +1,13 @@
 defmodule App.Utils do
   def post_fetch_json(url, body, headers) do
     with {:ok, %{body: body}} <- HTTPoison.post(url, body, headers) do
-      Poison.decode(body)
+      Jason.decode(body)
     end
   end
 
   def fetch_json(url, headers) do
     with {:ok, %{body: body}} <- HTTPoison.get(url, headers) do
-      Poison.decode(body)
+      Jason.decode(body)
     end
   end
 
