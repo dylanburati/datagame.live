@@ -51,7 +51,7 @@ defmodule AppWeb.SheetController do
     end
   end
 
-  def create(conn, params) do
+  def create(conn, _params) do
     conn
     |> put_status(400)
     |> json(%{"error" => "Expected an object with keys 'spreadsheetId' and 'decks'"})
