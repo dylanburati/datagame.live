@@ -6,7 +6,10 @@ import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { createGame, Deck, inspectADeck } from '../helpers/api';
 import { styles } from '../styles';
 
+const gameLengthOptions = [1, 30, 60, 90, 120];
+
 export function GameCustomizationScreen() {
+  const [gameLength, setGameLength] = useState(60);
   const [deck, setDeck] = useState<Deck>();
   const [difficulty, setDifficulty] = useState(0);
   const [categoryFrequencies, setCategoryFrequencies] = useState<
@@ -42,7 +45,9 @@ export function GameCustomizationScreen() {
     try {
       const game = await createGame(topic, difficulty, categoryFrequencies);
       if (topicRef.current === topic) {
-        navigation.dispatch(StackActions.replace('Game', game));
+        navigation.dispatch(
+          StackActions.replace('Game', { ...game, gameLength })
+        );
       }
     } catch (err) {
       console.error(err);
@@ -67,7 +72,7 @@ export function GameCustomizationScreen() {
 
   return (
     <View style={styles.topContainer}>
-      <ScrollView>
+      <ScrollView contentContainerStyle={styles.allowFab}>
         <View style={[styles.row, styles.m4]}>
           <Text style={[styles.textLg, styles.fontWeightBold]}>Difficulty</Text>
           <TouchableOpacity
@@ -161,6 +166,37 @@ export function GameCustomizationScreen() {
             ))}
           </>
         )}
+        <View style={[styles.row, styles.m4, styles.mt8]}>
+          <Text style={[styles.textLg, styles.fontWeightBold]}>Length</Text>
+        </View>
+        <View
+          style={[
+            styles.row,
+            styles.justifySpaceAround,
+            styles.mx4,
+            styles.mb16,
+          ]}
+        >
+          {gameLengthOptions.map((len) => (
+            <TouchableOpacity
+              key={len}
+              style={
+                len === gameLength
+                  ? [styles.roundedMd, styles.p2, styles.bgBlue]
+                  : [styles.roundedMd, styles.p2]
+              }
+              onPress={() => setGameLength(len)}
+            >
+              <Text
+                style={
+                  len === gameLength ? [styles.textWhite] : [styles.textBlue]
+                }
+              >
+                {len}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </ScrollView>
       <View
         style={[

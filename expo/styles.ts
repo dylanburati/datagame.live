@@ -1,30 +1,6 @@
 import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
-  topContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'stretch',
-    justifyContent: 'center',
-  },
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deckTile: {
-    flexGrow: 0,
-    height: 150,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  centerAll: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   itemsCenter: {
     alignItems: 'center',
   },
@@ -36,6 +12,9 @@ export const styles = StyleSheet.create({
   },
   justifyStart: {
     justifyContent: 'flex-start',
+  },
+  justifySpaceAround: {
+    justifyContent: 'space-around',
   },
   justifyCenter: {
     justifyContent: 'center',
@@ -103,6 +82,9 @@ export const styles = StyleSheet.create({
   mb8: {
     marginBottom: 32,
   },
+  mb16: {
+    marginBottom: 64,
+  },
   mx4: {
     marginLeft: 16,
     marginRight: 16,
@@ -135,6 +117,9 @@ export const styles = StyleSheet.create({
   textWhite: {
     color: '#fff',
   },
+  textBlue: {
+    color: '#1D4ED8',
+  },
   textRed: {
     color: '#DC2626',
   },
@@ -159,10 +144,38 @@ export const styles = StyleSheet.create({
   roundedFull: {
     borderRadius: 9999,
   },
+  // non-tailwind
+  topContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+  },
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deckTile: {
+    flexGrow: 0,
+    height: 150,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  centerAll: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   iconBtn: {
     borderRadius: 9999,
     width: 24,
     height: 24,
     padding: 4,
+  },
+  allowFab: {
+    paddingBottom: 48,
   },
 });

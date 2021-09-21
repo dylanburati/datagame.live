@@ -16,8 +16,8 @@ import {
   isAngleUp,
   isAngleNeutral,
   isAngleDown,
+  shouldRunTimer,
 } from '../helpers/gameLogic';
-import { fastAtan } from '../helpers/math';
 import { styles } from '../styles';
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { Card } from '../helpers/api';
@@ -37,7 +37,7 @@ export type GameData = {
 export function GameScreen() {
   const navigation = useNavigationTyped();
   const {
-    params: { deck, cards: propCards },
+    params: { deck, cards: propCards, gameLength },
   } = useRouteTyped<'Game'>();
   const [gameData, setGameData] = useState<GameData>([]);
 
@@ -45,6 +45,34 @@ export function GameScreen() {
     confirm: new Audio.Sound(),
     skip: new Audio.Sound(),
   }).current;
+  useEffect(() => {
+    const loadAll = async () => {
+      try {
+        await Promise.all([
+          sounds.confirm.loadAsync(require('../assets/YES.wav')),
+          sounds.skip.loadAsync(require('../assets/BeOS-ScrubAlert.aiff')),
+        ]);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    const unloadAll = async () => {
+      try {
+        await Promise.all([
+          sounds.confirm.unloadAsync(),
+          sounds.skip.unloadAsync(),
+        ]);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    loadAll();
+    return () => {
+      unloadAll();
+    };
+  }, [sounds]);
   const [gameState, setGameState] = useState<GameState>({
     stage: GameStage.NOT_LEVEL,
     cards: propCards,
@@ -65,6 +93,23 @@ export function GameScreen() {
     []
   );
   const [startTime, setStartTime] = useState(0);
+  const [elapsed, setElapsed] = useState(-3);
+  const timerRef = useRef<number>();
+  const willRunTimer = shouldRunTimer(gameState.stage);
+  useEffect(() => {
+    if (!willRunTimer) {
+      return;
+    }
+    timerRef.current = setInterval(
+      () => setElapsed((Date.now() - startTime) / 1000),
+      16
+    ) as any;
+
+    return () => {
+      clearInterval(timerRef.current);
+    };
+  }, [startTime, willRunTimer]);
+
   const [accel, setAccel] = useState({
     x: 0,
     y: 0,
@@ -88,7 +133,6 @@ export function GameScreen() {
   }, []);
 
   useEffect(() => {
-    console.log('here');
     setGameState({
       stage: GameStage.NOT_LEVEL,
       cards: propCards,
@@ -97,25 +141,22 @@ export function GameScreen() {
     setGameData([]);
   }, [propCards]);
 
-  const angle = fastAtan(-accel.z, accel.x);
-  const elapsed = Date.now() - startTime;
-  const secondsLeft = Math.ceil(60 - elapsed / 1000);
   useEffect(() => {
     switch (gameState.stage) {
       case GameStage.NOT_LEVEL:
-        if (isAngleNeutral(angle)) {
+        if (isAngleNeutral(accel)) {
           switchStage(GameStage.READY);
           setStartTime(Date.now() + 3000);
         }
         break;
       case GameStage.READY:
-        if (secondsLeft <= 60) {
+        if (elapsed >= 0) {
           switchStage(GameStage.QUESTION);
         }
         break;
       case GameStage.QUESTION:
-        const skipped = isAngleUp(angle);
-        const confirmed = isAngleDown(angle);
+        const skipped = isAngleUp(accel);
+        const confirmed = isAngleDown(accel);
         if (skipped || confirmed) {
           const question = gameState.cards.length ? gameState.cards[0] : null;
           setGameState((prev) => ({
@@ -144,7 +185,7 @@ export function GameScreen() {
         break;
       case GameStage.FEEDBACK_NOT_LEVEL:
         const isDone = gameState.cards.length === 1;
-        if (isDone || isAngleNeutral(angle)) {
+        if (isDone || isAngleNeutral(accel)) {
           setGameState((prev) => ({
             ...prev,
             stage: isDone ? GameStage.FINISHED : GameStage.QUESTION,
@@ -157,7 +198,7 @@ export function GameScreen() {
       default:
         break;
     }
-    if (gameState.stage !== GameStage.NOT_LEVEL && secondsLeft < 0) {
+    if (gameState.stage !== GameStage.NOT_LEVEL && elapsed > gameLength) {
       switchStage(GameStage.FINISHED);
       const question = gameState.cards.length ? gameState.cards[0] : null;
       if (question && gameState.stage === GameStage.QUESTION) {
@@ -168,11 +209,12 @@ export function GameScreen() {
       }
     }
   }, [
-    angle,
+    accel,
+    elapsed,
     fadeAnim,
     gameData,
+    gameLength,
     gameState,
-    secondsLeft,
     setGameState,
     switchStage,
     switchStageChecked,
@@ -182,30 +224,19 @@ export function GameScreen() {
     if (gameState.stage !== GameStage.FEEDBACK) {
       return;
     }
-    let shouldPlay = true;
     const soundEffect = async () => {
-      if (gameState.previousAnswered) {
-        await sounds.confirm.loadAsync(require('../assets/YES.wav'));
-        if (shouldPlay) {
+      try {
+        if (gameState.previousAnswered) {
           await sounds.confirm.playAsync();
-        }
-      } else {
-        await sounds.skip.loadAsync(require('../assets/BeOS-ScrubAlert.aiff'));
-        if (shouldPlay) {
+        } else {
           await sounds.skip.playAsync();
         }
+      } catch (err) {
+        console.error(err);
       }
     };
 
     soundEffect();
-    return () => {
-      shouldPlay = false;
-      if (gameState.previousAnswered) {
-        sounds.confirm.unloadAsync();
-      } else {
-        sounds.skip.unloadAsync();
-      }
-    };
   }, [gameState.previousAnswered, gameState.stage, sounds]);
 
   let mainText = 'HOLD UP TO YOUR FOREHEAD';
@@ -303,11 +334,13 @@ export function GameScreen() {
             >
               {shouldShowTimer(stage) && (
                 <Text style={styles.textXl}>
-                  {timerFormat(stage, secondsLeft)}
+                  {timerFormat(stage, gameLength, elapsed)}
                 </Text>
               )}
             </View>
-            <View style={styles.flexBasisOneThird} />
+            <View style={styles.flexBasisOneThird}>
+              <Text>{Math.round((Math.asin(accel.z) * 180) / Math.PI)}</Text>
+            </View>
           </View>
         </>
       )}

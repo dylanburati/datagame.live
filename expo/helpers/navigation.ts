@@ -8,7 +8,7 @@ import { Game } from './api';
 
 export type RootStackParamList = {
   Home: undefined;
-  Game: Game;
+  Game: Game & { gameLength: number };
   GameCustomization: { topic: number };
 };
 
