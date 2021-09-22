@@ -21,6 +21,7 @@ import {
 import { styles } from '../styles';
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { Card } from '../helpers/api';
+import { binarySearch } from '../helpers/math';
 
 export type GameState = {
   stage: GameStage;
@@ -41,19 +42,30 @@ export function GameScreen() {
   } = useRouteTyped<'Game'>();
   const [gameData, setGameData] = useState<GameData>([]);
 
+  const [isSoundReady, setSoundReady] = useState(false);
   const sounds = useRef({
+    ready: new Audio.Sound(),
+    start: new Audio.Sound(),
     confirm: new Audio.Sound(),
     skip: new Audio.Sound(),
+    finalSeconds: new Audio.Sound(),
+    finish: new Audio.Sound(),
   }).current;
   useEffect(() => {
     const loadAll = async () => {
       try {
         await Promise.all([
+          sounds.ready.loadAsync(require('../assets/ready.wav')),
+          sounds.start.loadAsync(require('../assets/start.wav')),
           sounds.confirm.loadAsync(require('../assets/YES.wav')),
           sounds.skip.loadAsync(require('../assets/BeOS-ScrubAlert.aiff')),
+          sounds.finalSeconds.loadAsync(require('../assets/final_seconds.wav')),
+          sounds.finish.loadAsync(require('../assets/finish.wav')),
         ]);
       } catch (err) {
         console.error(err);
+      } finally {
+        setSoundReady(true);
       }
     };
 
@@ -93,7 +105,7 @@ export function GameScreen() {
     []
   );
   const [startTime, setStartTime] = useState(0);
-  const [elapsed, setElapsed] = useState(-3);
+  const [elapsed, setElapsed] = useState(-4);
   const timerRef = useRef<number>();
   const willRunTimer = shouldRunTimer(gameState.stage);
   useEffect(() => {
@@ -107,6 +119,7 @@ export function GameScreen() {
 
     return () => {
       clearInterval(timerRef.current);
+      setElapsed(-4);
     };
   }, [startTime, willRunTimer]);
 
@@ -144,7 +157,7 @@ export function GameScreen() {
   useEffect(() => {
     switch (gameState.stage) {
       case GameStage.NOT_LEVEL:
-        if (isAngleNeutral(accel)) {
+        if (isAngleNeutral(accel) && isSoundReady) {
           switchStage(GameStage.READY);
           setStartTime(Date.now() + 3000);
         }
@@ -215,21 +228,51 @@ export function GameScreen() {
     gameData,
     gameLength,
     gameState,
+    isSoundReady,
     setGameState,
     switchStage,
     switchStageChecked,
   ]);
 
+  // 0..2:ready 3:start
+  const readySoundIndex = binarySearch(
+    [-3, -2, -1, 0],
+    elapsed,
+    'roll-backward'
+  );
+  // 0:none, 1:finalSeconds; only play finalSeconds if gameLength >= 20
+  const endSoundIndex = binarySearch(
+    [0, gameLength - 10].filter((secs, i) => secs >= i * 10),
+    elapsed,
+    'roll-backward'
+  );
+  const pastFirstQuestion = gameData.length > 0;
   useEffect(() => {
-    if (gameState.stage !== GameStage.FEEDBACK) {
-      return;
-    }
     const soundEffect = async () => {
-      try {
+      let whichSound: Audio.Sound | undefined;
+      if (
+        gameState.stage === GameStage.READY ||
+        gameState.stage === GameStage.QUESTION
+      ) {
+        if (readySoundIndex < 3) {
+          whichSound = sounds.ready;
+        } else if (endSoundIndex === 1) {
+          whichSound = sounds.finalSeconds;
+        } else if (!pastFirstQuestion) {
+          whichSound = sounds.start;
+        }
+      } else if (gameState.stage === GameStage.FEEDBACK) {
         if (gameState.previousAnswered) {
-          await sounds.confirm.playAsync();
+          whichSound = sounds.confirm;
         } else {
-          await sounds.skip.playAsync();
+          whichSound = sounds.skip;
+        }
+      } else if (gameState.stage === GameStage.FINISHED) {
+        whichSound = sounds.finish;
+      }
+      try {
+        if (whichSound) {
+          await whichSound.replayAsync();
         }
       } catch (err) {
         console.error(err);
@@ -237,7 +280,7 @@ export function GameScreen() {
     };
 
     soundEffect();
-  }, [gameState.previousAnswered, gameState.stage, sounds]);
+  }, [endSoundIndex, gameState, pastFirstQuestion, readySoundIndex, sounds]);
 
   let mainText = 'HOLD UP TO YOUR FOREHEAD';
   const { stage } = gameState;
@@ -338,9 +381,7 @@ export function GameScreen() {
                 </Text>
               )}
             </View>
-            <View style={styles.flexBasisOneThird}>
-              <Text>{Math.round((Math.asin(accel.z) * 180) / Math.PI)}</Text>
-            </View>
+            <View style={styles.flexBasisOneThird} />
           </View>
         </>
       )}
