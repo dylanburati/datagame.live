@@ -162,7 +162,8 @@ defmodule App.Entities.SheetService do
     )
     |> Map.put(:tag1_nunique, length(card_user_ids))
 
-    pop_series = Enum.map(cards, &(&1.popularity))
+    pop_series = Enum.filter(cards, &(not &1.is_disabled))
+    |> Enum.map(&(&1.popularity))
     |> Enum.filter(&is_number/1)
     |> Enum.sort(:desc)
     deck_stats = case pop_series do

@@ -240,39 +240,59 @@ export function GameScreen() {
     elapsed,
     'roll-backward'
   );
-  // 0:none, 1:finalSeconds; only play finalSeconds if gameLength >= 20
-  const endSoundIndex = binarySearch(
-    [0, gameLength - 10].filter((secs, i) => secs >= i * 10),
-    elapsed,
-    'roll-backward'
-  );
+  const inFinalSeconds = gameLength >= 20 && gameLength - elapsed <= 10;
+  // last timestamp that `sounds.finalSeconds` was played
+  const [playedFinalSeconds, setPlayedFinalSeconds] = useState(0);
   const pastFirstQuestion = gameData.length > 0;
   useEffect(() => {
     const soundEffect = async () => {
-      let whichSound: Audio.Sound | undefined;
-      if (
-        gameState.stage === GameStage.READY ||
-        gameState.stage === GameStage.QUESTION
-      ) {
-        if (readySoundIndex < 3) {
-          whichSound = sounds.ready;
-        } else if (endSoundIndex === 1) {
-          whichSound = sounds.finalSeconds;
-        } else if (!pastFirstQuestion) {
-          whichSound = sounds.start;
+      if (gameState.stage === GameStage.FEEDBACK) {
+        try {
+          if (gameState.previousAnswered) {
+            await sounds.confirm.replayAsync();
+          } else {
+            await sounds.skip.replayAsync();
+          }
+        } catch (err) {
+          console.error(err);
         }
-      } else if (gameState.stage === GameStage.FEEDBACK) {
-        if (gameState.previousAnswered) {
-          whichSound = sounds.confirm;
-        } else {
-          whichSound = sounds.skip;
-        }
-      } else if (gameState.stage === GameStage.FINISHED) {
-        whichSound = sounds.finish;
       }
+    };
+
+    soundEffect();
+  }, [gameState, sounds]);
+  useEffect(() => {
+    const soundEffect = async () => {
+      if (gameState.stage === GameStage.FINISHED) {
+        try {
+          await sounds.finish.replayAsync();
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+
+    soundEffect();
+  }, [gameState.stage, sounds]);
+  useEffect(() => {
+    const soundEffect = async () => {
       try {
-        if (whichSound) {
-          await whichSound.replayAsync();
+        switch (gameState.stage) {
+          case GameStage.READY:
+            if (readySoundIndex < 3) {
+              await sounds.ready.replayAsync();
+            }
+            break;
+          case GameStage.QUESTION:
+            if (!pastFirstQuestion) {
+              await sounds.start.replayAsync();
+            } else if (inFinalSeconds && playedFinalSeconds < startTime) {
+              setPlayedFinalSeconds(Date.now());
+              await sounds.finalSeconds.replayAsync();
+            }
+            break;
+          default:
+            break;
         }
       } catch (err) {
         console.error(err);
@@ -280,7 +300,15 @@ export function GameScreen() {
     };
 
     soundEffect();
-  }, [endSoundIndex, gameState, pastFirstQuestion, readySoundIndex, sounds]);
+  }, [
+    gameState.stage,
+    inFinalSeconds,
+    pastFirstQuestion,
+    playedFinalSeconds,
+    readySoundIndex,
+    sounds,
+    startTime,
+  ]);
 
   let mainText = 'HOLD UP TO YOUR FOREHEAD';
   const { stage } = gameState;

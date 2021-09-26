@@ -18,7 +18,8 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dylanburati.datagame"
+      "bundleIdentifier": "com.dylanburati.datagame",
+      "buildNumber": "3"
     },
     "android": {
       "adaptiveIcon": {
