@@ -1,6 +1,7 @@
 defmodule AppWeb.SheetController do
   use AppWeb, :controller
   alias App.Entities.SheetService
+  alias App.Entities.DeckService
 
   def show(conn, %{"id" => id}) do
     case SheetService.get_spreadsheet(id) do
@@ -17,7 +18,8 @@ defmodule AppWeb.SheetController do
   end
 
   def create(conn, %{"spreadsheetId" => id, "decks" => deck_uploads}) do
-    with {:ok, decks, fails} <- SheetService.insert_sheet_decks(id, deck_uploads) do
+    with {:ok, decks_in, fails} <- SheetService.insert_sheet_decks(id, deck_uploads) do
+      decks = decks_in |> Enum.map(fn %{id: id} -> DeckService.show!(id) end)
       if Enum.empty?(decks) do
         case Enum.empty?(fails) do
           true ->
@@ -32,20 +34,7 @@ defmodule AppWeb.SheetController do
             })
         end
       else
-        conn
-        |> json(%{
-          "data" => for deck <- decks do
-            %{
-              "id" => deck.id,
-              "spreadsheetId" => deck.spreadsheet_id,
-              "title" => deck.title,
-              "cardCount" => length(deck.cards)
-            }
-          end,
-          "errors" => for {id, nm, msg} <- fails do
-            %{"spreadsheetId" => id, "title" => nm, "message" => msg}
-          end
-        })
+        render(conn, "sheet.json", %{decks: decks, fails: fails})
       end
       # todo catch 500 error
     end

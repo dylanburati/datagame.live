@@ -30,14 +30,13 @@ defmodule App.Entities.DeckService do
 
   defp fill_out_value_counts(card_tag_def) do
     query = from ct in CardTag,
-      join: c in Card, on: c.id == ct.card_id,
+      join: c in assoc(ct, :cards),
       where: c.is_disabled == false,
-      where: c.deck_id == ^card_tag_def.deck_id,
-      where: ct.position == ^card_tag_def.position,
+      where: ct.card_tag_def_id == ^card_tag_def.id,
       group_by: [ct.value],
       select: {ct.value, count(c.id)},
       order_by: [desc: count(c.id)],
-      limit: 15
+      limit: 16
 
     value_counts = query
     |> Repo.all()
@@ -56,6 +55,13 @@ defmodule App.Entities.DeckService do
 
         {:ok,
          %Deck{deck | card_tag_defs: deck.card_tag_defs |> Enum.map(&fill_out_value_counts/1)}}
+    end
+  end
+
+  def show!(id) do
+    case show(id) do
+      {:ok, result} -> result
+      {:error, reason} -> raise KeyError, message: reason
     end
   end
 end

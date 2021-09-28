@@ -22,7 +22,7 @@ defmodule App.Entities.Deck do
 
     has_many :cards, Card
     has_many :card_tag_defs, CardTagDef
-    has_many :tags, DeckTag
+    many_to_many :tags, DeckTag, join_through: "deck_deck_tag"
 
     timestamps()
   end

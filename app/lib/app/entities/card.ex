@@ -16,7 +16,7 @@ defmodule App.Entities.Card do
     field :unique_id, :string
 
     belongs_to :deck, Deck
-    has_many :tags, CardTag
+    many_to_many :tags, CardTag, join_through: "card_card_tag"
 
     timestamps()
   end

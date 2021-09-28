@@ -140,7 +140,10 @@ defmodule App.Entities.SheetService do
       %{position: pos, label: Map.get(labels, col_name, col_name)}
     end
 
-    {cards, card_tags} = Enum.unzip(deck_cards(col_names, rows))
+    cards_with_tags = deck_cards(col_names, rows)
+    {cards, card_tags_nested} = Enum.unzip(cards_with_tags)
+    card_tags = Enum.concat(card_tags_nested) |> Enum.uniq()
+
     card_user_ids = Enum.map(cards, &(&1.unique_id))
     |> MapSet.new()
     |> MapSet.delete(nil)
@@ -175,12 +178,16 @@ defmodule App.Entities.SheetService do
         |> Map.put(:popularity_max, pop_series |> List.first())
     end
 
+    nonblank_labels = Enum.filter(labels, fn {_, v} ->
+      is_binary(v) and String.length(v)
+    end)
+    |> Map.new()
     deck_changeset = %Deck{}
     |> change(deck_stats)
     |> change(%{
       spreadsheet_id: spreadsheet_id,
       title: title |> replace("Deck:", "", global: false) |> replace(":", " / "),
-      category_label: Map.get(labels, "Tag1", "Category"),
+      category_label: Map.get(nonblank_labels, "Tag1", "Category"),
     })
     |> Deck.validations()
 
@@ -196,16 +203,12 @@ defmodule App.Entities.SheetService do
       end
     )
     |> Ecto.Multi.insert_all(
-      :card_tag_defs, CardTagDef, fn %{deck: deck} ->
+      :card_tag_defs,
+      CardTagDef,
+      fn %{deck: deck} ->
         Enum.map(ctdefs, &(Map.put(&1, :deck_id, deck.id) |> add_timestamps()))
-      end
-    )
-    |> Ecto.Multi.delete_all(
-      :removed_card_tags, fn %{deck: deck} ->
-        from ct in CardTag,
-          join: c in Card, on: c.id == ct.card_id,
-          where: c.deck_id == ^deck.id
-      end
+      end,
+      returning: [:id]
     )
     |> Ecto.Multi.delete_all(
       :removed_cards,
@@ -223,10 +226,28 @@ defmodule App.Entities.SheetService do
       conflict_target: [:deck_id, :unique_id]
     )
     |> Ecto.Multi.insert_all(
-      :card_tags, CardTag, fn %{cards: {_, dbcards}} ->
-        Enum.zip(dbcards, card_tags)
-        |> Enum.flat_map(fn {c, ctag_lst} ->
-          for ctag <- ctag_lst, do: Map.put(ctag, :card_id, c.id) |> add_timestamps()
+      :card_tags,
+      CardTag,
+      fn %{card_tag_defs: {_, db_ctdefs}} ->
+        pos_map = for {ctdef, %{id: id}} <- Enum.zip(ctdefs, db_ctdefs), into: %{} do
+          {ctdef.position, id}
+        end
+        card_tags |> Enum.map(fn tag ->
+          Map.put(tag, :card_tag_def_id, pos_map[tag.position]) |> Map.delete(:position)
+        end)
+      end,
+      returning: [:id]
+    )
+    |> Ecto.Multi.insert_all(
+      :card_tag_assoc,
+      "card_card_tag",
+      fn %{cards: {_, dbcards}, card_tags: {_, dbtags}} ->
+        id_map = for {tag, %{id: id}} <- Enum.zip(card_tags, dbtags), into: %{} do
+          {tag, id}
+        end
+        Enum.zip(dbcards, card_tags_nested)
+        |> Enum.flat_map(fn {%{id: card_id}, tag_lst} ->
+          Enum.map(tag_lst, fn tag -> %{card_id: card_id, card_tag_id: id_map[tag]} end)
         end)
       end
     )
@@ -251,8 +272,8 @@ defmodule App.Entities.SheetService do
                 |> Enum.filter(fn [a, b] -> not (is_nil(a) and is_nil(b)) end)
                 |> Enum.reduce(%{}, fn [k, lbl], acc -> Map.put(acc, k, lbl) end)
             end
-            with {:ok, %{deck: deck, cards: {_, cards}}} <- insert_deck(spreadsheet_id, title, labels, col_names, rows) do
-              {:ok, [%{deck | cards: cards} | lst], fails}
+            with {:ok, %{deck: deck}} <- insert_deck(spreadsheet_id, title, labels, col_names, rows) do
+              {:ok, [deck | lst], fails}
             else
               {:error, other, other_value, _} ->
                 IO.inspect(other_value)

@@ -72,7 +72,7 @@ defmodule App.Entities.GameService do
 
       cards = query
       |> Repo.all()
-      |> Repo.preload(:tags)
+      |> Repo.preload([tags: [:definition]])
 
       {:ok, %{deck: deck, cards: cards}}
     end

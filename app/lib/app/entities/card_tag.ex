@@ -3,20 +3,19 @@ defmodule App.Entities.CardTag do
   import Ecto.Changeset
 
   alias App.Entities.Card
+  alias App.Entities.CardTagDef
 
   schema "card_tag" do
-    field :position, :integer
     field :value, :string
 
-    belongs_to :card, Card
-
-    timestamps()
+    belongs_to :definition, CardTagDef, foreign_key: :card_tag_def_id
+    many_to_many :cards, Card, join_through: "card_card_tag"
   end
 
   @doc false
   def changeset(card_tag, attrs) do
     card_tag
-    |> cast(attrs, [:position, :value])
-    |> validate_required([:position, :value])
+    |> cast(attrs, [:value])
+    |> validate_required([:value])
   end
 end

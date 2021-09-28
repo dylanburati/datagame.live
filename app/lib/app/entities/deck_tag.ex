@@ -7,9 +7,7 @@ defmodule App.Entities.DeckTag do
   schema "deck_tag" do
     field :value, :string
 
-    belongs_to :deck, Deck
-
-    timestamps()
+    many_to_many :decks, Deck, join_through: "deck_deck_tag"
   end
 
   @doc false

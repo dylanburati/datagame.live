@@ -17,6 +17,8 @@ defmodule AppWeb.DeckView do
     %{
       id: deck.id,
       title: deck.title,
+      createdAt: deck.inserted_at,
+      updatedAt: deck.updated_at,
       numEnabledCards: deck.enabled_count,
       canSelectDifficulty: Deck.can_select_difficulty?(deck),
       canSelectCategories: Deck.can_select_categories?(deck),
