@@ -14,8 +14,9 @@ defmodule App.Entities.DeckService do
 
   defp fill_out_category_counts(deck) do
     query = from c in Card,
-      where: c.is_disabled == false,
       where: c.deck_id == ^deck.id,
+      where: c.is_disabled == false,
+      where: not is_nil(c.tag1),
       group_by: [c.tag1],
       select: {c.tag1, count(c.id)},
       order_by: [desc: count(c.id)],
