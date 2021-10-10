@@ -1,3 +1,5 @@
+import { prettyPrint } from "./utils";
+
 const effects = [];
 
 const checkEffects = () => {
@@ -513,7 +515,7 @@ export class SheetPage {
       const json = await resp.json();
       console.log(json);
       publishContainer.classList.remove('hidden');
-      publishCodeblock.textContent = JSON.stringify(json, null, 2);
+      publishCodeblock.textContent = prettyPrint(json);
     } catch (err) {
       console.error(err);
     } finally {

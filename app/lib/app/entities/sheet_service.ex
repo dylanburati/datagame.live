@@ -135,7 +135,7 @@ defmodule App.Entities.SheetService do
     end
   end
 
-  defp insert_deck(spreadsheet_id, title, labels, col_names, rows) do
+  defp insert_deck(spreadsheet_id, sheet_name, labels, col_names, rows) do
     ctdefs = for {col_name, pos} <- Enum.with_index(["Tag2", "Tag3", "Tag4"], 2) do
       %{position: pos, label: Map.get(labels, col_name, col_name)}
     end
@@ -186,8 +186,9 @@ defmodule App.Entities.SheetService do
     |> change(deck_stats)
     |> change(%{
       spreadsheet_id: spreadsheet_id,
-      title: title |> replace("Deck:", "", global: false) |> replace(":", " / "),
+      sheet_name: sheet_name,
       category_label: Map.get(nonblank_labels, "Tag1", "Category"),
+      title: sheet_name |> replace("Deck:", "", global: false) |> replace(":", " / "),
     })
     |> Deck.validations()
 
@@ -195,7 +196,7 @@ defmodule App.Entities.SheetService do
     |> Ecto.Multi.insert(
       :deck, deck_changeset,
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
-      conflict_target: [:title, :spreadsheet_id]
+      conflict_target: [:spreadsheet_id, :sheet_name]
     )
     |> Ecto.Multi.delete_all(
       :removed_card_tag_defs, fn %{deck: deck} ->
@@ -260,7 +261,7 @@ defmodule App.Entities.SheetService do
 
   def insert_sheet_decks(spreadsheet_id, [draft_deck | tail]) do
     with {:ok, lst, fails} <- insert_sheet_decks(spreadsheet_id, tail) do
-      with %{"title" => title, "values" => values} <- draft_deck do
+      with %{"title" => sheet_name, "values" => values} <- draft_deck do
         with [col_names | rows] <- transpose(values) do
           with 1 <- Enum.count(col_names, &(&1 == "Card")) do
             label_loc = Enum.zip(col_names, Enum.drop(col_names, 1))
@@ -272,7 +273,7 @@ defmodule App.Entities.SheetService do
                 |> Enum.filter(fn [a, b] -> not (is_nil(a) and is_nil(b)) end)
                 |> Enum.reduce(%{}, fn [k, lbl], acc -> Map.put(acc, k, lbl) end)
             end
-            with {:ok, %{deck: deck}} <- insert_deck(spreadsheet_id, title, labels, col_names, rows) do
+            with {:ok, %{deck: deck}} <- insert_deck(spreadsheet_id, sheet_name, labels, col_names, rows) do
               {:ok, [deck | lst], fails}
             else
               {:error, other, other_value, _} ->
@@ -281,8 +282,8 @@ defmodule App.Entities.SheetService do
                 {:error, "Unknown error"}
             end
           else
-            0 -> {:ok, lst, [{spreadsheet_id, title, "No column named 'Card' in #{title}"} | fails]}
-            _ -> {:ok, lst, [{spreadsheet_id, title, "Multiple columns named 'Card' in #{title}"} | fails]}
+            0 -> {:ok, lst, [{spreadsheet_id, sheet_name, "No column named 'Card' in #{sheet_name}"} | fails]}
+            _ -> {:ok, lst, [{spreadsheet_id, sheet_name, "Multiple columns named 'Card' in #{sheet_name}"} | fails]}
           end
         end
       end

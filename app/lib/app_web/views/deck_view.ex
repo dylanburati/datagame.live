@@ -17,6 +17,8 @@ defmodule AppWeb.DeckView do
     %{
       id: deck.id,
       title: deck.title,
+      imageUrl: deck.image_url,
+      imageDominantColor: deck.image_dominant_color,
       createdAt: deck.inserted_at,
       updatedAt: deck.updated_at,
       numEnabledCards: deck.enabled_count,
