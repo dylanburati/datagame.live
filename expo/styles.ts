@@ -64,6 +64,9 @@ export const styles = StyleSheet.create({
   pb4: {
     paddingBottom: 16,
   },
+  pb16: {
+    paddingBottom: 64,
+  },
   m4: {
     margin: 16,
   },
@@ -158,7 +161,7 @@ export const styles = StyleSheet.create({
   },
   deckTile: {
     flexGrow: 0,
-    height: 150,
+    // height: 150,
   },
   row: {
     flexDirection: 'row',

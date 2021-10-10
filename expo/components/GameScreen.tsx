@@ -90,6 +90,7 @@ export function GameScreen() {
     cards: propCards,
     previousAnswered: undefined,
   });
+  const [qNotLevelText, setQNotLevelText] = useState('');
   const switchStage = useCallback(
     (gs: GameStage) => setGameState((val) => ({ ...val, stage: gs })),
     []
@@ -198,12 +199,16 @@ export function GameScreen() {
         break;
       case GameStage.FEEDBACK_NOT_LEVEL:
         const isDone = gameState.cards.length === 1;
+        if (qNotLevelText === '') {
+          setQNotLevelText('HOLD PHONE LEVEL');
+        }
         if (isDone || isAngleNeutral(accel)) {
           setGameState((prev) => ({
             ...prev,
             stage: isDone ? GameStage.FINISHED : GameStage.QUESTION,
             cards: gameState.cards.slice(1),
           }));
+          setQNotLevelText('');
         }
         break;
       case GameStage.FINISHED:
@@ -229,6 +234,7 @@ export function GameScreen() {
     gameLength,
     gameState,
     isSoundReady,
+    qNotLevelText,
     setGameState,
     switchStage,
     switchStageChecked,
@@ -321,7 +327,7 @@ export function GameScreen() {
       mainText = gameState.cards[0].title;
       break;
     case GameStage.FEEDBACK_NOT_LEVEL:
-      mainText = 'HOLD PHONE LEVEL';
+      mainText = qNotLevelText;
       break;
     case GameStage.FINISHED:
       mainText = '';

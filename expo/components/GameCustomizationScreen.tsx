@@ -2,11 +2,35 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Slider from '@react-native-community/slider';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { StackActions } from '@react-navigation/native';
+import { FormattedRelativeTime } from 'react-intl';
+import { RelativeTimeFormatSingularUnit } from '@formatjs/ecma402-abstract';
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { createGame, Deck, inspectADeck } from '../helpers/api';
 import { styles } from '../styles';
 
 const gameLengthOptions = [1, 30, 60, 90, 120];
+
+type FormattedRelativeDateProps = {
+  dateString: string;
+};
+
+function FormattedRelativeDate({ dateString }: FormattedRelativeDateProps) {
+  const date = new Date(dateString);
+  const delta = (date.getTime() - Date.now()) / 1000;
+  const aDelta = Math.abs(delta);
+  const units: [RelativeTimeFormatSingularUnit, number, number][] = [
+    ['second', 1, 60],
+    ['minute', 60, 60],
+    ['hour', 60 * 60, 36],
+    ['day', 60 * 60 * 24, 366],
+    ['year', 60 * 60 * 24 * 365.25, 9999],
+  ];
+  const [unit, divisor] =
+    units.find(([, base, max]) => aDelta < base * max) ||
+    units[units.length - 1];
+  const value = Math.sign(delta) * Math.floor(aDelta / divisor);
+  return <FormattedRelativeTime value={value} unit={unit} />;
+}
 
 export function GameCustomizationScreen() {
   const [gameLength, setGameLength] = useState(60);
@@ -45,9 +69,13 @@ export function GameCustomizationScreen() {
     try {
       const game = await createGame(topic, difficulty, categoryFrequencies);
       if (topicRef.current === topic) {
-        navigation.dispatch(
-          StackActions.replace('Game', { ...game, gameLength })
-        );
+        if (!game.cards.length) {
+          navigation.goBack();
+        } else {
+          navigation.dispatch(
+            StackActions.replace('Game', { ...game, gameLength })
+          );
+        }
       }
     } catch (err) {
       console.error(err);
@@ -73,6 +101,17 @@ export function GameCustomizationScreen() {
   return (
     <View style={styles.topContainer}>
       <ScrollView contentContainerStyle={styles.allowFab}>
+        <View style={[styles.m4]}>
+          <Text style={[styles.textXl, styles.fontWeightBold]}>
+            {deck?.title ?? ''}
+          </Text>
+          {deck && (
+            <Text>
+              Last updated:{' '}
+              <FormattedRelativeDate dateString={deck.updatedAt + 'Z'} />
+            </Text>
+          )}
+        </View>
         <View style={[styles.row, styles.m4]}>
           <Text style={[styles.textLg, styles.fontWeightBold]}>Difficulty</Text>
           <TouchableOpacity

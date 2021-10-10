@@ -46,6 +46,7 @@ defmodule App.Entities.Deck do
       :enabled_count, :has_popularity_count, :has_id_count,
       :has_tag1_count, :tag1_nunique, :title
     ])
+    |> validate_number(:enabled_count, greater_than: 0)
   end
 
   def constraints(deck) do

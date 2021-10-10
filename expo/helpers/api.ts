@@ -1,8 +1,13 @@
+import { ColorValue } from 'react-native';
 import config from '../config';
 
 export type Deck = {
   id: number;
   title: string;
+  createdAt: string;
+  updatedAt: string;
+  imageUrl?: string;
+  imageDominantColor?: ColorValue;
   numEnabledCards: number;
   canSelectDifficulty: boolean;
   canSelectCategories: boolean;
@@ -69,5 +74,5 @@ export async function createGame(
   return (await getJson(
     `${config.baseUrl}/api/game/new/${deckId}` +
       `?difficulty=${diffQ}&categoryFreqs=${categoryQ}`
-  )) as Deck;
+  )) as Game;
 }
