@@ -1,4 +1,39 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, ViewStyle } from 'react-native';
+
+export const styleConfig = {
+  topMaxWidth: 1024,
+  marginPx(lvl: number) {
+    return lvl * 4;
+  },
+  margins(levels: number[]): Record<string, ViewStyle> {
+    const parts: Record<string, ViewStyle>[] = levels.map((lvl) => ({
+      [`m${lvl}`]: {
+        margin: this.marginPx(lvl),
+      },
+      [`my${lvl}`]: {
+        marginTop: this.marginPx(lvl),
+        marginBottom: this.marginPx(lvl),
+      },
+      [`mx${lvl}`]: {
+        marginLeft: this.marginPx(lvl),
+        marginRight: this.marginPx(lvl),
+      },
+      [`mt${lvl}`]: {
+        marginTop: this.marginPx(lvl),
+      },
+      [`mb${lvl}`]: {
+        marginBottom: this.marginPx(lvl),
+      },
+      [`ml${lvl}`]: {
+        marginLeft: this.marginPx(lvl),
+      },
+      [`mr${lvl}`]: {
+        marginRight: this.marginPx(lvl),
+      },
+    }));
+    return parts.reduce((acc, cur) => ({ ...acc, ...cur }));
+  },
+};
 
 export const styles = StyleSheet.create({
   itemsCenter: {
@@ -42,6 +77,9 @@ export const styles = StyleSheet.create({
   },
   bgBlue900: {
     backgroundColor: '#1E3A8A',
+  },
+  bgGreen: {
+    backgroundColor: '#059669',
   },
   bgRed: {
     backgroundColor: '#f44',
@@ -129,12 +167,11 @@ export const styles = StyleSheet.create({
     marginTop: 32,
     marginBottom: 32,
   },
-  space4: {
-    height: 16,
-    width: 16,
-  },
   textCenter: {
     textAlign: 'center',
+  },
+  textXs: {
+    fontSize: 11,
   },
   textSm: {
     fontSize: 14,
@@ -190,6 +227,10 @@ export const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'stretch',
     justifyContent: 'center',
+    maxWidth: '100%',
+    width: styleConfig.topMaxWidth,
+    marginLeft: 'auto',
+    marginRight: 'auto',
   },
   container: {
     flex: 1,
@@ -221,5 +262,9 @@ export const styles = StyleSheet.create({
   },
   allowFab: {
     paddingBottom: 48,
+  },
+  space4: {
+    height: 16,
+    width: 16,
   },
 });

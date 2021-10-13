@@ -6,26 +6,9 @@ import React, {
   useState,
   useMemo,
 } from 'react';
-import { addOrientationChangeListener } from 'expo-screen-orientation';
-import { Dimensions } from 'react-native';
-import { SocketContext } from '../components/SocketProvider';
 import { Comparator } from 'lodash';
-
-export function useWindowWidth() {
-  const [width, setWidth] = useState(Dimensions.get('window').width);
-  useEffect(() => {
-    const subscription = addOrientationChangeListener(() => {
-      const d = Dimensions.get('window');
-      setWidth(d.width);
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  });
-
-  return width;
-}
+import { Presence } from 'phoenix';
+import { SocketContext } from '../components/SocketProvider';
 
 export function useSet<T>(initialValue: Set<T>) {
   const set = useRef(initialValue).current;
@@ -64,6 +47,13 @@ type HasEvent = {
   event: string;
 };
 
+export type PresenceAction =
+  | HasEvent
+  | {
+      event: 'presence';
+      presence: Presence;
+    };
+
 export type SendFunc<T extends HasEvent> = (
   eventAndPayload: T,
   catcher?: (reason: string | undefined) => void
@@ -75,8 +65,8 @@ export function useChannel<
   TAction extends HasEvent
 >(params: {
   topic: string;
-  joinParams: object | ((state: TState) => object);
   disable: boolean;
+  joinParams: object | ((state: TState) => object);
   reducer: React.Reducer<TState, TAction>;
   initialState: TState;
 }) {
@@ -102,6 +92,7 @@ export function useChannel<
       return;
     }
     const channel = socket.channel(topic, paramObj);
+    const presence = new Presence(channel);
     channel.onMessage = (event, payload) => {
       dispatch({
         event,
@@ -109,10 +100,28 @@ export function useChannel<
       });
       return payload;
     };
+    presence.onSync(() => {
+      dispatch({
+        event: 'presence',
+        presence,
+      } as any);
+    });
 
     let cancel = false;
     setLoading(true);
     setError(undefined);
+    const func: SendFunc<HasEvent & object> = (
+      { event, ...payload },
+      catcher
+    ) => {
+      channel
+        .push(event, payload)
+        .receive('ok', (reply) =>
+          dispatch({ event: `reply:${event}`, ...reply })
+        )
+        .receive('error', (err) => catcher && catcher(err.reason))
+        .receive('timeout', () => catcher && catcher('Timeout'));
+    };
     channel
       .join()
       .receive('ok', (resp) => {
@@ -120,21 +129,7 @@ export function useChannel<
           dispatch({ event: 'reply:join', ...resp });
           console.log(`joined ${topic}`, resp);
           setLoading(false);
-          setBroadcast(() => {
-            const func: SendFunc<HasEvent & object> = (
-              { event, ...payload },
-              catcher
-            ) => {
-              channel
-                .push(event, payload)
-                .receive('ok', (reply) =>
-                  dispatch({ event: `reply:${event}`, ...reply })
-                )
-                .receive('error', (err) => catcher && catcher(err.reason))
-                .receive('timeout', () => catcher && catcher('Timeout'));
-            };
-            return func;
-          });
+          setBroadcast(() => func);
         }
       })
       .receive('error', (resp) => {
@@ -152,6 +147,8 @@ export function useChannel<
     return () => {
       cancel = true;
       channel.leave();
+      channel.onMessage = () => {};
+      presence.onSync(() => {});
       setLoading(false);
     };
     // join params should be whatever is available at the time

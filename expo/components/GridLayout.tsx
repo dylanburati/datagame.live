@@ -1,7 +1,6 @@
 import React from 'react';
-import { View, ViewProps } from 'react-native';
+import { useWindowDimensions, View, ViewProps } from 'react-native';
 import { chunk } from 'lodash';
-import { useWindowWidth } from '../helpers/hooks';
 import { intRange } from '../helpers/math';
 import { styles } from '../styles';
 
@@ -17,6 +16,8 @@ export type GridLayoutProvidedProps<T> = {
 export type GridLayoutProps<T> = {
   style?: ViewProps['style'];
   minColumnWidth: number;
+  maxColumnCount?: number;
+  gridMaxWidth?: number;
   horizontalInset: number;
   data: T[];
   children: (props: GridLayoutProvidedProps<T>) => React.ReactElement | null;
@@ -25,17 +26,23 @@ export type GridLayoutProps<T> = {
 export function GridLayout<T>({
   style,
   minColumnWidth,
+  maxColumnCount = 12,
+  gridMaxWidth,
   data,
   horizontalInset,
   children,
 }: GridLayoutProps<T>) {
-  const windowWidth = useWindowWidth();
-  const containerWidth = windowWidth - horizontalInset;
+  const { width: windowWidth } = useWindowDimensions();
+  let containerWidth = windowWidth - horizontalInset;
+  if (gridMaxWidth != null && gridMaxWidth < windowWidth) {
+    containerWidth = gridMaxWidth - horizontalInset;
+  }
 
-  const denominators = intRange(12, 0, -1);
+  const denominators = intRange(maxColumnCount, 0, -1);
   const columnCount =
     denominators.find((num) => containerWidth / num >= minColumnWidth) || 1;
   const width = containerWidth / columnCount;
+  console.log(windowWidth, denominators, columnCount, width);
 
   return (
     <View style={style}>

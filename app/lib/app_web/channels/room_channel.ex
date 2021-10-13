@@ -1,5 +1,6 @@
 defmodule AppWeb.RoomChannel do
   use AppWeb, :channel
+  alias AppWeb.Presence
   alias App.Entities.RoomService
   alias App.Entities.RoomUser
 
@@ -45,19 +46,23 @@ defmodule AppWeb.RoomChannel do
   @impl true
   def handle_info(:after_join, socket) do
     %{room_id: room_id, user_id: user_id, is_new: is_new} = socket.assigns
+    {:ok, _} = Presence.track(socket, user_id, %{online_at: 0})
     with {:ok, room} <- RoomService.get_by_code(room_id),
          room_user <- Enum.find(room.users, fn %{id: id} -> id == user_id end),
          %RoomUser{} <- room_user do
       just_joined = %{"userId" => user_id, "displayName" => room_user.name}
-      push(socket, "join", Map.put(just_joined, "creatorId", room.creator.id))
-      if is_new, do: broadcast(socket, "user:new", just_joined)
+      room_extras = %{"creatorId" => room.creator.id, "createdAt" => room.inserted_at}
+      push(socket, "join", Map.merge(just_joined, room_extras))
+      if is_new, do: broadcast(socket, "user:new", Map.put(just_joined, "isNow", true))
 
       # send the details of every other user in the room
       Enum.filter(room.users, fn %{id: id} -> id != user_id end)
       |> Enum.map(fn %{id: id, name: name} ->
-        %{"userId" => id, "displayName" => name}
+        %{"userId" => id, "displayName" => name, "isNow" => false}
       end)
       |> Enum.each(&(push(socket, "user:new", &1)))
+
+      push(socket, "presence_state", Presence.list(socket))
       {:noreply, socket}
     else
       _ -> {:noreply, socket}
@@ -78,6 +83,7 @@ defmodule AppWeb.RoomChannel do
       with {:ok, room_user} <- RoomService.get_user_in_room(room_id, user_id),
            {:ok, _} <- RoomService.change_user_name(room_user, name) do
         broadcast(socket, "user:change", %{"userId" => user_id, "displayName" => name})
+        {:reply, {:ok, %{}}, socket}
       else
         {:error, changeset} ->
           pair = {Keyword.get(changeset.errors, :name), Keyword.get(changeset.errors, :room_id)}

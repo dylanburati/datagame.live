@@ -1,3 +1,4 @@
+import { Presence } from 'phoenix';
 import { ColorValue } from 'react-native';
 import config from '../config';
 
@@ -40,6 +41,13 @@ export type Game = {
   cards: Card[];
 };
 
+export type RoomAndSelf = {
+  roomId: string;
+  createdAt: string;
+  userId: number;
+  displayName: string;
+};
+
 export type RoomUser = {
   userId: number;
   displayName: string;
@@ -49,6 +57,7 @@ export type RoomIncomingMessage =
   | {
       event: 'join';
       creatorId: number;
+      createdAt: string;
       userId: number;
       displayName: string;
     }
@@ -56,6 +65,7 @@ export type RoomIncomingMessage =
       event: 'user:new';
       userId: number;
       displayName: string;
+      isNow: boolean;
     }
   | {
       event: 'user:change';
@@ -65,6 +75,10 @@ export type RoomIncomingMessage =
   | {
       event: 'round:start';
       pointTarget: number;
+    }
+  | {
+      event: 'presence';
+      presence: Presence;
     };
 
 export type RoomOutgoingMessage =
@@ -112,4 +126,8 @@ export async function createGame(
     `${config.baseUrl}/api/game/new/${deckId}` +
       `?difficulty=${diffQ}&categoryFreqs=${categoryQ}`
   )) as Game;
+}
+
+export async function createRoom() {
+  return (await getJson(`${config.baseUrl}/api/room/new`)) as RoomAndSelf;
 }

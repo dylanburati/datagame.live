@@ -33,7 +33,7 @@ defmodule AppWeb.GameController do
           conn |> put_status(400) |> json(%{"error" => to_string(err)})
       end
     else
-      conn |> put_status(400) |> json(%{"error" => "Could not understand difficulty #{}"})
+      conn |> put_status(400) |> json(%{"error" => "Could not understand difficulty #{din}"})
     end
   end
 end

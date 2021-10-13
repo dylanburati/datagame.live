@@ -3,7 +3,7 @@ defmodule App.Repo.Migrations.RoomHasCreator do
 
   def change do
     alter table(:room) do
-      add :creator_id, references(:room_user)
+      add :creator_id, references(:room_user, on_delete: :delete_all)
     end
   end
 end

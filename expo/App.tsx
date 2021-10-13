@@ -22,7 +22,7 @@ import { GameScreen } from './components/GameScreen';
 import { Loader } from './components/Loader';
 import { GameCustomizationScreen } from './components/GameCustomizationScreen';
 import { RootStackParamList, useNavigationTyped } from './helpers/navigation';
-import { Deck, listDecks, RoomUser } from './helpers/api';
+import { createRoom, Deck, listDecks, RoomUser } from './helpers/api';
 import { Audio } from 'expo-av';
 import { SocketProvider } from './components/SocketProvider';
 import {
@@ -31,7 +31,7 @@ import {
 } from './components/ExpandingInfoHeader';
 import { GridLayout } from './components/GridLayout';
 import { useSet } from './helpers/hooks';
-import { styles } from './styles';
+import { styleConfig, styles } from './styles';
 import config from './config';
 import { RoomScreen } from './components/RoomScreen';
 import { loadJson, roomStorageKey } from './helpers/storage';
@@ -110,6 +110,21 @@ export function HomeScreen() {
   }, []);
 
   const [informationOpen, setInformationOpen] = useState(0);
+  const hostRequestRunning = useRef(false);
+  const hostRoom = async () => {
+    if (hostRequestRunning.current) {
+      return;
+    }
+    hostRequestRunning.current = true;
+    try {
+      const { roomId, ...details } = await createRoom();
+      navigate('Room', { roomId, savedSession: details ?? undefined });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      hostRequestRunning.current = false;
+    }
+  };
   const goToRoom = async (roomId: string) => {
     if (!roomId) {
       return;
@@ -138,10 +153,12 @@ export function HomeScreen() {
               style={styles.mx4}
               data={displayDecks}
               minColumnWidth={120}
-              horizontalInset={2 * styles.m4.margin}
+              maxColumnCount={8}
+              gridMaxWidth={styleConfig.topMaxWidth}
+              horizontalInset={2 * styleConfig.marginPx(4)}
             >
               {({ item: { deck, hasImageLoaded }, index, width }) => {
-                const padding = 2 * styles.p2.padding;
+                const padding = 2 * styleConfig.marginPx(2);
                 const imgWidth = width - padding;
                 const height = (imgWidth * 5) / 3;
                 return (
@@ -150,7 +167,7 @@ export function HomeScreen() {
                       onPress={() =>
                         navigate('GameCustomization', { topic: deck.id })
                       }
-                      style={[styles.deckTile]}
+                      style={[styles.deckTile, styles.hFull]}
                     >
                       <ImageBackground
                         style={[
@@ -223,7 +240,7 @@ export function HomeScreen() {
                 styles.m2,
                 styles.p4,
               ]}
-              onPress={() => console.log('host')}
+              onPress={hostRoom}
             >
               <Text style={[styles.textWhite, styles.textCenter]}>HOST</Text>
             </TouchableOpacity>
@@ -256,17 +273,20 @@ export default function App() {
       playsInSilentModeIOS: true,
     });
   }, []);
+  const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
 
   return (
     <IntlProvider locale={locales[0]}>
-      <SocketProvider wsUrl={`${config.baseUrl}/socket`}>
+      <SocketProvider wsUrl={`${config.baseUrl.replace(/^http/, 'ws')}/socket`}>
         <NavigationContainer>
           <Stack.Navigator initialRouteName="Home">
             <Stack.Screen
               name="Home"
               listeners={{
                 focus: () => {
-                  lockOrientationAsync(OrientationLock.DEFAULT);
+                  if (isMobile) {
+                    lockOrientationAsync(OrientationLock.DEFAULT);
+                  }
                 },
               }}
               component={HomeScreen}
@@ -276,7 +296,9 @@ export default function App() {
               name="GameCustomization"
               listeners={{
                 focus: () => {
-                  lockOrientationAsync(OrientationLock.DEFAULT);
+                  if (isMobile) {
+                    lockOrientationAsync(OrientationLock.DEFAULT);
+                  }
                 },
               }}
               component={GameCustomizationScreen}
@@ -286,7 +308,9 @@ export default function App() {
               name="Game"
               listeners={{
                 focus: () => {
-                  lockOrientationAsync(OrientationLock.LANDSCAPE_LEFT);
+                  if (isMobile) {
+                    lockOrientationAsync(OrientationLock.LANDSCAPE_LEFT);
+                  }
                 },
               }}
               component={GameScreen}

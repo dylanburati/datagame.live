@@ -4,7 +4,7 @@ defmodule App.Repo.Migrations.CreateRoomUser do
   def change do
     create table(:room_user) do
       add :name, :string
-      add :room_id, references(:room)
+      add :room_id, references(:room, on_delete: :delete_all)
 
       timestamps()
     end

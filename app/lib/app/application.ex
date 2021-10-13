@@ -15,6 +15,8 @@ defmodule App.Application do
       {Phoenix.PubSub, name: App.PubSub},
       # Start the Endpoint (http/https)
       AppWeb.Endpoint,
+      # Heartbeat service
+      AppWeb.Presence,
       # Start a worker by calling: App.Worker.start_link(arg)
       App.Cache
     ]

@@ -6,8 +6,11 @@ for (let i = 0; i < 90; i++) {
 }
 
 export function intRange(start: number, end: number, step: number) {
-  const len = Math.floor((end - start - 1) / step);
-  return new Array(len).fill(start).map((n, i) => n + step * i);
+  const result = [];
+  for (let num = start; step * (num - end) < 0; num += step) {
+    result.push(num);
+  }
+  return result;
 }
 
 export function binarySearch(

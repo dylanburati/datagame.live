@@ -5,7 +5,7 @@ defmodule App.Entities.Room do
 
   schema "room" do
     field :code, :string
-    has_one :creator, RoomUser
+    belongs_to :creator, RoomUser
     has_many :users, RoomUser
 
     timestamps()
