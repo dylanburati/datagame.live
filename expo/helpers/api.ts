@@ -40,6 +40,43 @@ export type Game = {
   cards: Card[];
 };
 
+export type RoomUser = {
+  userId: number;
+  displayName: string;
+};
+
+export type RoomIncomingMessage =
+  | {
+      event: 'join';
+      creatorId: number;
+      userId: number;
+      displayName: string;
+    }
+  | {
+      event: 'user:new';
+      userId: number;
+      displayName: string;
+    }
+  | {
+      event: 'user:change';
+      userId: number;
+      displayName: string;
+    }
+  | {
+      event: 'round:start';
+      pointTarget: number;
+    };
+
+export type RoomOutgoingMessage =
+  | {
+      event: 'user:change';
+      displayName: string;
+    }
+  | {
+      event: 'round:start';
+      pointTarget: number;
+    };
+
 async function getJson(url: string) {
   const resp = await fetch(url);
   if (resp.ok) {

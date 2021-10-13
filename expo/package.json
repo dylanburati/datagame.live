@@ -8,6 +8,7 @@
     "eject": "expo eject"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.15.9",
     "@react-native-community/eslint-config": "^3.0.1",
     "@react-native-community/slider": "^4.1.6",
     "@react-navigation/native": "^6.0.2",
@@ -19,6 +20,7 @@
     "expo-screen-orientation": "~3.2.1",
     "expo-sensors": "~10.2.2",
     "expo-status-bar": "~1.0.4",
+    "phoenix": "^1.6.2",
     "react": "16.13.1",
     "react-dom": "16.13.1",
     "react-intl": "^5.20.12",
@@ -32,6 +34,7 @@
   "devDependencies": {
     "@babel/core": "^7.9.0",
     "@types/lodash": "^4.14.173",
+    "@types/phoenix": "^1.5.3",
     "@types/react": "~16.9.35",
     "@types/react-native": "~0.63.2",
     "eslint": "^7.32.0",

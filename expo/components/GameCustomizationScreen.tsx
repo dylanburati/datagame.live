@@ -7,6 +7,7 @@ import { RelativeTimeFormatSingularUnit } from '@formatjs/ecma402-abstract';
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { createGame, Deck, inspectADeck } from '../helpers/api';
 import { styles } from '../styles';
+import { ExpandingInfoHeader } from './ExpandingInfoHeader';
 
 const gameLengthOptions = [1, 30, 60, 90, 120];
 
@@ -93,7 +94,7 @@ export function GameCustomizationScreen() {
       ? categoryCounts
           .map((e) => ({
             ...e,
-            percentage: (100 * e.count) / deck.numEnabledCards,
+            percentage: ((100 * e.count) / deck.numEnabledCards).toFixed(0),
           }))
           .reduce((acc, cur) => (cur.count > acc.count ? cur : acc))
       : null;
@@ -112,36 +113,20 @@ export function GameCustomizationScreen() {
             </Text>
           )}
         </View>
-        <View style={[styles.row, styles.m4]}>
-          <Text style={[styles.textLg, styles.fontWeightBold]}>Difficulty</Text>
-          <TouchableOpacity
-            style={[styles.bgBlue, styles.iconBtn]}
-            onPress={() =>
-              setInformationOpen(
-                informationOpen === 'difficulty' ? undefined : 'difficulty'
-              )
-            }
-          >
-            <Text style={[styles.textCenter, styles.textWhite]}>i</Text>
-          </TouchableOpacity>
-        </View>
-        {informationOpen === 'difficulty' && (
-          <View
-            style={[
-              styles.roundedLg,
-              styles.mx4,
-              styles.p4,
-              styles.mb4,
-              styles.bgPaperDarker,
-            ]}
-          >
-            <Text>
-              This deck can be configured to show well-known cards more often
-              than average cards (negative numbers), or obscure cards more often
-              than average cards (positive numbers).
-            </Text>
-          </View>
-        )}
+        <ExpandingInfoHeader
+          style={[styles.row, styles.m4]}
+          title="Difficulty"
+          onPress={() =>
+            setInformationOpen(
+              informationOpen === 'difficulty' ? undefined : 'difficulty'
+            )
+          }
+          infoVisible={informationOpen === 'difficulty'}
+        >
+          This deck can be configured to show well-known cards more often than
+          average cards (negative numbers), or obscure cards more often than
+          average cards (positive numbers).
+        </ExpandingInfoHeader>
         <View style={[styles.row, styles.mx4]}>
           <Text>{difficulty.toFixed(1)}</Text>
           <Slider
@@ -154,39 +139,20 @@ export function GameCustomizationScreen() {
         </View>
         {categoryCounts.length > 0 && (
           <>
-            <View style={[styles.row, styles.m4, styles.mt8]}>
-              <Text style={[styles.textLg, styles.fontWeightBold]}>
-                Categories
-              </Text>
-              <TouchableOpacity
-                style={[styles.bgBlue, styles.iconBtn]}
-                onPress={() =>
-                  setInformationOpen(
-                    informationOpen === 'categories' ? undefined : 'categories'
-                  )
-                }
-              >
-                <Text style={[styles.textCenter, styles.textWhite]}>i</Text>
-              </TouchableOpacity>
-            </View>
-            {informationOpen === 'categories' && (
-              <View
-                style={[
-                  styles.roundedLg,
-                  styles.mx4,
-                  styles.p2,
-                  styles.mb4,
-                  styles.bgPaperDarker,
-                ]}
-              >
-                <Text>
-                  The most common category in the deck is{' '}
-                  {largestCategory?.name} (
-                  {largestCategory?.percentage.toFixed(0)}%), but you can turn
-                  the chances up or down for any category below.
-                </Text>
-              </View>
-            )}
+            <ExpandingInfoHeader
+              style={[styles.row, styles.m4, styles.mt8]}
+              title="Categories"
+              onPress={() =>
+                setInformationOpen(
+                  informationOpen === 'categories' ? undefined : 'categories'
+                )
+              }
+              infoVisible={informationOpen === 'categories'}
+            >
+              The most common category in the deck is {largestCategory?.name} (
+              {largestCategory?.percentage}%), but you can turn the chances up
+              or down for any category below.
+            </ExpandingInfoHeader>
             {categoryCounts.map(({ name }) => (
               <View key={name} style={[styles.row, styles.mx4]}>
                 <Text>

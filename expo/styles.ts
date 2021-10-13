@@ -10,6 +10,9 @@ export const styles = StyleSheet.create({
   itemsEnd: {
     alignItems: 'flex-end',
   },
+  itemsStart: {
+    alignItems: 'flex-start',
+  },
   justifyStart: {
     justifyContent: 'flex-start',
   },
@@ -22,6 +25,9 @@ export const styles = StyleSheet.create({
   flexGrow: {
     flexGrow: 1,
   },
+  flex1: {
+    flex: 1,
+  },
   flexBasisOneThird: {
     flex: 1, //: '33.33%',
   },
@@ -33,6 +39,9 @@ export const styles = StyleSheet.create({
   },
   bgBlue: {
     backgroundColor: '#1D4ED8',
+  },
+  bgBlue900: {
+    backgroundColor: '#1E3A8A',
   },
   bgRed: {
     backgroundColor: '#f44',
@@ -58,6 +67,9 @@ export const styles = StyleSheet.create({
   p4: {
     padding: 16,
   },
+  pl2: {
+    paddingLeft: 8,
+  },
   pr4: {
     paddingRight: 16,
   },
@@ -67,8 +79,18 @@ export const styles = StyleSheet.create({
   pb16: {
     paddingBottom: 64,
   },
+  py2: {
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  m2: {
+    margin: 8,
+  },
   m4: {
     margin: 16,
+  },
+  m6: {
+    margin: 24,
   },
   mt2: {
     marginTop: 8,
@@ -79,6 +101,9 @@ export const styles = StyleSheet.create({
   mt8: {
     marginTop: 32,
   },
+  mb2: {
+    marginBottom: 8,
+  },
   mb4: {
     marginBottom: 16,
   },
@@ -88,9 +113,21 @@ export const styles = StyleSheet.create({
   mb16: {
     marginBottom: 64,
   },
+  mx2: {
+    marginLeft: 8,
+    marginRight: 8,
+  },
   mx4: {
     marginLeft: 16,
     marginRight: 16,
+  },
+  mx6: {
+    marginLeft: 24,
+    marginRight: 24,
+  },
+  my8: {
+    marginTop: 32,
+    marginBottom: 32,
   },
   space4: {
     height: 16,
@@ -171,6 +208,10 @@ export const styles = StyleSheet.create({
   centerAll: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  startAll: {
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
   },
   iconBtn: {
     borderRadius: 9999,

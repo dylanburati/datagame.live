@@ -5,23 +5,36 @@ import {
   OrientationLock,
 } from 'expo-screen-orientation';
 import { locales } from 'expo-localization';
-import { ImageBackground, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { IntlProvider } from 'react-intl';
 import { GameScreen } from './components/GameScreen';
 import { Loader } from './components/Loader';
 import { GameCustomizationScreen } from './components/GameCustomizationScreen';
 import { RootStackParamList, useNavigationTyped } from './helpers/navigation';
-import { Deck, listDecks } from './helpers/api';
-import { styles } from './styles';
+import { Deck, listDecks, RoomUser } from './helpers/api';
 import { Audio } from 'expo-av';
+import { SocketProvider } from './components/SocketProvider';
 import {
-  DataProvider,
-  LayoutProvider,
-  RecyclerListView,
-} from 'recyclerlistview';
-import { useSet, useWindowWidth } from './helpers/hooks';
-import { IntlProvider } from 'react-intl';
+  defaultInfoContainerStyle,
+  ExpandingInfoHeader,
+} from './components/ExpandingInfoHeader';
+import { GridLayout } from './components/GridLayout';
+import { useSet } from './helpers/hooks';
+import { styles } from './styles';
+import config from './config';
+import { RoomScreen } from './components/RoomScreen';
+import { loadJson, roomStorageKey } from './helpers/storage';
 
 function randomColor(x: number, l2: number) {
   let h = (511 * (x + 31) * (x + 31) + 3 * (x - 31)) % 360;
@@ -33,71 +46,47 @@ function randomColor(x: number, l2: number) {
   return `hsl(${h}, ${s}%, ${l}%)`;
 }
 
-// const imageSources: Record<string, string> = {
-//   Places: 'https://datagame.live/downloads/places.jpg',
-//   'The Rich and Famous': 'https://datagame.live/downloads/people.jpg',
-//   'Music / Billboard US': 'https://datagame.live/downloads/music.jpg',
-//   Animals: 'https://datagame.live/downloads/animals.jpg',
-//   Movies: 'https://datagame.live/downloads/movies.jpg',
-// };
-
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-type DisplayDeck = {
-  deck: Deck;
-  hasImageLoaded: boolean;
+const AvoidKeyboardView = ({ children }: React.PropsWithChildren<{}>) => {
+  if (Platform.OS === 'ios') {
+    return (
+      <KeyboardAvoidingView
+        behavior="padding"
+        keyboardVerticalOffset={100}
+        style={styles.flexGrow}
+      >
+        {children}
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return <>{children}</>;
 };
-const topicDataProvider = new DataProvider(
-  (r1: DisplayDeck, r2: DisplayDeck) =>
-    r1.deck.id !== r2.deck.id || r1.hasImageLoaded !== r2.hasImageLoaded
-);
 
 export function HomeScreen() {
-  const [topicList, setTopicList] = useState<Deck[]>([]);
+  const [deckList, setDeckList] = useState<Deck[]>([]);
   const [loading, setLoading] = useState(false);
   const { navigate } = useNavigationTyped();
   const retryRef = useRef<number>();
   const [retryCounter, setRetryCounter] = useState(1);
-  const windowWidth = useWindowWidth();
   const { set: loadedImages, add: markImageLoaded } = useSet(new Set<number>());
   const displayDecks = useMemo(
     () =>
-      topicList.map((deck) => ({
+      deckList.map((deck) => ({
         deck,
         hasImageLoaded: loadedImages.has(deck.id),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loadedImages.size, topicList]
+    [loadedImages.size, deckList]
   );
-  const dataProvider = useMemo(() => {
-    return topicDataProvider.cloneWithRows(displayDecks);
-  }, [displayDecks]);
-  const layoutProvider = useMemo(() => {
-    return new LayoutProvider(
-      () => 0,
-      (_type, dim) => {
-        const containerWidth = windowWidth - 2 * styles.m4.margin;
-        const denominator = [6, 5, 4, 3, 2].find(
-          (n) => containerWidth / n >= 120
-        );
-        if (denominator === undefined) {
-          dim.width = 0;
-          dim.height = 0;
-        } else {
-          const padding = 2 * styles.p2.padding;
-          dim.width = containerWidth / denominator;
-          const imgWidth = dim.width - padding;
-          dim.height = (imgWidth * 5) / 3;
-        }
-      }
-    );
-  }, [windowWidth]);
+  const [draftRoomId, setDraftRoomId] = useState('');
 
   useEffect(() => {
     const get = async () => {
       setLoading(true);
       try {
-        setTopicList(await listDecks());
+        setDeckList(await listDecks());
         setRetryCounter(0);
       } catch (err) {
         console.error(err);
@@ -120,66 +109,142 @@ export function HomeScreen() {
     }
   }, []);
 
+  const [informationOpen, setInformationOpen] = useState(0);
+  const goToRoom = async (roomId: string) => {
+    if (!roomId) {
+      return;
+    }
+    const details = await loadJson<RoomUser>(roomStorageKey(roomId));
+    navigate('Room', { roomId, savedSession: details ?? undefined });
+  };
+
   return (
     <View style={styles.topContainer}>
-      {loading && topicList.length === 0 && <Loader />}
-      {topicList.length > 0 && (
-        <RecyclerListView
-          layoutProvider={layoutProvider}
-          dataProvider={dataProvider}
-          scrollViewProps={{
-            contentContainerStyle: [styles.m4, styles.pb16],
-          }}
-          canChangeSize={true}
-          // keyExtractor={(item) => String(item.id)}
-          rowRenderer={(
-            _type,
-            { deck, hasImageLoaded }: DisplayDeck,
-            index
-          ) => (
-            <View style={[styles.p2]}>
-              <TouchableOpacity
-                onPress={() =>
-                  navigate('GameCustomization', { topic: deck.id })
-                }
-                style={[styles.deckTile]}
-              >
-                <ImageBackground
-                  style={[
-                    styles.centerAll,
-                    styles.wFull,
-                    styles.hFull,
-                    styles.p2,
-                  ]}
-                  imageStyle={[
-                    styles.roundedMd,
-                    {
-                      backgroundColor:
-                        deck.imageDominantColor || randomColor(2 * index, 30),
-                    },
-                  ]}
-                  onLoad={() => markImageLoaded(deck.id)}
-                  // resizeMode="contain"
-                  source={{ uri: deck.imageUrl }}
-                >
-                  {!hasImageLoaded && (
-                    <Text
-                      numberOfLines={5}
-                      style={[
-                        styles.textCenter,
-                        styles.textLg,
-                        styles.textWhite,
-                      ]}
+      <AvoidKeyboardView>
+        <ScrollView style={styles.flex1} keyboardShouldPersistTaps="handled">
+          <ExpandingInfoHeader
+            style={[styles.row, styles.mx6, styles.mt8, styles.mb4]}
+            infoContainerStyle={[defaultInfoContainerStyle, styles.mx6]}
+            title="Taboo"
+            infoVisible={informationOpen === 1}
+            onPress={() => setInformationOpen(informationOpen === 1 ? 0 : 1)}
+          >
+            Timed game mode where your friends help you guess the card showing
+            on the screen, without saying any of the words.
+          </ExpandingInfoHeader>
+          {loading && deckList.length === 0 && <Loader />}
+          {deckList.length > 0 && (
+            <GridLayout
+              style={styles.mx4}
+              data={displayDecks}
+              minColumnWidth={120}
+              horizontalInset={2 * styles.m4.margin}
+            >
+              {({ item: { deck, hasImageLoaded }, index, width }) => {
+                const padding = 2 * styles.p2.padding;
+                const imgWidth = width - padding;
+                const height = (imgWidth * 5) / 3;
+                return (
+                  <View key={index} style={[styles.p2, { height, width }]}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        navigate('GameCustomization', { topic: deck.id })
+                      }
+                      style={[styles.deckTile]}
                     >
-                      {deck.title.toLocaleUpperCase()}
-                    </Text>
-                  )}
-                </ImageBackground>
-              </TouchableOpacity>
-            </View>
+                      <ImageBackground
+                        style={[
+                          styles.centerAll,
+                          styles.wFull,
+                          styles.hFull,
+                          styles.p2,
+                        ]}
+                        imageStyle={[
+                          styles.roundedMd,
+                          {
+                            backgroundColor:
+                              deck.imageDominantColor ||
+                              randomColor(2 * index, 30),
+                          },
+                        ]}
+                        onLoad={() => markImageLoaded(deck.id)}
+                        // resizeMode="contain"
+                        source={{ uri: deck.imageUrl }}
+                      >
+                        {!hasImageLoaded && (
+                          <Text
+                            numberOfLines={5}
+                            style={[
+                              styles.textCenter,
+                              styles.textLg,
+                              styles.textWhite,
+                            ]}
+                          >
+                            {deck.title.toLocaleUpperCase()}
+                          </Text>
+                        )}
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+            </GridLayout>
           )}
-        />
-      )}
+          <ExpandingInfoHeader
+            style={[styles.row, styles.mx6, styles.mt8, styles.mb4]}
+            infoContainerStyle={[defaultInfoContainerStyle, styles.mx6]}
+            title="Party"
+            infoVisible={informationOpen === 2}
+            onPress={() => setInformationOpen(informationOpen === 2 ? 0 : 2)}
+          >
+            Multiple people join the game from their own devices, and on each
+            turn the group tries to earn points by completing challenges.
+          </ExpandingInfoHeader>
+          <TextInput
+            style={[
+              styles.mx6,
+              styles.mb2,
+              styles.p2,
+              styles.bgPaperDarker,
+              styles.textMd,
+              styles.roundedLg,
+            ]}
+            autoCapitalize="characters"
+            placeholder="Enter code"
+            value={draftRoomId}
+            onChangeText={setDraftRoomId}
+          />
+          <View style={[styles.row, styles.mx4]}>
+            <TouchableOpacity
+              style={[
+                styles.bgBlue900,
+                styles.roundedLg,
+                styles.flexGrow,
+                styles.m2,
+                styles.p4,
+              ]}
+              onPress={() => console.log('host')}
+            >
+              <Text style={[styles.textWhite, styles.textCenter]}>HOST</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.bgBlue,
+                styles.roundedLg,
+                styles.flexGrow,
+                styles.m2,
+                styles.p4,
+              ]}
+              onPress={() => goToRoom(draftRoomId)}
+            >
+              <Text style={[styles.textWhite, styles.textCenter]}>JOIN</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.mx6, styles.my8]}>
+            <Text style={styles.textSm}>Copyright (c) 2021 Dylan Burati</Text>
+          </View>
+        </ScrollView>
+      </AvoidKeyboardView>
       <StatusBar style="auto" />
     </View>
   );
@@ -194,40 +259,47 @@ export default function App() {
 
   return (
     <IntlProvider locale={locales[0]}>
-      <NavigationContainer>
-        <Stack.Navigator initialRouteName="Home">
-          <Stack.Screen
-            name="Home"
-            listeners={{
-              focus: () => {
-                lockOrientationAsync(OrientationLock.DEFAULT);
-              },
-            }}
-            component={HomeScreen}
-            options={{ orientation: 'default' }}
-          />
-          <Stack.Screen
-            name="GameCustomization"
-            listeners={{
-              focus: () => {
-                lockOrientationAsync(OrientationLock.DEFAULT);
-              },
-            }}
-            component={GameCustomizationScreen}
-            options={{ orientation: 'default', title: 'Adjust settings' }}
-          />
-          <Stack.Screen
-            name="Game"
-            listeners={{
-              focus: () => {
-                lockOrientationAsync(OrientationLock.LANDSCAPE_LEFT);
-              },
-            }}
-            component={GameScreen}
-            options={{ orientation: 'landscape_left' }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <SocketProvider wsUrl={`${config.baseUrl}/socket`}>
+        <NavigationContainer>
+          <Stack.Navigator initialRouteName="Home">
+            <Stack.Screen
+              name="Home"
+              listeners={{
+                focus: () => {
+                  lockOrientationAsync(OrientationLock.DEFAULT);
+                },
+              }}
+              component={HomeScreen}
+              options={{ orientation: 'default' }}
+            />
+            <Stack.Screen
+              name="GameCustomization"
+              listeners={{
+                focus: () => {
+                  lockOrientationAsync(OrientationLock.DEFAULT);
+                },
+              }}
+              component={GameCustomizationScreen}
+              options={{ orientation: 'default', title: 'Adjust settings' }}
+            />
+            <Stack.Screen
+              name="Game"
+              listeners={{
+                focus: () => {
+                  lockOrientationAsync(OrientationLock.LANDSCAPE_LEFT);
+                },
+              }}
+              component={GameScreen}
+              options={{ orientation: 'landscape_left' }}
+            />
+            <Stack.Screen
+              name="Room"
+              component={RoomScreen}
+              options={{ orientation: 'default', title: 'Room' }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </SocketProvider>
     </IntlProvider>
   );
 }

@@ -5,6 +5,11 @@ for (let i = 0; i < 90; i++) {
   lutDeg.push(i);
 }
 
+export function intRange(start: number, end: number, step: number) {
+  const len = Math.floor((end - start - 1) / step);
+  return new Array(len).fill(start).map((n, i) => n + step * i);
+}
+
 export function binarySearch(
   array: number[],
   key: number,

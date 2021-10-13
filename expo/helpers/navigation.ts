@@ -4,12 +4,13 @@ import {
   NavigationProp,
   RouteProp,
 } from '@react-navigation/native';
-import { Game } from './api';
+import { Game, RoomUser } from './api';
 
 export type RootStackParamList = {
   Home: undefined;
   Game: Game & { gameLength: number };
   GameCustomization: { topic: number };
+  Room: { roomId: string; savedSession?: RoomUser };
 };
 
 export function useNavigationTyped() {

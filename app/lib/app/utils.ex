@@ -1,4 +1,6 @@
 defmodule App.Utils do
+  import Bitwise
+
   def post_fetch_json(url, body, headers) do
     with {:ok, %{body: body}} <- HTTPoison.post(url, body, headers) do
       Jason.decode(body)
@@ -72,5 +74,22 @@ defmodule App.Utils do
   def maybe_put_lazy(map, false, _key, _supplier), do: map
   def maybe_put_lazy(map, true, key, supplier) do
     Map.put(map, key, supplier.())
+  end
+
+  def hex_random(num_chars) do
+    hex_random(num_chars, "0123456789abcdef")
+  end
+
+  def alpha_code(num_chars) do
+    hex_random(num_chars, "ABCEFHJKMNRSTVXZ")
+  end
+
+  def hex_random(num_chars, alpha) do
+    num_bytes = ceil(num_chars / 2.0)
+    blist = :rand.bytes(num_bytes) |> :binary.bin_to_list()
+    Enum.map_join(blist, "", fn b ->
+      String.at(alpha, (b >>> 4) &&& 15) <> String.at(alpha, b &&& 15)
+    end)
+    |> String.slice(0, num_chars)
   end
 end
