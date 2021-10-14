@@ -57,8 +57,16 @@ export const styles = StyleSheet.create({
   justifyCenter: {
     justifyContent: 'center',
   },
+  flexWrap: {
+    flexWrap: 'wrap',
+  },
   flexGrow: {
     flexGrow: 1,
+  },
+  flexInitial: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: 'auto',
   },
   flex1: {
     flex: 1,
@@ -77,6 +85,9 @@ export const styles = StyleSheet.create({
   },
   bgBlue900: {
     backgroundColor: '#1E3A8A',
+  },
+  bgPurple300: {
+    backgroundColor: '#C4B5FD',
   },
   bgGreen: {
     backgroundColor: '#059669',
@@ -121,6 +132,10 @@ export const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
+  px2: {
+    paddingLeft: 8,
+    paddingRight: 8,
+  },
   m2: {
     margin: 8,
   },
@@ -138,6 +153,9 @@ export const styles = StyleSheet.create({
   },
   mt8: {
     marginTop: 32,
+  },
+  mr2: {
+    marginRight: 8,
   },
   mb2: {
     marginBottom: 8,
@@ -220,6 +238,15 @@ export const styles = StyleSheet.create({
   },
   roundedFull: {
     borderRadius: 9999,
+  },
+  border: {
+    borderWidth: 1,
+  },
+  borderGray300: {
+    borderColor: '#D1D5DB',
+  },
+  borderPurpleAccent: {
+    borderColor: '#7707FF',
   },
   // non-tailwind
   topContainer: {

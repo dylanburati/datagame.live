@@ -42,7 +42,6 @@ export function GridLayout<T>({
   const columnCount =
     denominators.find((num) => containerWidth / num >= minColumnWidth) || 1;
   const width = containerWidth / columnCount;
-  console.log(windowWidth, denominators, columnCount, width);
 
   return (
     <View style={style}>

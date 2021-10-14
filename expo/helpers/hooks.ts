@@ -32,6 +32,26 @@ export function useSet<T>(initialValue: Set<T>) {
   };
 }
 
+export function useStateNoCmp<T>(
+  initialValue: T
+): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [state2, setState2] = useState({
+    state: initialValue,
+  });
+  const setState: React.Dispatch<React.SetStateAction<T>> = (update) => {
+    let updater: (val: T) => T;
+    if (typeof update === 'function') {
+      updater = update as any;
+    } else {
+      updater = () => update;
+    }
+    setState2((val) => ({
+      state: updater(val.state),
+    }));
+  };
+  return [state2.state, setState];
+}
+
 // convenience so that objects/arrays don't have to be referentially stable
 export function useMemoWithComparator<T>(state: T, comparator: Comparator<T>) {
   const history = useRef<T[]>([]).current;

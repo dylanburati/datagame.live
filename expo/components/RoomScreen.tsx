@@ -3,17 +3,35 @@ import { Presence } from 'phoenix';
 import { styles } from '../styles';
 import { useRouteTyped } from '../helpers/navigation';
 import { RoomStage } from '../helpers/nplayerLogic';
-import { useChannel } from '../helpers/hooks';
+import { useChannel, useStateNoCmp } from '../helpers/hooks';
 import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
 import {
   ScrollView,
   Text,
+  TextProps,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { roomStorageKey, storeJson } from '../helpers/storage';
 import { FormattedRelativeDate } from './FormattedRelativeDate';
+import { ChipPicker } from './ChipPicker';
+import { OrderedSet } from '../helpers/data';
+
+function indexToEmoji(index: number | undefined, width: number) {
+  let styleArr: TextProps['style'] = [styles.textLg, { width }];
+  let content = '';
+  if (index === undefined) {
+    content = '+';
+    styleArr.push({ transform: [{ translateX: 3 }, { translateY: -1 }] });
+  } else if (index < 20) {
+    content = String.fromCharCode(0x2460 + index);
+  } else if (index < 35) {
+    content = String.fromCharCode(0x3251 + index);
+  }
+
+  return <Text style={styleArr}>{content}</Text>;
+}
 
 type RoomPlayer = {
   id: number;
@@ -127,6 +145,7 @@ export function RoomScreen() {
     name: '',
     error: undefined as string | undefined,
   });
+  const [draftOrder, setDraftOrder] = useStateNoCmp(new OrderedSet<number>());
 
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
@@ -199,6 +218,12 @@ export function RoomScreen() {
   const isCreator =
     room.state.selfId != null && room.state.selfId === room.state.creatorId;
 
+  useEffect(() => {
+    if (isCreator && room.state.selfId != null) {
+      draftOrder.append(room.state.selfId);
+    }
+  }, [room.state.selfId, isCreator, draftOrder]);
+
   return (
     <View style={styles.topContainer}>
       <ScrollView keyboardShouldPersistTaps="handled">
@@ -219,7 +244,6 @@ export function RoomScreen() {
         <TextInput
           style={[
             styles.mx6,
-            styles.mb2,
             styles.p2,
             styles.bgPaperDarker,
             styles.textMd,
@@ -231,13 +255,15 @@ export function RoomScreen() {
             setDraftName({ name: text, error: undefined })
           }
         />
-        <View style={[styles.row, styles.mx4]}>
+        {draftName.error && (
+          <Text style={[styles.mx6, styles.textRed]}>{draftName.error}</Text>
+        )}
+        <View style={[styles.row, styles.mx6, styles.mt2]}>
           <TouchableOpacity
             style={[
               styles.bgBlue900,
               styles.roundedLg,
               styles.flexGrow,
-              styles.m2,
               styles.p4,
             ]}
             onPress={onSubmit}
@@ -248,29 +274,57 @@ export function RoomScreen() {
           </TouchableOpacity>
         </View>
         {isCreator && (
-          <View style={[styles.row, styles.mx4]}>
-            <TouchableOpacity
+          <>
+            <View style={[styles.row, styles.mt8, styles.mx4]}>
+              <Text style={styles.textLg}>Select player order</Text>
+              <TouchableOpacity
+                style={[styles.bgRed, styles.p1, styles.px2, styles.roundedMd]}
+                onPress={() => setDraftOrder(draftOrder.clear())}
+              >
+                <Text style={[styles.textCenter, styles.textWhite]}>reset</Text>
+              </TouchableOpacity>
+            </View>
+            <ChipPicker
               style={[
-                styles.bgGreen,
-                styles.roundedLg,
-                styles.flexGrow,
-                styles.m2,
-                styles.p4,
+                styles.row,
+                styles.mt4,
+                styles.mx6,
+                styles.startAll,
+                styles.flexWrap,
               ]}
-              onPress={() => console.log('TODO begin')}
+              data={room.state.players.array}
+              keySelector={(pl) => `player-${pl.id}`}
+              onPress={(pl) => setDraftOrder(draftOrder.toggle(pl.id))}
+              chipStyle={({ item }) =>
+                draftOrder.has(item.id)
+                  ? [styles.bgPurple300, styles.borderPurpleAccent]
+                  : [styles.bgPaperDarker]
+              }
             >
-              <Text style={[styles.textWhite, styles.textCenter]}>BEGIN</Text>
-            </TouchableOpacity>
-          </View>
+              {({ item }) => (
+                <>
+                  {indexToEmoji(draftOrder.getIndex(item.id), 24)}
+                  <Text style={[styles.textMd, styles.fontWeightBold]}>
+                    {item.name}
+                  </Text>
+                </>
+              )}
+            </ChipPicker>
+            <View style={[styles.row, styles.mx6, styles.mt8]}>
+              <TouchableOpacity
+                style={[
+                  styles.bgGreen,
+                  styles.roundedLg,
+                  styles.flexGrow,
+                  styles.p4,
+                ]}
+                onPress={() => console.log('TODO begin')}
+              >
+                <Text style={[styles.textWhite, styles.textCenter]}>BEGIN</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
-        {room.state.selfId != null &&
-          room.state.selfId === room.state.creatorId}
-        {draftName.error && (
-          <Text style={[styles.mx6, styles.textRed]}>{draftName.error}</Text>
-        )}
-        <Text style={{ fontFamily: 'Menlo-Regular' }}>
-          {JSON.stringify(room.state, null, 2)}
-        </Text>
       </ScrollView>
     </View>
   );
