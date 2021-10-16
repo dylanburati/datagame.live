@@ -11,6 +11,7 @@
     "@react-native-async-storage/async-storage": "^1.15.9",
     "@react-native-community/eslint-config": "^3.0.1",
     "@react-native-community/slider": "^4.1.6",
+    "@react-native-segmented-control/segmented-control": "2.3.0",
     "@react-navigation/native": "^6.0.2",
     "@react-navigation/native-stack": "^6.1.0",
     "expo": "~42.0.1",
@@ -20,6 +21,7 @@
     "expo-screen-orientation": "~3.2.1",
     "expo-sensors": "~10.2.2",
     "expo-status-bar": "~1.0.4",
+    "object-inspect": "^1.11.0",
     "phoenix": "^1.6.2",
     "react": "16.13.1",
     "react-dom": "16.13.1",
@@ -34,6 +36,7 @@
   "devDependencies": {
     "@babel/core": "^7.9.0",
     "@types/lodash": "^4.14.173",
+    "@types/object-inspect": "^1.8.1",
     "@types/phoenix": "^1.5.3",
     "@types/react": "~16.9.35",
     "@types/react-native": "~0.63.2",

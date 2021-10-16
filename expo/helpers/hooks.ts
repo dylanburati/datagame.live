@@ -1,10 +1,11 @@
 import React, {
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useReducer,
   useState,
-  useMemo,
 } from 'react';
 import { Comparator } from 'lodash';
 import { Presence } from 'phoenix';
@@ -38,17 +39,20 @@ export function useStateNoCmp<T>(
   const [state2, setState2] = useState({
     state: initialValue,
   });
-  const setState: React.Dispatch<React.SetStateAction<T>> = (update) => {
-    let updater: (val: T) => T;
-    if (typeof update === 'function') {
-      updater = update as any;
-    } else {
-      updater = () => update;
-    }
-    setState2((val) => ({
-      state: updater(val.state),
-    }));
-  };
+  const setState: React.Dispatch<React.SetStateAction<T>> = useCallback(
+    (update) => {
+      let updater: (val: T) => T;
+      if (typeof update === 'function') {
+        updater = update as any;
+      } else {
+        updater = () => update;
+      }
+      setState2((val) => ({
+        state: updater(val.state),
+      }));
+    },
+    []
+  );
   return [state2.state, setState];
 }
 
@@ -167,7 +171,7 @@ export function useChannel<
     return () => {
       cancel = true;
       channel.leave();
-      channel.onMessage = () => {};
+      channel.onMessage = (_, payload) => payload;
       presence.onSync(() => {});
       setLoading(false);
     };

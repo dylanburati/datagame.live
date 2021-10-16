@@ -1,3 +1,4 @@
+import objectInspect from 'object-inspect';
 import { Presence } from 'phoenix';
 import { ColorValue } from 'react-native';
 import config from '../config';
@@ -53,6 +54,21 @@ export type RoomUser = {
   displayName: string;
 };
 
+export type TriviaOption = {
+  answer: string;
+  popularity?: number;
+  inSelection: boolean;
+  questionValue: string[];
+};
+
+export type Trivia = {
+  question: string;
+  options: TriviaOption[];
+  answerType: string;
+  minAnswers: number;
+  maxAnswers: number;
+};
+
 export type RoomIncomingMessage =
   | {
       event: 'join';
@@ -74,7 +90,19 @@ export type RoomIncomingMessage =
     }
   | {
       event: 'round:start';
+      playerOrder: number[];
+      turnId: number;
       pointTarget: number;
+    }
+  | {
+      event: 'turn:start';
+      userId: number;
+      turnId: number;
+      trivia: Trivia;
+    }
+  | {
+      event: 'turn:end';
+      userId: number;
     }
   | {
       event: 'presence';
@@ -88,7 +116,15 @@ export type RoomOutgoingMessage =
     }
   | {
       event: 'round:start';
+      playerOrder: number[];
       pointTarget: number;
+    }
+  | {
+      event: 'turn:start';
+      fromTurnId: number;
+    }
+  | {
+      event: 'turn:end';
     };
 
 async function getJson(url: string) {
@@ -99,6 +135,30 @@ async function getJson(url: string) {
     /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
   ) {
     throw new Error(await resp.json());
+  } else {
+    throw new Error(await resp.text());
+  }
+}
+
+async function postJson(url: string, body: any) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (resp.ok) {
+    return await resp.json();
+  } else if (
+    /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
+  ) {
+    let content = await resp.json();
+    console.log(objectInspect(content));
+    if (typeof content === 'object' && content?.error) {
+      content = content.error;
+    }
+    throw new Error(content);
   } else {
     throw new Error(await resp.text());
   }
@@ -128,6 +188,8 @@ export async function createGame(
   )) as Game;
 }
 
-export async function createRoom() {
-  return (await getJson(`${config.baseUrl}/api/room/new`)) as RoomAndSelf;
+export async function createRoom(hostNickname: string) {
+  return (await postJson(`${config.baseUrl}/api/room`, {
+    hostNickname,
+  })) as RoomAndSelf;
 }

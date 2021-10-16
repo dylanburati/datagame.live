@@ -29,21 +29,15 @@ defmodule App.Entities.DeckService do
     %Deck{deck | category_counts: category_counts}
   end
 
-  defp fill_out_value_counts(card_tag_def) do
-    query = from ct in CardTag,
-      join: c in assoc(ct, :cards),
-      where: c.is_disabled == false,
-      where: ct.card_tag_def_id == ^card_tag_def.id,
-      group_by: [ct.value],
-      select: {ct.value, count(c.id)},
-      order_by: [desc: count(c.id)],
-      limit: 16
-
-    value_counts = query
-    |> Repo.all()
-    |> Enum.map(fn {val, count} -> %{value: val, count: count} end)
-
-    %CardTagDef{card_tag_def | value_counts: value_counts}
+  defp fill_out_value_counts(deck) do
+    updated_ctdefs = deck.card_tag_defs
+    |> Enum.map(fn ctdef ->
+      def_value_counts = ctdef.tags
+      |> Enum.map(fn tag -> %{value: tag.value, count: tag.count} end)
+      |> Enum.take(16)
+      %CardTagDef{ctdef | value_counts: def_value_counts}
+    end)
+    %Deck{deck | card_tag_defs: updated_ctdefs}
   end
 
   def show(id) do
@@ -52,10 +46,11 @@ defmodule App.Entities.DeckService do
       deck ->
         deck = deck
         |> fill_out_category_counts()
-        |> Repo.preload(:card_tag_defs)
+        |> Repo.preload([card_tag_defs: [tags: from(ct in CardTag, order_by: [desc: ct.count])]])
+        |> fill_out_value_counts()
 
-        {:ok,
-         %Deck{deck | card_tag_defs: deck.card_tag_defs |> Enum.map(&fill_out_value_counts/1)}}
+        {:ok, deck}
+        #  %Deck{deck | card_tag_defs: deck.card_tag_defs |> Enum.map(&fill_out_value_counts/1)}}
     end
   end
 

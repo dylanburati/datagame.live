@@ -18,6 +18,14 @@ export class OrderedSet<T> {
     return this.map.get(item);
   }
 
+  isEmpty() {
+    return this.map.size === 0;
+  }
+
+  get size() {
+    return this.map.size;
+  }
+
   remove(item: T) {
     const index = this.map.get(item);
     if (index !== undefined) {
@@ -37,6 +45,19 @@ export class OrderedSet<T> {
     return this.append(item);
   }
 
+  takeRight(count: number) {
+    if (count < this.size) {
+      const dropSize = this.size - count;
+      this.reverseMap.splice(0, dropSize).forEach((item) => {
+        this.map.delete(item);
+      });
+      for (let j = 0; j < this.reverseMap.length; j++) {
+        this.map.set(this.reverseMap[j], j);
+      }
+    }
+    return this;
+  }
+
   dropExcluded(allowedItems: T[]) {
     const set = new Set(this.map.keys());
     allowedItems.forEach((item) => set.delete(item));
@@ -48,5 +69,9 @@ export class OrderedSet<T> {
     this.map.clear();
     this.reverseMap = [];
     return this;
+  }
+
+  toList() {
+    return [...this.map.keys()];
   }
 }

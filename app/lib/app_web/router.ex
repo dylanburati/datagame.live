@@ -27,7 +27,7 @@ defmodule AppWeb.Router do
     resources "/sheets", SheetController, only: [:show, :create]
     resources "/decks", DeckController, only: [:index, :show]
     get "/game/new/:id", GameController, :new_game
-    get "/room/new", RoomController, :new_room
+    resources "/room", RoomController, only: [:create]
   end
 
   # Other scopes may use custom stacks.

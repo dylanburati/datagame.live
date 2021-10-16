@@ -7,6 +7,7 @@ import {
 import { locales } from 'expo-localization';
 import {
   ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -18,12 +19,13 @@ import {
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { IntlProvider } from 'react-intl';
+import { Audio } from 'expo-av';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { GameScreen } from './components/GameScreen';
 import { Loader } from './components/Loader';
 import { GameCustomizationScreen } from './components/GameCustomizationScreen';
 import { RootStackParamList, useNavigationTyped } from './helpers/navigation';
 import { createRoom, Deck, listDecks, RoomUser } from './helpers/api';
-import { Audio } from 'expo-av';
 import { SocketProvider } from './components/SocketProvider';
 import {
   defaultInfoContainerStyle,
@@ -51,11 +53,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const AvoidKeyboardView = ({ children }: React.PropsWithChildren<{}>) => {
   if (Platform.OS === 'ios') {
     return (
-      <KeyboardAvoidingView
-        behavior="padding"
-        keyboardVerticalOffset={100}
-        style={styles.flexGrow}
-      >
+      <KeyboardAvoidingView behavior="padding" style={styles.flexGrow}>
         {children}
       </KeyboardAvoidingView>
     );
@@ -80,7 +78,12 @@ export function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [loadedImages.size, deckList]
   );
+  const [draftRoomNickname, setDraftRoomNickname] = useState({
+    text: '',
+    error: undefined as string | undefined,
+  });
   const [draftRoomId, setDraftRoomId] = useState('');
+  const scrollView = useRef<ScrollView>(null);
 
   useEffect(() => {
     const get = async () => {
@@ -109,18 +112,31 @@ export function HomeScreen() {
     }
   }, []);
 
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      scrollView.current?.scrollToEnd();
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   const [informationOpen, setInformationOpen] = useState(0);
+  const [hostOrJoin, setHostOrJoin] = useState(1);
   const hostRequestRunning = useRef(false);
   const hostRoom = async () => {
-    if (hostRequestRunning.current) {
+    if (hostRequestRunning.current || !draftRoomNickname.text) {
       return;
     }
     hostRequestRunning.current = true;
     try {
-      const { roomId, ...details } = await createRoom();
+      const { roomId, ...details } = await createRoom(draftRoomNickname.text);
       navigate('Room', { roomId, savedSession: details ?? undefined });
     } catch (err) {
-      console.error(err);
+      setDraftRoomNickname((val) => ({
+        ...val,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      }));
     } finally {
       hostRequestRunning.current = false;
     }
@@ -136,7 +152,11 @@ export function HomeScreen() {
   return (
     <View style={styles.topContainer}>
       <AvoidKeyboardView>
-        <ScrollView style={styles.flex1} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={scrollView}
+          style={styles.flex1}
+          keyboardShouldPersistTaps="handled"
+        >
           <ExpandingInfoHeader
             style={[styles.row, styles.mx6, styles.mt8, styles.mb4]}
             infoContainerStyle={[defaultInfoContainerStyle, styles.mx6]}
@@ -217,46 +237,75 @@ export function HomeScreen() {
             Multiple people join the game from their own devices, and on each
             turn the group tries to earn points by completing challenges.
           </ExpandingInfoHeader>
-          <TextInput
-            style={[
-              styles.mx6,
-              styles.mb2,
-              styles.p2,
-              styles.bgPaperDarker,
-              styles.textMd,
-              styles.roundedLg,
-            ]}
-            autoCapitalize="characters"
-            placeholder="Enter code"
-            value={draftRoomId}
-            onChangeText={setDraftRoomId}
+          <SegmentedControl
+            style={styles.mx6}
+            values={['Host', 'Join']}
+            selectedIndex={hostOrJoin}
+            onChange={(evt) =>
+              setHostOrJoin(evt.nativeEvent.selectedSegmentIndex)
+            }
           />
-          <View style={[styles.row, styles.mx4]}>
-            <TouchableOpacity
-              style={[
-                styles.bgBlue900,
-                styles.roundedLg,
-                styles.flexGrow,
-                styles.m2,
-                styles.p4,
-              ]}
-              onPress={hostRoom}
-            >
-              <Text style={[styles.textWhite, styles.textCenter]}>HOST</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.bgBlue,
-                styles.roundedLg,
-                styles.flexGrow,
-                styles.m2,
-                styles.p4,
-              ]}
-              onPress={() => goToRoom(draftRoomId)}
-            >
-              <Text style={[styles.textWhite, styles.textCenter]}>JOIN</Text>
-            </TouchableOpacity>
-          </View>
+          {hostOrJoin === 0 && (
+            <View style={[styles.mt2, styles.mx6, styles.p2]}>
+              <TextInput
+                style={[
+                  styles.mt4,
+                  styles.p2,
+                  styles.bgPaperDarker,
+                  styles.textMd,
+                  styles.roundedLg,
+                ]}
+                autoCapitalize="characters"
+                placeholder="Enter a username"
+                value={draftRoomNickname.text}
+                onChangeText={(text) =>
+                  setDraftRoomNickname({ text, error: undefined })
+                }
+                returnKeyType="go"
+                onSubmitEditing={hostRoom}
+              />
+              {draftRoomNickname.error && (
+                <Text style={[styles.textRed]}>{draftRoomNickname.error}</Text>
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.bgBlue900,
+                  styles.roundedLg,
+                  styles.mt2,
+                  styles.p4,
+                ]}
+                onPress={hostRoom}
+              >
+                <Text style={[styles.textWhite, styles.textCenter]}>HOST</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {hostOrJoin === 1 && (
+            <View style={[styles.mt2, styles.mx6, styles.p2]}>
+              <TextInput
+                style={[
+                  styles.mt4,
+                  styles.mb2,
+                  styles.p2,
+                  styles.bgPaperDarker,
+                  styles.textMd,
+                  styles.roundedLg,
+                ]}
+                autoCapitalize="characters"
+                placeholder="Enter code"
+                value={draftRoomId}
+                onChangeText={setDraftRoomId}
+                returnKeyType="go"
+                onSubmitEditing={() => goToRoom(draftRoomId)}
+              />
+              <TouchableOpacity
+                style={[styles.bgBlue, styles.roundedLg, styles.p4]}
+                onPress={() => goToRoom(draftRoomId)}
+              >
+                <Text style={[styles.textWhite, styles.textCenter]}>JOIN</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={[styles.mx6, styles.my8]}>
             <Text style={styles.textSm}>Copyright (c) 2021 Dylan Burati</Text>
           </View>

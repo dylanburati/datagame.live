@@ -7,6 +7,7 @@ defmodule App.Entities.CardTag do
 
   schema "card_tag" do
     field :value, :string
+    field :count, :integer
 
     belongs_to :definition, CardTagDef, foreign_key: :card_tag_def_id
     many_to_many :cards, Card, join_through: "card_card_tag"
@@ -15,7 +16,7 @@ defmodule App.Entities.CardTag do
   @doc false
   def changeset(card_tag, attrs) do
     card_tag
-    |> cast(attrs, [:value])
-    |> validate_required([:value])
+    |> cast(attrs, [:value, :count])
+    |> validate_required([:value, :count])
   end
 end

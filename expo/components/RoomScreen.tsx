@@ -1,97 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Presence } from 'phoenix';
-import { styles } from '../styles';
-import { useRouteTyped } from '../helpers/navigation';
-import { RoomStage } from '../helpers/nplayerLogic';
-import { useChannel, useStateNoCmp } from '../helpers/hooks';
-import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
-import {
-  ScrollView,
-  Text,
-  TextProps,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { roomStorageKey, storeJson } from '../helpers/storage';
-import { FormattedRelativeDate } from './FormattedRelativeDate';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { RoomCreatorControls } from './RoomCreatorControls';
 import { ChipPicker } from './ChipPicker';
+import { RoomLobbyControls } from './RoomLobbyControls';
+import { useRouteTyped } from '../helpers/navigation';
+import {
+  RoomPlayerList,
+  RoomStage,
+  RoomState,
+  shouldShowTrivia,
+} from '../helpers/nplayerLogic';
+import { useChannel, useStateNoCmp } from '../helpers/hooks';
+import { roomStorageKey, storeJson } from '../helpers/storage';
+import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
-
-function indexToEmoji(index: number | undefined, width: number) {
-  let styleArr: TextProps['style'] = [styles.textLg, { width }];
-  let content = '';
-  if (index === undefined) {
-    content = '+';
-    styleArr.push({ transform: [{ translateX: 3 }, { translateY: -1 }] });
-  } else if (index < 20) {
-    content = String.fromCharCode(0x2460 + index);
-  } else if (index < 35) {
-    content = String.fromCharCode(0x3251 + index);
-  }
-
-  return <Text style={styleArr}>{content}</Text>;
-}
-
-type RoomPlayer = {
-  id: number;
-  name: string;
-  isPresent: boolean;
-};
-
-class RoomPlayerList {
-  array: RoomPlayer[];
-  presentIds = new Set<number>();
-
-  constructor(array: RoomPlayer[]) {
-    this.array = array;
-  }
-
-  upsert(id: number, name: string, isPresent: boolean | null): RoomPlayerList {
-    const index = this.array.findIndex((item) => item.id === id);
-    const newItem = {
-      id,
-      name,
-      isPresent: isPresent ?? this.presentIds.has(id),
-    };
-    if (index === -1) {
-      this.array.push(newItem);
-    } else {
-      this.array[index] = {
-        ...newItem,
-        isPresent: this.array[index].isPresent,
-      };
-    }
-    return this;
-  }
-
-  updatePresences(presence: Presence): RoomPlayerList {
-    this.presentIds.clear();
-    presence.list((userId, _metas) => {
-      const numId = Number(userId);
-      this.presentIds.add(numId);
-    });
-    this.array = this.array.map((item) => ({
-      ...item,
-      isPresent: this.presentIds.has(item.id),
-    }));
-    return this;
-  }
-
-  othersPresent(selfId: number): RoomPlayer[] {
-    return this.array.filter((item) => item.id !== selfId && item.isPresent);
-  }
-}
-
-type RoomState = {
-  stage: RoomStage;
-  roomId: string;
-  creatorId?: number;
-  createdAt?: string;
-  selfId?: number;
-  selfName?: string;
-  players: RoomPlayerList;
-};
+import { styles } from '../styles';
 
 function roomReducer(state: RoomState, message: RoomIncomingMessage) {
   if (message.event === 'join') {
@@ -132,6 +55,36 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       players: state.players.updatePresences(message.presence),
     };
   }
+  if (message.event === 'round:start') {
+    return {
+      ...state,
+      stage: RoomStage.UNKNOWN_TURN,
+      players: state.players.setOrder(message.playerOrder),
+      turnId: message.turnId,
+    };
+  }
+  if (message.event === 'turn:start') {
+    const currentPlayer = state.players.array.find(
+      (pl) => pl.id === message.userId
+    );
+    return {
+      ...state,
+      stage:
+        message.userId === state.selfId
+          ? RoomStage.SELF_TURN
+          : RoomStage.SPECTATOR,
+      trivia: message.trivia,
+      turnId: message.turnId,
+      currentPlayerName: currentPlayer?.name,
+    };
+  }
+  if (message.event === 'turn:end') {
+    return {
+      ...state,
+      stage: RoomStage.UNKNOWN_TURN,
+      players: state.players.appendTurn(message.userId),
+    };
+  }
 
   return state;
 }
@@ -141,11 +94,10 @@ export function RoomScreen() {
     params: { roomId, savedSession },
   } = useRouteTyped<'Room'>();
   const [nameOnJoin, setNameOnJoin] = useState('');
-  const [draftName, setDraftName] = useState({
-    name: '',
-    error: undefined as string | undefined,
-  });
-  const [draftOrder, setDraftOrder] = useStateNoCmp(new OrderedSet<number>());
+  const [renameError, setRenameError] = useState<[string, string]>();
+  const [triviaAnswers, setTriviaAnswers] = useStateNoCmp(
+    new OrderedSet<number>()
+  );
 
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
@@ -163,166 +115,158 @@ export function RoomScreen() {
       selfName: savedSession?.displayName,
       stage: RoomStage.LOBBY,
       players: new RoomPlayerList([]),
+      turnId: -1,
     },
   });
 
   useEffect(() => {
+    if (room.state.selfId === undefined) {
+      return;
+    }
+    if (room.state.stage !== RoomStage.UNKNOWN_TURN) {
+      return;
+    }
+    const turnsToWait = room.state.players.turnsUntil(room.state.selfId);
+    if (turnsToWait < 0) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      room.broadcast(
+        { event: 'turn:start', fromTurnId: room.state.turnId },
+        console.error
+      );
+    }, turnsToWait * 10000);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [room, room.state]);
+
+  const doNameChange = (name: string) => {
+    if (!room.connected) {
+      setNameOnJoin(name);
+    } else {
+      room.broadcast({ event: 'user:change', displayName: name }, (errorMsg) =>
+        setRenameError([name, errorMsg ?? 'Unknown error'])
+      );
+    }
+  };
+
+  useEffect(() => {
     if (room.error) {
-      setDraftName((prev) => ({
-        ...prev,
-        error: room.error,
-      }));
       setNameOnJoin('');
     }
   }, [room.error]);
 
   useEffect(() => {
-    if (room.state.selfName && room.connected) {
-      console.log(room.state.selfName, room.connected);
-      setDraftName({
-        name: room.state.selfName,
-        error: undefined,
-      });
+    if (room.state.trivia) {
+      setTriviaAnswers(triviaAnswers.clear());
     }
-  }, [room.connected, room.state.selfName]);
+  }, [room.state.trivia, setTriviaAnswers, triviaAnswers]);
 
-  const onSubmit = () => {
-    if (!draftName) {
-      return;
-    }
-    if (!room.connected) {
-      setNameOnJoin(draftName.name);
-    } else {
-      room.broadcast(
-        { event: 'user:change', displayName: draftName.name },
-        (errorMsg) =>
-          setDraftName((prev) => {
-            if (prev.name === draftName.name) {
-              return {
-                name: draftName.name,
-                error: errorMsg,
-              };
-            }
-            return prev;
-          })
-      );
-    }
+  const doBegin = (playerOrder: number[]) => {
+    room.broadcast(
+      {
+        event: 'round:start',
+        playerOrder,
+        pointTarget: 5,
+      },
+      console.error
+    );
   };
 
-  const otherNames = room.state.selfId
-    ? room.state.players
-        .othersPresent(room.state.selfId)
-        .map((pl) => pl.name)
-        .join(', ')
-    : '';
   const isCreator =
     room.state.selfId != null && room.state.selfId === room.state.creatorId;
-
-  useEffect(() => {
-    if (isCreator && room.state.selfId != null) {
-      draftOrder.append(room.state.selfId);
-    }
-  }, [room.state.selfId, isCreator, draftOrder]);
 
   return (
     <View style={styles.topContainer}>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <View style={[styles.m4]}>
-          <Text style={[styles.textXl, styles.fontWeightBold]}>{roomId}</Text>
-          {room.state.createdAt && (
-            <Text>
-              Created{' '}
-              <FormattedRelativeDate dateString={room.state.createdAt + 'Z'} />
-            </Text>
-          )}
-          {room.state.selfId && (
-            <Text>
-              Here now: {otherNames ? `You + ${otherNames}` : 'Just you'}
-            </Text>
-          )}
-        </View>
-        <TextInput
-          style={[
-            styles.mx6,
-            styles.p2,
-            styles.bgPaperDarker,
-            styles.textMd,
-            styles.roundedLg,
-          ]}
-          placeholder="Enter name"
-          value={draftName.name}
-          onChangeText={(text) =>
-            setDraftName({ name: text, error: undefined })
-          }
-        />
-        {draftName.error && (
-          <Text style={[styles.mx6, styles.textRed]}>{draftName.error}</Text>
+        {room.state.stage === RoomStage.LOBBY && (
+          <RoomLobbyControls
+            roomState={room.state}
+            roomError={room.error}
+            renameError={renameError}
+            connected={room.connected}
+            doNameChange={doNameChange}
+          />
         )}
-        <View style={[styles.row, styles.mx6, styles.mt2]}>
-          <TouchableOpacity
-            style={[
-              styles.bgBlue900,
-              styles.roundedLg,
-              styles.flexGrow,
-              styles.p4,
-            ]}
-            onPress={onSubmit}
-          >
-            <Text style={[styles.textWhite, styles.textCenter]}>
-              {room.connected ? 'CHANGE' : 'SET NAME'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {isCreator && (
+        {isCreator && room.state.stage === RoomStage.LOBBY && (
+          <RoomCreatorControls doBegin={doBegin} roomState={room.state} />
+        )}
+        {room.state.stage === RoomStage.UNKNOWN_TURN && (
+          <Text style={[styles.mt4, styles.textCenter]}>
+            Waiting for another player to start their turn.
+          </Text>
+        )}
+        {shouldShowTrivia(room.state.stage) && room.state.trivia && (
           <>
-            <View style={[styles.row, styles.mt8, styles.mx4]}>
-              <Text style={styles.textLg}>Select player order</Text>
-              <TouchableOpacity
-                style={[styles.bgRed, styles.p1, styles.px2, styles.roundedMd]}
-                onPress={() => setDraftOrder(draftOrder.clear())}
-              >
-                <Text style={[styles.textCenter, styles.textWhite]}>reset</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={[styles.mt4, styles.textCenter]}>
+              {room.state.trivia.question}
+            </Text>
             <ChipPicker
               style={[
-                styles.row,
                 styles.mt4,
                 styles.mx6,
                 styles.startAll,
-                styles.flexWrap,
+                styles.flexCol,
+                styles.itemsStretch,
               ]}
-              data={room.state.players.array}
-              keySelector={(pl) => `player-${pl.id}`}
-              onPress={(pl) => setDraftOrder(draftOrder.toggle(pl.id))}
-              chipStyle={({ item }) =>
-                draftOrder.has(item.id)
+              data={room.state.trivia.options}
+              chipStyle={({ index }) => [
+                styles.py2,
+                styles.pr4,
+                styles.roundedLg,
+                styles.mt2,
+                triviaAnswers.has(index)
                   ? [styles.bgPurple300, styles.borderPurpleAccent]
-                  : [styles.bgPaperDarker]
+                  : [styles.bgPaperDarker],
+              ]}
+              onPress={({ index }) =>
+                setTriviaAnswers(
+                  triviaAnswers
+                    .toggle(index)
+                    .takeRight(room.state.trivia?.maxAnswers ?? 0)
+                )
               }
             >
-              {({ item }) => (
+              {({ item, index }) => (
                 <>
-                  {indexToEmoji(draftOrder.getIndex(item.id), 24)}
                   <Text style={[styles.textMd, styles.fontWeightBold]}>
-                    {item.name}
+                    {item.answer}
                   </Text>
+                  {triviaAnswers.has(index) &&
+                    room.state.trivia?.answerType === 'poprank' && (
+                      <View
+                        style={[styles.absolute, styles.right0, styles.mr2]}
+                      >
+                        <Text>{index + 1}</Text>
+                      </View>
+                    )}
                 </>
               )}
             </ChipPicker>
-            <View style={[styles.row, styles.mx6, styles.mt8]}>
+            {room.state.stage === RoomStage.SELF_TURN && (
               <TouchableOpacity
                 style={[
                   styles.bgGreen,
                   styles.roundedLg,
                   styles.flexGrow,
+                  styles.mt8,
+                  styles.mx6,
                   styles.p4,
                 ]}
-                onPress={() => console.log('TODO begin')}
+                onPress={() => room.broadcast({ event: 'turn:end' })}
               >
-                <Text style={[styles.textWhite, styles.textCenter]}>BEGIN</Text>
+                <Text style={[styles.textWhite, styles.textCenter]}>
+                  SUBMIT
+                </Text>
               </TouchableOpacity>
-            </View>
+            )}
+            {room.state.stage === RoomStage.SPECTATOR && (
+              <Text style={[styles.textCenter, styles.mt8]}>
+                ({room.state.currentPlayerName ?? "Other player's"} turn)
+              </Text>
+            )}
           </>
         )}
       </ScrollView>

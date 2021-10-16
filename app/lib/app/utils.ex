@@ -80,8 +80,34 @@ defmodule App.Utils do
     hex_random(num_chars, "0123456789abcdef")
   end
 
-  def alpha_code(num_chars) do
-    hex_random(num_chars, "ABCEFHJKMNRSTVXZ")
+  def to_base16(num, alpha) when is_number(num) do
+    cond do
+      num < 16 ->
+        String.at(alpha, num &&& 15)
+      true ->
+        to_base16(num >>> 4, alpha) <> String.at(alpha, num &&& 15)
+    end
+  end
+
+  def from_base16_recur([], _alpha_map), do: {:ok, 0}
+  def from_base16_recur([ch | rest_chars], alpha_map) do
+    # char_lst is reversed
+    with {:ok, num} <- from_base16_recur(rest_chars, alpha_map) do
+      case Map.get(alpha_map, ch) do
+        nil -> :error
+        digit -> {:ok, (num <<< 4) ||| digit}
+      end
+    end
+  end
+
+  def from_base16(str, alpha) when is_binary(str) do
+    alpha_map = String.to_charlist(alpha)
+    |> Enum.with_index()
+    |> Map.new()
+    from_base16_recur(
+      String.to_charlist(str) |> Enum.reverse(),
+      alpha_map
+    )
   end
 
   def hex_random(num_chars, alpha) do

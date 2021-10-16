@@ -3,12 +3,25 @@ defmodule AppWeb.RoomController do
 
   alias App.Entities.RoomService
 
-  def new_room(conn, _body) do
-    case RoomService.create() do
-      {:ok, %{room_user: room_user, room: room}} ->
-        render(conn, "room.json", %{room_user: room_user, room: room})
-      {:error, err} ->
-        conn |> put_status(400) |> json(%{"error" => to_string(err)})
+  def create(conn, body) do
+    with %{"hostNickname" => host_nickname} <- body do
+      case RoomService.create(host_nickname) do
+        {:ok, %{room_user: room_user, room: room}} ->
+          render(conn, "room.json", %{room_user: room_user, room: room})
+        {:error, :room_user, %{errors: errors}} ->
+          error_out = case Keyword.get(errors, :name) do
+            {msg, _} ->
+              "Host nickname " <> msg
+            _ ->
+              "Unknown error"
+          end
+          conn |> put_status(400) |> json(%{"error" => error_out})
+        other ->
+          IO.inspect other
+          conn |> put_status(400) |> json(%{"error" => "?"})
+      end
+    else
+      _ -> conn |> put_status(400) |> json(%{"error" => "Host nickname is required"})
     end
   end
 end

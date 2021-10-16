@@ -1,8 +1,11 @@
 defmodule AppWeb.RoomChannel do
   use AppWeb, :channel
+
   alias AppWeb.Presence
-  alias App.Entities.RoomService
+  alias AppWeb.TriviaView
   alias App.Entities.RoomUser
+  alias App.Entities.RoomService
+  alias App.Entities.TriviaService
 
   def join("room:" <> room_id, %{"userId" => user_id, "displayName" => name}, socket) do
     with {:ok, room_user} <- RoomService.get_user_in_room(room_id, user_id) do
@@ -55,6 +58,12 @@ defmodule AppWeb.RoomChannel do
       push(socket, "join", Map.merge(just_joined, room_extras))
       if is_new, do: broadcast(socket, "user:new", Map.put(just_joined, "isNow", true))
 
+      ongoing_round = App.Cache.lookup("RoomChannel.round_start.#{room_id}")
+      if not is_nil(ongoing_round) do
+        turn_id = App.Cache.get_atomic("RoomChannel.turn_counter.#{room_id}", 0)
+        push(socket, "round:start", Map.put(ongoing_round, "turnId", turn_id))
+      end
+
       # send the details of every other user in the room
       Enum.filter(room.users, fn %{id: id} -> id != user_id end)
       |> Enum.map(fn %{id: id, name: name} ->
@@ -98,5 +107,57 @@ defmodule AppWeb.RoomChannel do
     else
       _ -> {:reply, {:error, %{reason: "display name is required"}}, socket}
     end
+  end
+
+  @impl true
+  def handle_in("round:start", payload, socket) do
+    %{room_id: room_id} = socket.assigns
+    :ok = App.Cache.new_atomic("RoomChannel.turn_counter.#{room_id}")
+    :ok = App.Cache.set_atomic("RoomChannel.turn_counter.#{room_id}", 0)
+    :ok = App.Cache.insert("RoomChannel.round_start.#{room_id}", payload)
+    broadcast(socket, "round:start", Map.put(payload, "turnId", 0))
+    {:reply, {:ok, %{}}, socket}
+  end
+
+  @impl true
+  def handle_in("turn:start", payload, socket) do
+    %{room_id: room_id, user_id: user_id} = socket.assigns
+    cache_key = "RoomChannel.turn_counter.#{room_id}"
+    with %{"fromTurnId" => from_turn} <- payload,
+         next_turn = from_turn + 1,
+         {:ok, ^next_turn} <- App.Cache.try_incr_atomic(cache_key, from_turn) do
+      with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia() do
+        turn_info = %{
+          "userId" => user_id,
+          "turnId" => next_turn,
+          "trivia" => %{
+            "question" => trivia.question,
+            "options" => Enum.map(trivia.options, &TriviaView.option_json/1),
+            "answerType" => trivia_def.answer_type,
+            "minAnswers" => trivia_def.selection_min_true,
+            "maxAnswers" => trivia_def.selection_min_true,
+          },
+        }
+        broadcast(socket, "turn:start", turn_info)
+        {:reply, {:ok, %{}}, socket}
+      else
+        {:error, reason} -> {:reply, {:error, %{reason: reason}}, socket}
+        _ -> {:reply, {:error, %{reason: "Unknown error"}}, socket}
+      end
+    else
+      ^payload -> {:reply, {:error, %{reason: "Previous turn number is required"}}, socket}
+      {:ok, turn_id} ->
+        {:reply,
+         {:error, %{reason: "Previous turn number was #{turn_id}"}},
+         socket}
+      _ -> {:reply, {:error, %{reason: "Unknown error"}}, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("turn:end", _payload, socket) do
+    %{user_id: user_id} = socket.assigns
+    broadcast(socket, "turn:end", %{"userId" => user_id})
+    {:reply, {:ok, %{}}, socket}
   end
 end

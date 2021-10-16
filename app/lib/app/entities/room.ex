@@ -4,7 +4,7 @@ defmodule App.Entities.Room do
   alias App.Entities.RoomUser
 
   schema "room" do
-    field :code, :string
+    field :code, :string, virtual: true
     belongs_to :creator, RoomUser
     has_many :users, RoomUser
 
@@ -14,7 +14,7 @@ defmodule App.Entities.Room do
   @doc false
   def validations(room) do
     room
-    |> validate_required([:code])
-    |> unique_constraint([:code])
+    |> cast(%{}, [])
+    |> assoc_constraint(:creator)
   end
 end

@@ -10,8 +10,8 @@ export type ChipPickerProvidedProps<T> = {
 export type ChipPickerProps<T> = {
   style?: ViewProps['style'];
   data: T[];
-  onPress: (data: T) => void;
   keySelector?: (data: T) => string;
+  onPress: (props: ChipPickerProvidedProps<T>) => void;
   chipStyle?: (props: ChipPickerProvidedProps<T>) => ViewProps['style'];
   children: (props: ChipPickerProvidedProps<T>) => React.ReactElement | null;
 };
@@ -43,7 +43,7 @@ export function ChipPicker<T>({
               styleModifier,
             ]}
             key={key}
-            onPress={() => onPress(item)}
+            onPress={() => onPress({ item, index })}
           >
             {children({
               item,

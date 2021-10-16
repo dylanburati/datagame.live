@@ -3,6 +3,7 @@ defmodule App.Entities.CardTagDef do
   import Ecto.Changeset
 
   alias App.Entities.Deck
+  alias App.Entities.CardTag
 
   schema "card_tag_def" do
     field :label, :string
@@ -10,6 +11,7 @@ defmodule App.Entities.CardTagDef do
     field :value_counts, {:array, :map}, virtual: true
 
     belongs_to :deck, Deck
+    has_many :tags, CardTag
 
     timestamps()
   end

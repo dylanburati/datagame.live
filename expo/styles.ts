@@ -57,6 +57,9 @@ export const styles = StyleSheet.create({
   justifyCenter: {
     justifyContent: 'center',
   },
+  flexCol: {
+    flexDirection: 'column',
+  },
   flexWrap: {
     flexWrap: 'wrap',
   },
@@ -78,7 +81,10 @@ export const styles = StyleSheet.create({
     position: 'absolute',
   },
   bgPaperDarker: {
-    backgroundColor: '#D1D5DB',
+    backgroundColor: '#E4E4E7',
+  },
+  bgGray300: {
+    backgroundColor: '#D4D4D8',
   },
   bgBlue: {
     backgroundColor: '#1D4ED8',
@@ -106,6 +112,9 @@ export const styles = StyleSheet.create({
   },
   right0: {
     right: 0,
+  },
+  left0: {
+    left: 0,
   },
   p1: {
     padding: 4,
@@ -156,6 +165,9 @@ export const styles = StyleSheet.create({
   },
   mr2: {
     marginRight: 8,
+  },
+  ml4: {
+    marginLeft: 16,
   },
   mb2: {
     marginBottom: 8,
@@ -218,6 +230,9 @@ export const styles = StyleSheet.create({
   textRed: {
     color: '#DC2626',
   },
+  textPenFaint: {
+    color: '#71717A',
+  },
   fontWeightBold: {
     fontWeight: 'bold',
   },
@@ -241,6 +256,10 @@ export const styles = StyleSheet.create({
   },
   border: {
     borderWidth: 1,
+  },
+  borderY: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
   },
   borderGray300: {
     borderColor: '#D1D5DB',

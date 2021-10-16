@@ -1,11 +1,9 @@
 defmodule App.Entities.TriviaService do
 
   import Ecto.Query
-  import App.Utils
 
   alias App.Repo
   alias App.Entities.Card
-  alias App.Entities.CardTag
   alias App.Entities.CardTagDef
   alias App.Entities.TriviaDef
 
@@ -17,10 +15,11 @@ defmodule App.Entities.TriviaService do
     }
   end
 
-  defp groupby_map() do
+  defp column_not_null_map() do
     %{
-      "title" => dynamic([c], c.title),
-      "tag1" => dynamic([c], c.tag1)
+      "title" => dynamic([c], not is_nil(c.title)),
+      "popularity" => dynamic([c], not is_nil(c.popularity)),
+      "tag1" => dynamic([c], not is_nil(c.tag1))
     }
   end
 
@@ -78,13 +77,18 @@ defmodule App.Entities.TriviaService do
   end
 
   def get_question_instance(:col_name, {_, col_name}, opt_type, opt_info) do
-    with {:ok, field} <- Map.fetch(column_map(), col_name) do
+    with {:ok, field} <- Map.fetch(column_map(), col_name),
+         {:ok, filter_nulls} <- Map.fetch(column_not_null_map(), col_name) do
       query = from [c, ct] in answer_query(opt_type, opt_info),
         order_by: fragment("random()"),
         select: c,
+        where: ^filter_nulls,
         limit: 1
 
-      query |> Repo.one() |> Map.get(field)
+      case query |> Repo.one() do
+        nil -> nil
+        map -> Map.get(map, field)
+      end
     else
       :error -> {:error, "invalid column name for question: #{col_name}"}
     end
@@ -191,8 +195,7 @@ defmodule App.Entities.TriviaService do
       selection_length: needs_length,
       selection_min_true: tl_min,
       selection_max_true: tl_max,
-      selection_compare_type: cmp_type,
-      answer_type: ans_type
+      selection_compare_type: cmp_type
     } = trivia_def
     fl_max = needs_length - tl_min
     cmp = Map.fetch!(string_compare_map(), cmp_type)
@@ -244,10 +247,17 @@ defmodule App.Entities.TriviaService do
     |> Enum.shuffle()
     |> Enum.take(needs_length)
 
-    %{
+    result = %{
       options: options,
       question: String.replace(question_format, "{}", qtext),
-      answer_type: ans_type,
     }
+    {:ok, trivia_def, result}
+  end
+
+  def get_any_trivia() do
+    case tdef = Repo.one(from(TriviaDef, order_by: fragment("random()"), limit: 1)) do
+      %TriviaDef{} -> get_trivia(tdef)
+      _ -> {:error, "No trivia definitions found"}
+    end
   end
 end
