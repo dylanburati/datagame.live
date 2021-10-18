@@ -10,6 +10,11 @@ export class OrderedSet<T> {
     return this;
   }
 
+  extend(array: T[]) {
+    array.forEach((item) => this.append(item));
+    return this;
+  }
+
   has(item: T) {
     return this.map.has(item);
   }

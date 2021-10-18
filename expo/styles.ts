@@ -95,6 +95,12 @@ export const styles = StyleSheet.create({
   bgPurple300: {
     backgroundColor: '#C4B5FD',
   },
+  bgSeaGreen300: {
+    backgroundColor: '#75F0B5',
+  },
+  bgRed300: {
+    backgroundColor: '#FCA5A5',
+  },
   bgGreen: {
     backgroundColor: '#059669',
   },
@@ -145,6 +151,12 @@ export const styles = StyleSheet.create({
     paddingLeft: 8,
     paddingRight: 8,
   },
+  p0: {
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
   m2: {
     margin: 8,
   },
@@ -169,6 +181,9 @@ export const styles = StyleSheet.create({
   ml4: {
     marginLeft: 16,
   },
+  mb1: {
+    marginBottom: 4,
+  },
   mb2: {
     marginBottom: 8,
   },
@@ -192,6 +207,10 @@ export const styles = StyleSheet.create({
   mx6: {
     marginLeft: 24,
     marginRight: 24,
+  },
+  my4: {
+    marginTop: 16,
+    marginBottom: 16,
   },
   my8: {
     marginTop: 32,
@@ -230,10 +249,16 @@ export const styles = StyleSheet.create({
   textRed: {
     color: '#DC2626',
   },
+  textEmerald: {
+    color: '#059669',
+  },
   textPenFaint: {
     color: '#71717A',
   },
-  fontWeightBold: {
+  italic: {
+    fontStyle: 'italic',
+  },
+  fontBold: {
     fontWeight: 'bold',
   },
   wFull: {
@@ -266,6 +291,12 @@ export const styles = StyleSheet.create({
   },
   borderPurpleAccent: {
     borderColor: '#7707FF',
+  },
+  borderGreenAccent: {
+    borderColor: '#00c175',
+  },
+  borderRedAccent: {
+    borderColor: '#ff5555',
   },
   // non-tailwind
   topContainer: {
@@ -312,5 +343,8 @@ export const styles = StyleSheet.create({
   space4: {
     height: 16,
     width: 16,
+  },
+  zMinusOne: {
+    zIndex: -1,
   },
 });

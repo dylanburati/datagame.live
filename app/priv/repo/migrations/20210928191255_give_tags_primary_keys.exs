@@ -13,7 +13,8 @@ defmodule App.Repo.Migrations.GiveTagsPrimaryKeys do
     end
 
     drop table(:card_tag)
-    create table(:card_tag) do
+    create table(:card_tag, primary_key: false) do
+      add :id, :binary_id, primary_key: true
       add :value, :string
 
       # FK
@@ -22,8 +23,8 @@ defmodule App.Repo.Migrations.GiveTagsPrimaryKeys do
     create unique_index(:card_tag, [:card_tag_def_id, :value])
     create table(:card_card_tag) do
       # FK
-      add :card_id, references(:card, on_delete: :delete_all)
-      add :card_tag_id, references(:card_tag, on_delete: :delete_all)
+      add :card_id, references(:card, on_delete: :delete_all, type: :binary_id)
+      add :card_tag_id, references(:card_tag, on_delete: :delete_all, type: :binary_id)
     end
   end
 end

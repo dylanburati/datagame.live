@@ -8,6 +8,7 @@ defmodule App.Entities.SheetService do
   alias App.Repo
   alias App.Entities.Deck
   alias App.Entities.Card
+  alias App.Entities.CardStatDef
   alias App.Entities.CardTagDef
   alias App.Entities.CardTag
 
@@ -40,7 +41,7 @@ defmodule App.Entities.SheetService do
     case App.Cache.lookup(@tkn_cache_key) do
       {tkn, exp} when exp > t0 + 3 ->
         {:ok, tkn}
-      other ->
+      _ ->
         get_new_token()
     end
   end
@@ -114,7 +115,18 @@ defmodule App.Entities.SheetService do
 
   defp deck_cards(col_names, [row | remaining]) do
     lst = deck_cards(col_names, remaining)
-    params = for {nm, val} <- Enum.zip(col_names, row), into: %{} do
+    {stat_cells, cells} = Enum.zip(col_names, row)
+    |> Enum.split_with(fn {nm, _} -> is_binary(nm) and starts_with?(nm, "Stat") end)
+
+    stat_box = stat_cells
+    |> Enum.map(fn {"Stat" <> which, val} ->
+      {Card.key_for_stat(which), non_empty_or_nil(val)}
+    end)
+    |> Enum.filter(fn {k, _} -> not is_nil(k) end)
+    |> Enum.reduce(%Card.CardStatBox{}, fn {k, v}, box -> Map.put(box, k, v) end)
+
+    params = cells
+    |> Map.new(fn {nm, val} ->
       case nm do
         "Card" -> {:title, val}
         "Disable?" -> {:is_disabled, is_binary(val) and val != ""}
@@ -124,10 +136,12 @@ defmodule App.Entities.SheetService do
         "Notes" -> {:notes, val}
         _ -> {:unused, nil}
       end
-    end
+    end)
+    |> Map.delete(:unused)
+    |> Map.put(:stat_box, stat_box)
 
     if Map.has_key?(params, :title) do
-      [{Map.delete(params, :unused), card_tags(col_names, row)} | lst]
+      [{params, card_tags(col_names, row)} | lst]
     else
       # skip card w/o title
       lst
@@ -147,6 +161,21 @@ defmodule App.Entities.SheetService do
       Map.update(tag_map, tag, 1, &(&1 + 1))
     end)
     |> Enum.map(fn {tag, count} -> Map.put(tag, :count, count) end)
+
+    card_stat_defs = Card.all_stat_keys()
+    |> Enum.map(fn key ->
+      values = Enum.map(cards, fn %{stat_box: %{^key => val}} -> val end)
+      key_s = Atom.to_string(key)
+      label = Map.get(labels, Card.sheet_col_for_stat(key), key_s)
+      case CardStatDef.infer_type(values) do
+        {:ok, stat_type} ->
+          %{key: key_s,
+            label: label,
+            stat_type: stat_type}
+        _ -> nil
+      end
+    end)
+    |> Enum.filter(&(not is_nil(&1)))
 
     card_user_ids = Enum.map(cards, &(&1.unique_id))
     |> MapSet.new()
@@ -202,6 +231,14 @@ defmodule App.Entities.SheetService do
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: [:spreadsheet_id, :sheet_name]
     )
+    |> Ecto.Multi.insert_all(
+      :card_stat_def, CardStatDef, fn %{deck: deck} ->
+        card_stat_defs
+        |> Enum.map(fn df -> Map.put(df, :deck_id, deck.id) |> add_timestamps() end)
+      end,
+      on_conflict: {:replace_all_except, [:id, :inserted_at]},
+      conflict_target: [:deck_id, :key]
+    )
     |> Ecto.Multi.delete_all(
       :removed_card_tags, fn %{deck: deck} ->
         from ct in CardTag,
@@ -234,30 +271,45 @@ defmodule App.Entities.SheetService do
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: [:deck_id, :unique_id]
     )
-    |> Ecto.Multi.insert_all(
+    |> Ecto.Multi.run(
       :card_tags,
-      CardTag,
-      fn %{card_tag_defs: {_, db_ctdefs}} ->
-        pos_map = for {ctdef, %{id: id}} <- Enum.zip(ctdefs, db_ctdefs), into: %{} do
+      fn repo, %{cards: {_, db_cards}, card_tag_defs: {_, db_tag_defs}} ->
+        pos_map = for {ctdef, %{id: id}} <- Enum.zip(ctdefs, db_tag_defs), into: %{} do
           {ctdef.position, id}
         end
-        card_tags |> Enum.map(fn tag ->
-          Map.put(tag, :card_tag_def_id, pos_map[tag.position]) |> Map.delete(:position)
+        db_tags = card_tags |> Enum.map(fn tag -> Map.put(tag, :id, Ecto.UUID.generate()) end)
+        {:ok, tag_io} = db_tags
+        |> Enum.map(fn tag ->
+          [
+            tag.id,
+            tag.value,
+            Integer.to_string(tag.count),
+            Integer.to_string(pos_map[tag.position])  # card_tag_def_id
+          ]
         end)
-      end,
-      returning: [:id]
-    )
-    |> Ecto.Multi.insert_all(
-      :card_tag_assoc,
-      "card_card_tag",
-      fn %{cards: {_, dbcards}, card_tags: {_, dbtags}} ->
-        id_map = for {tag, %{id: id}} <- Enum.zip(card_tags, dbtags), into: %{} do
+        |> CSV.encode(separator: ?\t)
+        |> Enum.join("")
+        |> StringIO.open()
+        tag_stream = Ecto.Adapters.SQL.stream(repo,
+          "COPY card_tag (id, value, count, card_tag_def_id) FROM STDIN")
+        repo.checkout(fn -> IO.binstream(tag_io, 64 * 1024) |> Enum.into(tag_stream) end)
+
+        tag_id_map = for tag = %{id: id} <- db_tags, into: %{} do
           {Map.take(tag, [:position, :value]), id}
         end
-        Enum.zip(dbcards, card_tags_nested)
+        {:ok, assoc_io} = Enum.zip(db_cards, card_tags_nested)
         |> Enum.flat_map(fn {%{id: card_id}, tag_lst} ->
-          Enum.map(tag_lst, fn tag -> %{card_id: card_id, card_tag_id: id_map[tag]} end)
+          Enum.map(tag_lst, fn tag ->
+            [card_id, tag_id_map[tag]]
+          end)
         end)
+        |> CSV.encode(separator: ?\t)
+        |> Enum.join("")
+        |> StringIO.open()
+        assoc_stream = Ecto.Adapters.SQL.stream(repo,
+          "COPY card_card_tag (card_id, card_tag_id) FROM STDIN")
+        repo.checkout(fn -> IO.binstream(assoc_io, 64 * 1024) |> Enum.into(assoc_stream) end)
+        {:ok, nil}
       end
     )
     |> Repo.transaction()
@@ -279,7 +331,7 @@ defmodule App.Entities.SheetService do
               idx ->
                 Enum.map(rows, fn row -> Enum.drop(row, idx) |> Enum.take(2) end)
                 |> Enum.filter(fn [a, b] -> not (is_nil(a) and is_nil(b)) end)
-                |> Enum.reduce(%{}, fn [k, lbl], acc -> Map.put(acc, k, lbl) end)
+                |> Map.new(fn [k, lbl] -> {k, lbl} end)
             end
             with {:ok, %{deck: deck}} <- insert_deck(spreadsheet_id, sheet_name, labels, col_names, rows) do
               {:ok, [deck | lst], fails}

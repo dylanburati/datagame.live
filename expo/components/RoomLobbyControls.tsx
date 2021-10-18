@@ -42,7 +42,7 @@ export function RoomLobbyControls({
   return (
     <>
       <View style={[styles.m4]}>
-        <Text style={[styles.textXl, styles.fontWeightBold]}>
+        <Text style={[styles.textXl, styles.fontBold]}>
           {roomState.roomId}
         </Text>
         {roomState.createdAt && (

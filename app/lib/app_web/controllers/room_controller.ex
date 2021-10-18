@@ -16,9 +16,8 @@ defmodule AppWeb.RoomController do
               "Unknown error"
           end
           conn |> put_status(400) |> json(%{"error" => error_out})
-        other ->
-          IO.inspect other
-          conn |> put_status(400) |> json(%{"error" => "?"})
+        _ ->
+          conn |> put_status(400) |> json(%{"error" => "Unknown error creating room"})
       end
     else
       _ -> conn |> put_status(400) |> json(%{"error" => "Host nickname is required"})

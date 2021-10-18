@@ -1,8 +1,41 @@
-const lutDeg: number[] = [];
-const lutTan: number[] = [];
-for (let i = 0; i < 90; i++) {
-  lutTan.push(Math.tan((Math.PI * i) / 180));
-  lutDeg.push(i);
+export function argsort<T>(array: T[], sorter: (e1: T, e2: T) => number) {
+  return array
+    .map((e, i): [number, T] => [i, e])
+    .sort((pair1, pair2) => sorter(pair1[1], pair2[1]))
+    .map(([i]) => i);
+}
+
+const ACCEPTABLE_ORDERS_SENTINEL = Symbol('ACCEPTABLE_ORDERS_SENTINEL');
+export function acceptableOrders<T>(
+  array: T[],
+  sorter: (e1: T, e2: T) => number
+) {
+  if (array.length === 0) {
+    return [];
+  }
+  const order = argsort(array, sorter);
+  let positionsForIndex = new Array(array.length)
+    .fill(0)
+    .map(() => new Set<number>());
+  let position = 0;
+  let indices = [order[0]];
+  let val = array[order[0]];
+  for (let j = 1; j <= order.length; j++) {
+    const val2 =
+      j === order.length ? ACCEPTABLE_ORDERS_SENTINEL : array[order[j]];
+    if (val2 !== ACCEPTABLE_ORDERS_SENTINEL && sorter(val, val2) === 0) {
+      indices.push(order[j]);
+    } else {
+      const nextPos = position + indices.length;
+      while (position < nextPos) {
+        indices.forEach((index) => positionsForIndex[index].add(position));
+        position += 1;
+      }
+      indices.splice(0, indices.length, order[j]);
+      val = val2 as T;
+    }
+  }
+  return positionsForIndex;
 }
 
 export function intRange(start: number, end: number, step: number) {
@@ -38,6 +71,13 @@ export function binarySearch(
   } else {
     return Math.max(left - 1, 0);
   }
+}
+
+const lutDeg: number[] = [];
+const lutTan: number[] = [];
+for (let i = 0; i < 90; i++) {
+  lutTan.push(Math.tan((Math.PI * i) / 180));
+  lutDeg.push(i);
 }
 
 export function fastAtan(y: number, x: number) {

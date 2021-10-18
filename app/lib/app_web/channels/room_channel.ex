@@ -1,6 +1,8 @@
 defmodule AppWeb.RoomChannel do
   use AppWeb, :channel
 
+  import App.Utils
+
   alias AppWeb.Presence
   alias AppWeb.TriviaView
   alias App.Entities.RoomUser
@@ -127,16 +129,23 @@ defmodule AppWeb.RoomChannel do
          next_turn = from_turn + 1,
          {:ok, ^next_turn} <- App.Cache.try_incr_atomic(cache_key, from_turn) do
       with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia() do
+        trivia = %{
+          "question" => trivia.question,
+          "options" => Enum.map(trivia.options, &TriviaView.option_json/1),
+          "answerType" => trivia_def.answer_type,
+          "minAnswers" => trivia_def.selection_min_true,
+          "maxAnswers" => trivia_def.selection_min_true,
+        }
+        |> maybe_put_lazy(Ecto.assoc_loaded?(trivia_def.option_stat_def), "statDef", fn ->
+          case trivia_def.option_stat_def do
+            %{label: label, stat_type: typ} -> %{"label" => label, "type" => typ}
+            _ -> nil
+          end
+        end)
         turn_info = %{
           "userId" => user_id,
           "turnId" => next_turn,
-          "trivia" => %{
-            "question" => trivia.question,
-            "options" => Enum.map(trivia.options, &TriviaView.option_json/1),
-            "answerType" => trivia_def.answer_type,
-            "minAnswers" => trivia_def.selection_min_true,
-            "maxAnswers" => trivia_def.selection_min_true,
-          },
+          "trivia" => trivia,
         }
         broadcast(socket, "turn:start", turn_info)
         {:reply, {:ok, %{}}, socket}
@@ -158,6 +167,15 @@ defmodule AppWeb.RoomChannel do
   def handle_in("turn:end", _payload, socket) do
     %{user_id: user_id} = socket.assigns
     broadcast(socket, "turn:end", %{"userId" => user_id})
+    {:reply, {:ok, %{}}, socket}
+  end
+
+  @impl true
+  def handle_in("turn:feedback", payload, socket) do
+    %{user_id: user_id, room_id: room_id} = socket.assigns
+    turn_id = App.Cache.get_atomic("RoomChannel.turn_counter.#{room_id}", 0)
+    broadcast(socket, "turn:feedback",
+      Map.merge(payload, %{"userId" => user_id, "turnId" => turn_id}))
     {:reply, {:ok, %{}}, socket}
   end
 end

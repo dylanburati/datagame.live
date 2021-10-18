@@ -294,7 +294,7 @@ export class SheetPage {
       const kCol = deck.values[tagLabelPos];
       const vCol = deck.values[tagLabelPos + 1];
       for (let i = 1; i < Math.min(kCol.length, vCol.length); i++) {
-        if (kCol[i].startsWith('Tag') && vCol[i]) {
+        if (/^(Tag|Stat)/.test(kCol[i]) && vCol[i]) {
           tagLabels[kCol[i]] = vCol[i];
         }
       }
@@ -312,13 +312,14 @@ export class SheetPage {
       warnings.push("No column named 'Disable?'");
     }
     const filteredRows = new Set();
-    let stopAtCol = deck.values.findIndex(col => col[0] === 'Notes');
+    let stopAtCol = deck.values.findIndex(col => first(col) === null);
     if (stopAtCol === -1) {
-      warnings.push("No column named 'Notes'");
+      stopAtCol = deck.values.length;
+      warnings.push("Couldn't find blank column to end main section");
     }
     if (query) {
       const queryL = query.toLowerCase();
-      for (const col of deck.values.slice(0, stopAtCol + 1)) {
+      for (const col of deck.values.slice(0, stopAtCol)) {
         if (col.length > 1 && col[0] !== 'Disable?' && col[0] !== 'ID') {
           col.forEach((cell, i) => {
             if (i > 0 && cell.toLowerCase().includes(queryL)) {
@@ -334,6 +335,7 @@ export class SheetPage {
     let popColCount = null;
     let cardColCount = null;
     const tagColCounts = {};
+    const statColTypes = {};
     const countOccurrences = (acc, cur, i) => {
       if (cur !== '' && !disabledRows.has(i)) {
         acc.total += 1;
@@ -352,14 +354,21 @@ export class SheetPage {
       }
       return acc;
     };
+    const inferType = (str) => {
+      if (str === '')
+        return 'empty';
+      else if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(str))
+        return 'date';
+      else if (/^\$[0-9.,]+$/.test(str))
+        return 'dollar_amount';
+      else if (str.includes(' ') || Number.isNaN(parseFloat(str, 10)))
+        return 'string';
+      
+      return 'number';
+    }
     const countTypes = (acc, cur, i) => {
       if (!disabledRows.has(i)) {
-        const typ =
-          cur === ''
-            ? 'empty'
-            : Number.isNaN(parseFloat(cur, 10))
-            ? 'string'
-            : 'number'
+        const typ = inferType(cur);
         acc[typ] = (acc[typ] || 0) + 1;
       }
       return acc;
@@ -377,15 +386,19 @@ export class SheetPage {
           longCol = col;
           numRows = colRep.rows.length;
         }
-        if (col[0].startsWith('Tag')) {
+        if (/^(Tag|Stat)/.test(col[0])) {
           if (!tagLabels[col[0]]) {
             warnings.push(`Column '${col[0]}' needs a descriptive label`);
           }
-          tagColCounts[col[0]] = col.slice(1).reduce(countTagOccurrences, {
-            total: 0,
-            grouped: {},
-            multi: false
-          });
+          if (col[0].startsWith('Tag')) {
+            tagColCounts[col[0]] = col.slice(1).reduce(countTagOccurrences, {
+              total: 0,
+              grouped: {},
+              multi: false
+            });
+          } else {
+            statColTypes[col[0]] = col.slice(1).reduce(countTypes, {});
+          }
         } else if (col[0] === 'Popularity') {
           popColCount = col.slice(1).reduce(countTypes, {});
         } else if (col[0] === 'Card') {
@@ -416,15 +429,17 @@ export class SheetPage {
       if (popColCount['empty'] > 0) {
         warnings.push(
           `Column 'Popularity' is blank for ${popColCount['empty']} cells - ` +
-          'these will be considered as difficult as the least well-known card'
+          'these will be treated as zeros'
         );
       }
-      if (popColCount['string'] > 0) {
+      const nanPop = Object.entries(popColCount)
+        .filter(([k, v]) => k !== 'empty' && k !== 'number' && v !== 0);
+      nanPop.forEach(([k, v]) => {
         warnings.push(
-          `Column 'Popularity' is not a number for ${popColCount['string']} cells - ` +
-          'these will be considered as difficult as the least well-known card'
+          `Column 'Popularity' is a ${k} for ${v} cells - ` +
+          'these will be treated as zeros'
         );
-      }
+      });
     }
     if (!tagColCounts['Tag1']) {
       warnings.push("Column 'Tag1' is not filled out - the game customization sliders will be disabled");
@@ -435,8 +450,7 @@ export class SheetPage {
       }
       if (counts1.total < enabledCount) {
         warnings.push(
-          `Column 'Tag1' is blank for ${enabledCount - counts1.total} cells - ` +
-          "these will add a 'N/A' slider in the game customization menu"
+          `Column 'Tag1' is blank for ${enabledCount - counts1.total} cells`
         );
       }
       const smallGroups = [];

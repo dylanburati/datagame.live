@@ -52,18 +52,17 @@ export function RoomCreatorControls({
         data={roomState.players.array}
         keySelector={(pl) => `player-${pl.id}`}
         onPress={({ item }) => setDraftOrder(draftOrder.toggle(item.id))}
-        chipStyle={({ item }) =>
+        chipStyle={({ item }) => [
+          styles.mb1,
           draftOrder.has(item.id)
             ? [styles.bgPurple300, styles.borderPurpleAccent]
-            : [styles.bgPaperDarker]
-        }
+            : [styles.bgPaperDarker],
+        ]}
       >
         {({ item }) => (
           <>
             {indexToEmoji(draftOrder.getIndex(item.id), 24)}
-            <Text style={[styles.textMd, styles.fontWeightBold]}>
-              {item.name}
-            </Text>
+            <Text style={[styles.textMd, styles.fontBold]}>{item.name}</Text>
           </>
         )}
       </ChipPicker>

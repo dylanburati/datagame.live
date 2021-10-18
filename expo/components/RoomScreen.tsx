@@ -5,16 +5,53 @@ import { ChipPicker } from './ChipPicker';
 import { RoomLobbyControls } from './RoomLobbyControls';
 import { useRouteTyped } from '../helpers/navigation';
 import {
+  getOptionStyles,
   RoomPlayerList,
   RoomStage,
   RoomState,
+  shouldShowAdvanceButton,
   shouldShowTrivia,
+  statToNumber,
 } from '../helpers/nplayerLogic';
 import { useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
-import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
+import {
+  RoomIncomingMessage,
+  RoomOutgoingMessage,
+  Trivia,
+  TriviaOption,
+} from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { styles } from '../styles';
+import { FormattedDate, FormattedNumber } from 'react-intl';
+
+type StatDisplayProps = {
+  trivia: Trivia;
+  option: TriviaOption;
+};
+
+function StatDisplay({ trivia, option }: StatDisplayProps) {
+  const { statDef } = trivia;
+  const numValue = statToNumber(statDef, option.questionValue);
+  if (statDef && !Number.isNaN(numValue)) {
+    switch (statDef.type) {
+      case 'number':
+        return <FormattedNumber value={numValue} />;
+      case 'dollar_amount':
+        return (
+          <FormattedNumber style="currency" currency="USD" value={numValue} />
+        );
+      case 'date':
+        return <FormattedDate value={numValue} year="numeric" month="long" />;
+    }
+  }
+  const array = Array.isArray(option.questionValue)
+    ? option.questionValue
+    : [option.questionValue];
+  const commaList =
+    array.slice(0, 2).join(', ') + (array.length > 2 ? '...' : '');
+  return <>{commaList}</>;
+}
 
 function roomReducer(state: RoomState, message: RoomIncomingMessage) {
   if (message.event === 'join') {
@@ -64,9 +101,6 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
     };
   }
   if (message.event === 'turn:start') {
-    const currentPlayer = state.players.array.find(
-      (pl) => pl.id === message.userId
-    );
     return {
       ...state,
       stage:
@@ -75,14 +109,27 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
           : RoomStage.SPECTATOR,
       trivia: message.trivia,
       turnId: message.turnId,
-      currentPlayerName: currentPlayer?.name,
+      players: state.players.startTurn(message.userId),
+      receivedAnswers: undefined,
+    };
+  }
+  if (message.event === 'turn:feedback') {
+    return {
+      ...state,
+      stage: RoomStage.FEEDBACK,
+      // TODO send most recent turn start in after_join
+      // players: state.players.startTurn(message.userId),
+      receivedAnswers:
+        message.turnId === state.turnId
+          ? message.answered
+          : state.receivedAnswers,
     };
   }
   if (message.event === 'turn:end') {
     return {
       ...state,
       stage: RoomStage.UNKNOWN_TURN,
-      players: state.players.appendTurn(message.userId),
+      players: state.players.endTurn(message.userId),
     };
   }
 
@@ -160,9 +207,20 @@ export function RoomScreen() {
 
   useEffect(() => {
     if (room.state.trivia) {
-      setTriviaAnswers(triviaAnswers.clear());
+      if (room.state.receivedAnswers) {
+        setTriviaAnswers(
+          triviaAnswers.clear().extend(room.state.receivedAnswers)
+        );
+      } else {
+        setTriviaAnswers(triviaAnswers.clear());
+      }
     }
-  }, [room.state.trivia, setTriviaAnswers, triviaAnswers]);
+  }, [
+    room.state.receivedAnswers,
+    room.state.trivia,
+    setTriviaAnswers,
+    triviaAnswers,
+  ]);
 
   const doBegin = (playerOrder: number[]) => {
     room.broadcast(
@@ -177,6 +235,7 @@ export function RoomScreen() {
 
   const isCreator =
     room.state.selfId != null && room.state.selfId === room.state.creatorId;
+  const triviaOptionStyles = getOptionStyles(room.state, triviaAnswers);
 
   return (
     <View style={styles.topContainer}>
@@ -213,58 +272,106 @@ export function RoomScreen() {
               ]}
               data={room.state.trivia.options}
               chipStyle={({ index }) => [
-                styles.py2,
-                styles.pr4,
+                styles.p0,
                 styles.roundedLg,
                 styles.mt2,
-                triviaAnswers.has(index)
-                  ? [styles.bgPurple300, styles.borderPurpleAccent]
-                  : [styles.bgPaperDarker],
+                triviaOptionStyles[index].chip,
               ]}
-              onPress={({ index }) =>
-                setTriviaAnswers(
-                  triviaAnswers
-                    .toggle(index)
-                    .takeRight(room.state.trivia?.maxAnswers ?? 0)
-                )
-              }
+              onPress={({ index }) => {
+                if (room.state.stage === RoomStage.SELF_TURN) {
+                  setTriviaAnswers(
+                    triviaAnswers
+                      .toggle(index)
+                      .takeRight(room.state.trivia?.maxAnswers ?? 0)
+                  );
+                }
+              }}
             >
               {({ item, index }) => (
-                <>
-                  <Text style={[styles.textMd, styles.fontWeightBold]}>
+                <View
+                  style={[styles.py2, styles.pl2, styles.pr4, styles.flex1]}
+                >
+                  {triviaOptionStyles[index].barGraph &&
+                    room.state.stage === RoomStage.FEEDBACK && (
+                      <View
+                        style={[
+                          styles.absolute,
+                          styles.inset0,
+                          styles.zMinusOne,
+                          triviaOptionStyles[index].barGraph,
+                        ]}
+                      />
+                    )}
+                  <Text
+                    style={[
+                      styles.textMd,
+                      styles.fontBold,
+                      room.state.stage === RoomStage.FEEDBACK
+                        ? [styles.mt2]
+                        : [styles.my4],
+                    ]}
+                  >
                     {item.answer}
                   </Text>
+                  {room.state.stage === RoomStage.FEEDBACK &&
+                    room.state.trivia && (
+                      <Text style={[styles.textMd, styles.italic, styles.mb2]}>
+                        <StatDisplay trivia={room.state.trivia} option={item} />
+                      </Text>
+                    )}
                   {triviaAnswers.has(index) &&
-                    room.state.trivia?.answerType === 'poprank' && (
+                    triviaOptionStyles[index].selectionOrderDisp && (
                       <View
-                        style={[styles.absolute, styles.right0, styles.mr2]}
+                        style={[
+                          styles.absolute,
+                          styles.right0,
+                          styles.mt2,
+                          styles.mr2,
+                        ]}
                       >
-                        <Text>{index + 1}</Text>
+                        <Text
+                          style={triviaOptionStyles[index].selectionOrderDisp}
+                        >
+                          {(triviaAnswers.getIndex(index) ?? 0) + 1}
+                        </Text>
                       </View>
                     )}
-                </>
+                </View>
               )}
             </ChipPicker>
-            {room.state.stage === RoomStage.SELF_TURN && (
+            {shouldShowAdvanceButton(room.state) && (
               <TouchableOpacity
                 style={[
-                  styles.bgGreen,
                   styles.roundedLg,
                   styles.flexGrow,
                   styles.mt8,
                   styles.mx6,
                   styles.p4,
+                  room.state.stage === RoomStage.SELF_TURN
+                    ? styles.bgGreen
+                    : styles.bgBlue900,
                 ]}
-                onPress={() => room.broadcast({ event: 'turn:end' })}
+                onPress={() => {
+                  if (room.state.stage === RoomStage.SELF_TURN) {
+                    room.broadcast({
+                      event: 'turn:feedback',
+                      answered: triviaAnswers.toList(),
+                    });
+                  } else {
+                    room.broadcast({ event: 'turn:end' });
+                  }
+                }}
               >
                 <Text style={[styles.textWhite, styles.textCenter]}>
-                  SUBMIT
+                  {room.state.stage === RoomStage.SELF_TURN
+                    ? 'SUBMIT'
+                    : 'CONTINUE'}
                 </Text>
               </TouchableOpacity>
             )}
             {room.state.stage === RoomStage.SPECTATOR && (
               <Text style={[styles.textCenter, styles.mt8]}>
-                ({room.state.currentPlayerName ?? "Other player's"} turn)
+                ({room.state.players.activeName ?? "Other player's"} turn)
               </Text>
             )}
           </>

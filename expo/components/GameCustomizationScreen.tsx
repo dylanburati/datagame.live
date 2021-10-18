@@ -80,7 +80,7 @@ export function GameCustomizationScreen() {
     <View style={styles.topContainer}>
       <ScrollView contentContainerStyle={styles.allowFab}>
         <View style={[styles.m4]}>
-          <Text style={[styles.textXl, styles.fontWeightBold]}>
+          <Text style={[styles.textXl, styles.fontBold]}>
             {deck?.title ?? ''}
           </Text>
           {deck && (
@@ -149,7 +149,7 @@ export function GameCustomizationScreen() {
           </>
         )}
         <View style={[styles.row, styles.m4, styles.mt8]}>
-          <Text style={[styles.textLg, styles.fontWeightBold]}>Length</Text>
+          <Text style={[styles.textLg, styles.fontBold]}>Length</Text>
         </View>
         <View
           style={[

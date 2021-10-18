@@ -66,11 +66,13 @@ defmodule App.Utils do
     Map.merge(map, %{inserted_at: dt, updated_at: dt})
   end
 
+  @spec maybe_put(map, boolean, any, any) :: map
   def maybe_put(map, false, _key, _val), do: map
   def maybe_put(map, true, key, val) do
     Map.put(map, key, val)
   end
 
+  @spec maybe_put_lazy(map, boolean, any, (() -> any)) :: map
   def maybe_put_lazy(map, false, _key, _supplier), do: map
   def maybe_put_lazy(map, true, key, supplier) do
     Map.put(map, key, supplier.())

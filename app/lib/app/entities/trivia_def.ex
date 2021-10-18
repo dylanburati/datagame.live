@@ -3,12 +3,13 @@ defmodule App.Entities.TriviaDef do
   import Ecto.Changeset
 
   alias App.Entities.Deck
+  alias App.Entities.CardStatDef
   alias App.Entities.CardTagDef
 
   schema "trivia_def" do
     field :question_format, :string
-    field :question_column_name, :string
-    field :option_column_name, :string
+    field :question_source, :string
+    field :option_source, :string
     field :selection_length, :integer
     field :selection_min_true, :integer
     field :selection_max_true, :integer
@@ -16,6 +17,7 @@ defmodule App.Entities.TriviaDef do
     field :answer_type, :string
     belongs_to :deck, Deck  # required
     belongs_to :question_tag_def, CardTagDef
+    belongs_to :option_stat_def, CardStatDef
     belongs_to :option_tag_def, CardTagDef
 
     timestamps()
@@ -24,13 +26,14 @@ defmodule App.Entities.TriviaDef do
   def validations(trivia_def) do
     changeset = trivia_def
     |> validate_required([
-      :question_format, :selection_min_true, :selection_max_true,
+      :question_format, :question_source, :option_source,
+      :selection_min_true, :selection_max_true,
       :selection_length, :selection_compare_type, :answer_type
     ])
-    |> validate_inclusion(:question_column_name, ~w(title tag1))
-    |> validate_inclusion(:option_column_name, ~w(title tag1))
+    |> validate_inclusion(:question_source, ~w(card.title card.tag1 tag))
+    |> validate_inclusion(:option_source, ~w(card.title card.tag1 tag stat))
     |> validate_inclusion(:selection_compare_type, ~w(t eq neq))
-    |> validate_inclusion(:answer_type, ~w(selection poprank))
+    |> validate_inclusion(:answer_type, ~w(selection stat.asc stat.desc))
     |> validate_number(:selection_length, greater_than: 0)
     |> validate_number(
       :selection_max_true,
@@ -45,22 +48,26 @@ defmodule App.Entities.TriviaDef do
       greater_than_or_equal_to: 0
     )
 
-    changeset = case get_field(changeset, :question_column_name) do
-      nil ->
-        case get_field(changeset, :option_column_name) do
-          nil ->
-            changeset
-            |> add_error(
-              :question_column_name,
-              "at least one side of the trivia def must be 'title' or 'tag1'"
-            )
-          _ -> changeset |> assoc_constraint(:question_tag_def)
-        end
+    join_type = {
+      get_field(changeset, :question_source),
+      get_field(changeset, :option_source),
+    }
+    wrong_join_type_msg = "at least one side of the trivia def must be 'title' or 'tag1'"
+    changeset = case join_type do
+      {"card." <> _, "card." <> _} -> changeset
+      {"card." <> _, "tag"} ->
+        changeset |> assoc_constraint(:option_tag_def)
+      {"card." <> _, "stat"} ->
+        changeset |> assoc_constraint(:option_stat_def)
+      {"tag", "card." <> _} ->
+        changeset |> assoc_constraint(:question_tag_def)
+      {"tag", "tag"} ->
+        changeset |> add_error(:question_source, wrong_join_type_msg)
+      {"tag", "stat"} ->
+        changeset |> add_error(:question_source, wrong_join_type_msg)
       _ ->
-        case get_field(changeset, :option_column_name) do
-          nil -> changeset |> assoc_constraint(:option_tag_def)
-          _ -> changeset
-        end
+        # error is already caught with validate_inclusion
+        changeset
     end
 
     changeset

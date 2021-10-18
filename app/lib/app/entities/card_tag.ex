@@ -1,5 +1,5 @@
 defmodule App.Entities.CardTag do
-  use Ecto.Schema
+  use App.SchemaWithUUID
   import Ecto.Changeset
 
   alias App.Entities.Card
@@ -9,7 +9,7 @@ defmodule App.Entities.CardTag do
     field :value, :string
     field :count, :integer
 
-    belongs_to :definition, CardTagDef, foreign_key: :card_tag_def_id
+    belongs_to :definition, CardTagDef, foreign_key: :card_tag_def_id, type: :id
     many_to_many :cards, Card, join_through: "card_card_tag"
   end
 

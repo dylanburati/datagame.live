@@ -31,7 +31,7 @@ export function ExpandingInfoHeader({
   return (
     <>
       <View style={style}>
-        <Text style={[styles.textLg, styles.fontWeightBold]}>{title}</Text>
+        <Text style={[styles.textLg, styles.fontBold]}>{title}</Text>
         <TouchableOpacity
           style={[styles.bgBlue, styles.iconBtn]}
           onPress={onPress}

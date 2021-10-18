@@ -58,8 +58,10 @@ export type TriviaOption = {
   answer: string;
   popularity?: number;
   inSelection: boolean;
-  questionValue: string[];
+  questionValue: string | string[];
 };
+
+export type TriviaStatType = 'number' | 'string' | 'date' | 'dollar_amount';
 
 export type Trivia = {
   question: string;
@@ -67,6 +69,10 @@ export type Trivia = {
   answerType: string;
   minAnswers: number;
   maxAnswers: number;
+  statDef?: {
+    label: string;
+    type: TriviaStatType;
+  };
 };
 
 export type RoomIncomingMessage =
@@ -105,6 +111,12 @@ export type RoomIncomingMessage =
       userId: number;
     }
   | {
+      event: 'turn:feedback';
+      answered: number[];
+      turnId: number;
+      userId: number;
+    }
+  | {
       event: 'presence';
       presence: Presence;
     };
@@ -122,6 +134,10 @@ export type RoomOutgoingMessage =
   | {
       event: 'turn:start';
       fromTurnId: number;
+    }
+  | {
+      event: 'turn:feedback';
+      answered: number[];
     }
   | {
       event: 'turn:end';

@@ -4,6 +4,7 @@ defmodule App.Entities.Deck do
 
   alias App.Entities.Card
   alias App.Entities.CardTagDef
+  alias App.Entities.CardStatDef
   alias App.Entities.DeckTag
 
   schema "deck" do
@@ -25,6 +26,7 @@ defmodule App.Entities.Deck do
 
     has_many :cards, Card
     has_many :card_tag_defs, CardTagDef
+    has_many :card_stat_defs, CardStatDef
     many_to_many :tags, DeckTag, join_through: "deck_deck_tag"
 
     timestamps()

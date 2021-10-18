@@ -47,7 +47,8 @@ defmodule App.MixProject do
       {:plug_cowboy, "~> 2.0"},
       {:bcrypt_elixir, "~> 2.3.0"},
       {:joken, "~> 2.4.0"},
-      {:httpoison, "~> 1.8"}
+      {:httpoison, "~> 1.8"},
+      {:csv, "~> 2.4.1"}
     ]
   end
 
