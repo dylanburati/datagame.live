@@ -130,7 +130,7 @@ defmodule App.Entities.SheetService do
       case nm do
         "Card" -> {:title, val}
         "Disable?" -> {:is_disabled, is_binary(val) and val != ""}
-        "Popularity" -> {:popularity, float_or_nil(val)}
+        "Popularity" -> {:popularity_unscaled, float_or_nil(val)}
         "ID" -> {:unique_id, non_empty_or_nil(val)}
         "Tag1" -> {:tag1, non_empty_or_nil(val)}
         "Notes" -> {:notes, val}
@@ -186,7 +186,7 @@ defmodule App.Entities.SheetService do
     |> Map.put(:enabled_count, Enum.count(cards, &(not &1.is_disabled)))
     |> Map.put(
       :has_popularity_count,
-      Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.popularity))))
+      Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.popularity_unscaled))))
     )
     |> Map.put(
       :has_id_count,
@@ -199,17 +199,25 @@ defmodule App.Entities.SheetService do
     |> Map.put(:tag1_nunique, length(card_user_ids))
 
     pop_series = Enum.filter(cards, &(not &1.is_disabled))
-    |> Enum.map(&(&1.popularity))
+    |> Enum.map(&(&1.popularity_unscaled))
     |> Enum.filter(&is_number/1)
     |> Enum.sort(:desc)
-    deck_stats = case pop_series do
-      [] -> deck_stats
-      _ ->
-        deck_stats
-        |> Map.put(:popularity_min, pop_series |> List.last())
-        |> Map.put(:popularity_median, pop_series |> median_of_sorted_list())
-        |> Map.put(:popularity_max, pop_series |> List.first())
+    pop_min = List.last(pop_series)
+    pop_med = median_of_sorted_list(pop_series)
+    pop_max = List.first(pop_series)
+    pop_range = max(pop_max - pop_min, 1.0e-6)
+    relative_med = (pop_med - pop_min) / pop_range
+    curve_factor = cond do
+      relative_med > 0 and relative_med < 1 -> -1.0 / :math.log2(relative_med)
+      true -> 1.0
     end
+    cards = Enum.map(cards, fn c ->
+      normalized = case c.popularity_unscaled do
+        nil -> 0
+        _ -> (c.popularity_unscaled - pop_min) / pop_range
+      end
+      Map.put(c, :popularity, :math.pow(normalized, curve_factor))
+    end)
 
     nonblank_labels = Enum.filter(labels, fn {_, v} ->
       is_binary(v) and String.length(v)

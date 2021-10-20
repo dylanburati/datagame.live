@@ -1,4 +1,3 @@
-import objectInspect from 'object-inspect';
 import { Presence } from 'phoenix';
 import { ColorValue } from 'react-native';
 import config from '../config';
@@ -170,7 +169,6 @@ async function postJson(url: string, body: any) {
     /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
   ) {
     let content = await resp.json();
-    console.log(objectInspect(content));
     if (typeof content === 'object' && content?.error) {
       content = content.error;
     }

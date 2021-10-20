@@ -17,9 +17,6 @@ defmodule App.Entities.Deck do
     field :has_id_count, :integer
     field :has_tag1_count, :integer
     field :tag1_nunique, :integer
-    field :popularity_min, :float
-    field :popularity_median, :float
-    field :popularity_max, :float
     field :image_url, :string
     field :image_dominant_color, :string
     field :category_counts, {:array, :map}, virtual: true

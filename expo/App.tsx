@@ -255,7 +255,8 @@ export function HomeScreen() {
                   styles.textMd,
                   styles.roundedLg,
                 ]}
-                autoCapitalize="characters"
+                autoCapitalize="none"
+                textContentType="nickname"
                 placeholder="Enter a username"
                 value={draftRoomNickname.text}
                 onChangeText={(text) =>
@@ -296,11 +297,11 @@ export function HomeScreen() {
                 value={draftRoomId}
                 onChangeText={setDraftRoomId}
                 returnKeyType="go"
-                onSubmitEditing={() => goToRoom(draftRoomId)}
+                onSubmitEditing={() => goToRoom(draftRoomId.toUpperCase())}
               />
               <TouchableOpacity
                 style={[styles.bgBlue, styles.roundedLg, styles.p4]}
-                onPress={() => goToRoom(draftRoomId)}
+                onPress={() => goToRoom(draftRoomId.toUpperCase())}
               >
                 <Text style={[styles.textWhite, styles.textCenter]}>JOIN</Text>
               </TouchableOpacity>

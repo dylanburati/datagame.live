@@ -9,7 +9,9 @@ defmodule App.Entities.TriviaDef do
   schema "trivia_def" do
     field :question_format, :string
     field :question_source, :string
+    field :question_difficulty, :float
     field :option_source, :string
+    field :option_difficulty, :float
     field :selection_length, :integer
     field :selection_min_true, :integer
     field :selection_max_true, :integer

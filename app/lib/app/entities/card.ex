@@ -1,6 +1,5 @@
 defmodule App.Entities.Card do
   use App.SchemaWithUUID
-  import Ecto.Changeset
 
   alias App.Entities.Deck
   alias App.Entities.CardTag
@@ -14,6 +13,7 @@ defmodule App.Entities.Card do
     # {deck, unique_id} is unique to allow per-card settings to stay across deck updates
     # cards without a unique_id are always deleted when the deck is updated
     field :unique_id, :string
+    field :popularity_unscaled, :float
 
     embeds_one :stat_box, CardStatBox, on_replace: :delete, primary_key: false do
       field :stat1, :string
@@ -47,12 +47,5 @@ defmodule App.Entities.Card do
 
   def all_stat_keys() do
     [:stat1, :stat2, :stat3]
-  end
-
-  @doc false
-  def changeset(card, attrs) do
-    card
-    |> cast(attrs, [:title, :is_disabled, :popularity, :unique_id, :tag1, :notes])
-    |> validate_required([:title, :is_disabled])
   end
 end

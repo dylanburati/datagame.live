@@ -8,17 +8,11 @@ defmodule App.Entities.GameService do
   alias App.Entities.DeckService
 
   defp full_score(deck, difficulty, category_boosts) do
-    %{
-      popularity_min: pmin,
-      popularity_max: pmax,
-      category_counts: cat_count_lst,
-      enabled_count: enabled_count
-    } = deck
+    %{category_counts: cat_count_lst, enabled_count: enabled_count} = deck
     cat_counts = for %{name: name, count: count} <- cat_count_lst, into: %{}, do: {name, count}
-    prange = pmax - pmin
 
     # positive difficulty means score(popularity: 0) > score(popularity: 1)
-    pop_normalized = dynamic([c], fragment("exp(?)", ^difficulty * (c.popularity - ^pmin) / ^prange))
+    pop_normalized = dynamic([c], fragment("exp(?)", ^difficulty * c.popularity))
 
     weight_col = Enum.filter(category_boosts, fn {cat, _} -> Map.has_key?(cat_counts, cat) end)
     |> Enum.map(fn {cat, level} ->

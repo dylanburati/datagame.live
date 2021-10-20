@@ -7,7 +7,7 @@ import React, {
   useReducer,
   useState,
 } from 'react';
-import { Comparator } from 'lodash';
+import type { Comparator } from 'lodash';
 import { Presence } from 'phoenix';
 import { SocketContext } from '../components/SocketProvider';
 
