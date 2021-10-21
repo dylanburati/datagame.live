@@ -324,9 +324,11 @@ export default function App() {
     });
   }, []);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
+  // TODO: switch to jsc-intl variant so that react-intl works on all locales
+  const locale = Platform.OS === 'android' ? 'en-US' : locales[0];
 
   return (
-    <IntlProvider locale={locales[0]}>
+    <IntlProvider locale={locale}>
       <SocketProvider wsUrl={`${config.baseUrl.replace(/^http/, 'ws')}/socket`}>
         <NavigationContainer>
           <Stack.Navigator initialRouteName="Home">
