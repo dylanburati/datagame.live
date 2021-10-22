@@ -8,7 +8,7 @@ defmodule AppWeb.RoomController do
       case RoomService.create(host_nickname) do
         {:ok, %{room_user: room_user, room: room}} ->
           render(conn, "room.json", %{room_user: room_user, room: room})
-        {:error, :room_user, %{errors: errors}} ->
+        {:error, :room_user, %{errors: errors}, _} ->
           error_out = case Keyword.get(errors, :name) do
             {msg, _} ->
               "Host nickname " <> msg
