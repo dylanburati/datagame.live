@@ -74,6 +74,11 @@ export type Trivia = {
   };
 };
 
+export type RoomScoreEntry = {
+  userId: number;
+  score: number;
+};
+
 export type RoomIncomingMessage =
   | {
       event: 'join';
@@ -97,6 +102,8 @@ export type RoomIncomingMessage =
       event: 'round:start';
       playerOrder: number[];
       turnId: number;
+      lastTurnUserId?: number;
+      scores?: RoomScoreEntry[];
       pointTarget: number;
     }
   | {
@@ -108,6 +115,7 @@ export type RoomIncomingMessage =
   | {
       event: 'turn:end';
       userId: number;
+      scoreChanges: RoomScoreEntry[];
     }
   | {
       event: 'turn:feedback';
@@ -140,6 +148,7 @@ export type RoomOutgoingMessage =
     }
   | {
       event: 'turn:end';
+      scoreChanges: RoomScoreEntry[];
     };
 
 async function getJson(url: string) {

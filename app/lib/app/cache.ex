@@ -40,6 +40,12 @@ defmodule App.Cache do
     GenServer.call(__MODULE__, {:insert, key, value})
   end
 
+  @type t_cache_val :: any
+  @spec update(any, t_cache_val, ((t_cache_val) -> t_cache_val)) :: t_cache_val
+  def update(key, default_val, updater) do
+    GenServer.call(__MODULE__, {:update, key, default_val, updater})
+  end
+
   @impl true
   def init(_) do
     :ets.new(:app_cache, [:set, :private, :named_table])
@@ -102,5 +108,19 @@ defmodule App.Cache do
   def handle_call({:insert, key, value}, _from, state) do
     true = :ets.insert(:app_cache, {key, value})
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:update, key, default_val, updater}, _from, state) do
+    result = case :ets.lookup(:app_cache, key) do
+      [{^key, value}] ->
+        next_val = updater.(value)
+        :ets.insert(:app_cache, {key, next_val})
+        next_val
+      _ ->
+        :ets.insert(:app_cache, {key, default_val})
+        default_val
+    end
+    {:reply, result, state}
   end
 end

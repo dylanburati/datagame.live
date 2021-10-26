@@ -48,6 +48,9 @@ export const styles = StyleSheet.create({
   itemsStart: {
     alignItems: 'flex-start',
   },
+  itemsBaseline: {
+    alignItems: 'baseline',
+  },
   justifyStart: {
     justifyContent: 'flex-start',
   },
@@ -86,8 +89,14 @@ export const styles = StyleSheet.create({
   bgGray300: {
     backgroundColor: '#D4D4D8',
   },
+  bgGray350: {
+    backgroundColor: '#BBBBC2',
+  },
   bgBlue: {
     backgroundColor: '#1D4ED8',
+  },
+  bgBlue300: {
+    backgroundColor: '#95B5FF',
   },
   bgBlue900: {
     backgroundColor: '#1E3A8A',
@@ -131,8 +140,8 @@ export const styles = StyleSheet.create({
   p4: {
     padding: 16,
   },
-  pl2: {
-    paddingLeft: 8,
+  pt2: {
+    paddingTop: 8,
   },
   pr4: {
     paddingRight: 16,
@@ -140,8 +149,14 @@ export const styles = StyleSheet.create({
   pb4: {
     paddingBottom: 16,
   },
+  pb8: {
+    paddingBottom: 32,
+  },
   pb16: {
     paddingBottom: 64,
+  },
+  pl2: {
+    paddingLeft: 8,
   },
   py2: {
     paddingTop: 8,
@@ -178,9 +193,6 @@ export const styles = StyleSheet.create({
   mr2: {
     marginRight: 8,
   },
-  ml4: {
-    marginLeft: 16,
-  },
   mb1: {
     marginBottom: 4,
   },
@@ -195,6 +207,12 @@ export const styles = StyleSheet.create({
   },
   mb16: {
     marginBottom: 64,
+  },
+  ml2: {
+    marginLeft: 8,
+  },
+  ml4: {
+    marginLeft: 16,
   },
   mx2: {
     marginLeft: 8,
@@ -279,6 +297,12 @@ export const styles = StyleSheet.create({
   roundedFull: {
     borderRadius: 9999,
   },
+  roundedTopLeftXl: {
+    borderTopLeftRadius: 20,
+  },
+  roundedTopRightXl: {
+    borderTopRightRadius: 20,
+  },
   border: {
     borderWidth: 1,
   },
@@ -308,6 +332,7 @@ export const styles = StyleSheet.create({
     width: styleConfig.topMaxWidth,
     marginLeft: 'auto',
     marginRight: 'auto',
+    overflow: 'hidden',
   },
   container: {
     flex: 1,
@@ -337,6 +362,9 @@ export const styles = StyleSheet.create({
     height: 24,
     padding: 4,
   },
+  swipeablePanel: {
+    maxWidth: styleConfig.topMaxWidth,
+  },
   allowFab: {
     paddingBottom: 48,
   },
@@ -346,5 +374,14 @@ export const styles = StyleSheet.create({
   },
   zMinusOne: {
     zIndex: -1,
+  },
+  zMinusTwo: {
+    zIndex: -2,
+  },
+  leadingMd: {
+    lineHeight: 16,
+  },
+  leadingLg: {
+    lineHeight: 20,
   },
 });

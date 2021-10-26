@@ -295,7 +295,7 @@ export function HomeScreen() {
                 autoCapitalize="characters"
                 placeholder="Enter code"
                 value={draftRoomId}
-                onChangeText={setDraftRoomId}
+                onChangeText={(text) => setDraftRoomId(text.replace(/\s/g, ''))}
                 returnKeyType="go"
                 onSubmitEditing={() => goToRoom(draftRoomId.toUpperCase())}
               />

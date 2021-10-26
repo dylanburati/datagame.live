@@ -6,7 +6,7 @@ config :app, App.Repo,
   password: "datagamedev",
   database: "datagame",
   hostname: "localhost",
-  port: 15432,
+  port: 15433,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10,
   log: false

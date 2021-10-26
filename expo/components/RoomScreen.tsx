@@ -1,10 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import {
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+  ViewProps,
+} from 'react-native';
+import { FormattedDate, FormattedNumber } from 'react-intl';
+import { SwipeablePanel } from 'rn-swipeable-panel';
+import { SwipeUpHandle } from './SwipeUpHandle';
 import { RoomCreatorControls } from './RoomCreatorControls';
 import { ChipPicker } from './ChipPicker';
 import { RoomLobbyControls } from './RoomLobbyControls';
+import { GridLayout } from './GridLayout';
 import { useRouteTyped } from '../helpers/navigation';
 import {
+  allCorrect,
+  canAnswerTrivia,
   getOptionStyles,
   RoomPlayerList,
   RoomStage,
@@ -22,8 +35,7 @@ import {
   TriviaOption,
 } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
-import { styles } from '../styles';
-import { FormattedDate, FormattedNumber } from 'react-intl';
+import { styleConfig, styles } from '../styles';
 
 type StatDisplayProps = {
   trivia: Trivia;
@@ -51,6 +63,47 @@ function StatDisplay({ trivia, option }: StatDisplayProps) {
   const commaList =
     array.slice(0, 2).join(', ') + (array.length > 2 ? '...' : '');
   return <>{commaList}</>;
+}
+
+type TriviaContainerProps = {
+  state: RoomState;
+  style: ViewProps['style'];
+};
+
+function TriviaContainer({
+  state,
+  style,
+  children,
+}: React.PropsWithChildren<TriviaContainerProps>) {
+  const selfTurn = state.players.activeId === state.selfId;
+  const whoseTurn = selfTurn ? 'You' : `${state.players.activeName ?? '???'}`;
+
+  return (
+    <View style={style}>
+      <View style={[styles.row, styles.itemsBaseline, styles.justifyCenter]}>
+        <Text style={[styles.textLg]}>{whoseTurn}</Text>
+        <Text style={[styles.ml2]}>
+          (P{state.players.startedPlayerIndex + 1})
+        </Text>
+      </View>
+      {selfTurn ? (
+        <>{children}</>
+      ) : (
+        <View
+          style={[
+            styles.m4,
+            styles.pt2,
+            styles.pb8,
+            styles.zMinusTwo,
+            styles.bgPaperDarker,
+            styles.roundedLg,
+          ]}
+        >
+          {children}
+        </View>
+      )}
+    </View>
+  );
 }
 
 function roomReducer(state: RoomState, message: RoomIncomingMessage) {
@@ -96,7 +149,10 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
     return {
       ...state,
       stage: RoomStage.UNKNOWN_TURN,
-      players: state.players.setOrder(message.playerOrder),
+      players: state.players
+        .setOrder(message.playerOrder)
+        .endTurn(message.lastTurnUserId ?? -1)
+        .updateScores(message.scores ?? []),
       turnId: message.turnId,
     };
   }
@@ -129,7 +185,9 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
     return {
       ...state,
       stage: RoomStage.UNKNOWN_TURN,
-      players: state.players.endTurn(message.userId),
+      players: state.players
+        .endTurn(message.userId)
+        .updateScores(message.scoreChanges),
     };
   }
 
@@ -145,6 +203,7 @@ export function RoomScreen() {
   const [triviaAnswers, setTriviaAnswers] = useStateNoCmp(
     new OrderedSet<number>()
   );
+  const [isPanelActive, setPanelActive] = useState(false);
 
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
@@ -237,9 +296,21 @@ export function RoomScreen() {
     room.state.selfId != null && room.state.selfId === room.state.creatorId;
   const triviaOptionStyles = getOptionStyles(room.state, triviaAnswers);
 
+  const doneAnswering =
+    room.state.trivia && triviaAnswers.size >= room.state.trivia.minAnswers;
+  const advanceBtnBackground =
+    room.state.stage === RoomStage.FEEDBACK
+      ? styles.bgBlue900
+      : doneAnswering
+      ? styles.bgGreen
+      : styles.bgGray300;
+  const advanceBtnTextStyle =
+    room.state.stage === RoomStage.FEEDBACK || doneAnswering
+      ? styles.textWhite
+      : styles.textPenFaint;
   return (
-    <View style={styles.topContainer}>
-      <ScrollView keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={styles.topContainer}>
+      <ScrollView style={styles.flex1} keyboardShouldPersistTaps="handled">
         {room.state.stage === RoomStage.LOBBY && (
           <RoomLobbyControls
             roomState={room.state}
@@ -258,7 +329,7 @@ export function RoomScreen() {
           </Text>
         )}
         {shouldShowTrivia(room.state.stage) && room.state.trivia && (
-          <>
+          <TriviaContainer state={room.state} style={[styles.mt4]}>
             <Text style={[styles.mt4, styles.textCenter]}>
               {room.state.trivia.question}
             </Text>
@@ -271,6 +342,7 @@ export function RoomScreen() {
                 styles.itemsStretch,
               ]}
               data={room.state.trivia.options}
+              disabled={!canAnswerTrivia(room.state.stage)}
               chipStyle={({ index }) => [
                 styles.p0,
                 styles.roundedLg,
@@ -347,36 +419,95 @@ export function RoomScreen() {
                   styles.mt8,
                   styles.mx6,
                   styles.p4,
-                  room.state.stage === RoomStage.SELF_TURN
-                    ? styles.bgGreen
-                    : styles.bgBlue900,
+                  advanceBtnBackground,
                 ]}
+                disabled={!doneAnswering}
                 onPress={() => {
+                  if (room.state.selfId === undefined || !doneAnswering) {
+                    return;
+                  }
                   if (room.state.stage === RoomStage.SELF_TURN) {
                     room.broadcast({
                       event: 'turn:feedback',
                       answered: triviaAnswers.toList(),
                     });
                   } else {
-                    room.broadcast({ event: 'turn:end' });
+                    room.broadcast({
+                      event: 'turn:end',
+                      scoreChanges: room.state.players.scoresWithUpdates([
+                        {
+                          userId: room.state.selfId,
+                          score: allCorrect(room.state, triviaAnswers) ? 1 : 0,
+                        },
+                      ]),
+                    });
                   }
                 }}
               >
-                <Text style={[styles.textWhite, styles.textCenter]}>
+                <Text style={[styles.textCenter, advanceBtnTextStyle]}>
                   {room.state.stage === RoomStage.SELF_TURN
                     ? 'SUBMIT'
                     : 'CONTINUE'}
                 </Text>
               </TouchableOpacity>
             )}
-            {room.state.stage === RoomStage.SPECTATOR && (
-              <Text style={[styles.textCenter, styles.mt8]}>
-                ({room.state.players.activeName ?? "Other player's"} turn)
-              </Text>
-            )}
-          </>
+          </TriviaContainer>
         )}
       </ScrollView>
-    </View>
+      {!isPanelActive && shouldShowTrivia(room.state.stage) && (
+        <SwipeUpHandle onSwipe={() => setPanelActive(true)}>
+          <TouchableOpacity
+            style={[
+              styles.row,
+              styles.centerAll,
+              styles.bgGray300,
+              styles.roundedTopLeftXl,
+              styles.roundedTopRightXl,
+            ]}
+            activeOpacity={1}
+            onLongPress={() => setPanelActive(true)}
+          >
+            <Text style={styles.p4}>▲ leaderboard ▲</Text>
+          </TouchableOpacity>
+        </SwipeUpHandle>
+      )}
+      {shouldShowTrivia(room.state.stage) && (
+        <SwipeablePanel
+          fullWidth={true}
+          onlySmall={true}
+          isActive={isPanelActive}
+          showCloseButton={true}
+          style={[styles.swipeablePanel]}
+          onClose={() => setPanelActive(false)}
+        >
+          <Text
+            style={[styles.textMd, styles.textCenter, styles.mt2, styles.mx6]}
+          >
+            LEADERBOARD
+          </Text>
+          <GridLayout
+            gridMaxWidth={styleConfig.topMaxWidth}
+            horizontalInset={0}
+            minColumnWidth={1}
+            maxColumnCount={1}
+            style={styles.mt4}
+            data={room.state.players.array}
+          >
+            {({ item }) => (
+              <View
+                key={item.id}
+                style={[styles.row, styles.flex1, styles.mt2, styles.mx6]}
+              >
+                <Text>
+                  {item.name}
+                  {item.isPresent ? '' : ' (offline)'}
+                </Text>
+                <Text>{room.state.players.getScore(item.id) ?? '?'}</Text>
+              </View>
+            )}
+          </GridLayout>
+        </SwipeablePanel>
+      )}
+    </SafeAreaView>
   );
 }

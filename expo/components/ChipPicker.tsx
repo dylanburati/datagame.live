@@ -10,6 +10,7 @@ export type ChipPickerProvidedProps<T> = {
 export type ChipPickerProps<T> = {
   style?: ViewProps['style'];
   data: T[];
+  disabled?: boolean;
   keySelector?: (data: T) => string;
   onPress: (props: ChipPickerProvidedProps<T>) => void;
   chipStyle?: (props: ChipPickerProvidedProps<T>) => ViewProps['style'];
@@ -19,6 +20,7 @@ export type ChipPickerProps<T> = {
 export function ChipPicker<T>({
   style,
   data,
+  disabled = false,
   onPress,
   chipStyle,
   keySelector,
@@ -42,6 +44,7 @@ export function ChipPicker<T>({
               styles.row,
               styleModifier,
             ]}
+            disabled={disabled}
             key={key}
             onPress={() => onPress({ item, index })}
           >
