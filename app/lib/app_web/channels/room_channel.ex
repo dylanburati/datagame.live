@@ -144,7 +144,8 @@ defmodule AppWeb.RoomChannel do
   @impl true
   def handle_in("turn:start", payload, socket) do
     %{room_id: room_id, user_id: user_id} = socket.assigns
-    k_turn_counter = cache_key(room_id, "turn_counter")
+    [k_turn_counter, k_curr_player, k_turn_start] = cache_keys(room_id,
+      ["turn_counter", "curr_player", "turn_start"])
     with %{"fromTurnId" => from_turn} <- payload,
          next_turn = from_turn + 1,
          {:ok, ^next_turn} <- App.Cache.try_incr_atomic(k_turn_counter, from_turn) do
@@ -155,6 +156,8 @@ defmodule AppWeb.RoomChannel do
           "turnId" => next_turn,
           "trivia" => trivia_out,
         }
+        App.Cache.insert(k_curr_player, user_id)
+        App.Cache.insert(k_turn_start, turn_info)
         broadcast(socket, "turn:start", turn_info)
         {:reply, {:ok, %{}}, socket}
       else
@@ -194,6 +197,26 @@ defmodule AppWeb.RoomChannel do
     turn_id = App.Cache.get_atomic(k_turn_counter, 0)
     broadcast(socket, "turn:feedback",
       Map.merge(payload, %{"userId" => user_id, "turnId" => turn_id}))
+    {:reply, {:ok, %{}}, socket}
+  end
+
+  def handle_in("replay:turn:start", _payload, socket) do
+    %{room_id: room_id} = socket.assigns
+    [k_curr_player, k_turn_start] = cache_keys(room_id, ["curr_player", "turn_start"])
+    is_stale = case App.Cache.lookup(k_curr_player) do
+      nil -> true
+      uid ->
+        presence = Presence.get_by_key(socket, uid)
+        if is_map(presence) do
+          not Map.has_key?(presence, :metas)
+        else
+          true
+        end
+    end
+    unless is_stale do
+      turn_info = App.Cache.lookup(k_turn_start)
+      if not is_nil(turn_info), do: push(socket, "turn:start", turn_info)
+    end
     {:reply, {:ok, %{}}, socket}
   end
 end

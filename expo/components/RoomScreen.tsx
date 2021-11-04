@@ -236,12 +236,17 @@ export function RoomScreen() {
     if (turnsToWait < 0) {
       return;
     }
+    let waitMs = turnsToWait * 10000;
+    if (!room.state.trivia) {
+      room.broadcast({ event: 'replay:turn:start' });
+      waitMs = Math.max(waitMs, 2000);
+    }
     const timeout = setTimeout(() => {
       room.broadcast(
         { event: 'turn:start', fromTurnId: room.state.turnId },
         console.error
       );
-    }, turnsToWait * 10000);
+    }, waitMs);
 
     return () => {
       clearTimeout(timeout);
@@ -483,7 +488,7 @@ export function RoomScreen() {
           <Text
             style={[styles.textMd, styles.textCenter, styles.mt2, styles.mx6]}
           >
-            LEADERBOARD
+            {roomId}
           </Text>
           <GridLayout
             gridMaxWidth={styleConfig.topMaxWidth}

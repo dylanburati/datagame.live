@@ -149,7 +149,8 @@ export type RoomOutgoingMessage =
   | {
       event: 'turn:end';
       scoreChanges: RoomScoreEntry[];
-    };
+    }
+  | { event: 'replay:turn:start' };
 
 async function getJson(url: string) {
   const resp = await fetch(url);
