@@ -5,7 +5,6 @@
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
-    "entryPoint": "./index.js",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
