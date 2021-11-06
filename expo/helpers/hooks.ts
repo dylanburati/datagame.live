@@ -109,8 +109,12 @@ export function useChannel<
     };
   }, [broadcast]);
 
-  const paramObj =
+  const userParams =
     typeof joinParams === 'function' ? joinParams(state) : joinParams;
+  const paramObj = {
+    ...userParams,
+    version: 1,
+  };
   useEffect(() => {
     if (disable) {
       return;

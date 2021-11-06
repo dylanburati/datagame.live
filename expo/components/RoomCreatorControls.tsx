@@ -5,7 +5,7 @@ import { OrderedSet } from '../helpers/data';
 import { useStateNoCmp } from '../helpers/hooks';
 import { RoomState } from '../helpers/nplayerLogic';
 import { styles } from '../styles';
-import { indexToEmoji } from '../helpers/iconography';
+import { indexEncircled } from '../helpers/iconography';
 
 export type RoomCreatorControlsProps = {
   roomState: RoomState;
@@ -61,7 +61,7 @@ export function RoomCreatorControls({
       >
         {({ item }) => (
           <>
-            {indexToEmoji(draftOrder.getIndex(item.id), 24)}
+            {indexEncircled(draftOrder.getIndex(item.id), 24)}
             <Text style={[styles.textMd, styles.fontBold]}>{item.name}</Text>
           </>
         )}

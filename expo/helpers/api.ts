@@ -111,6 +111,7 @@ export type RoomIncomingMessage =
       userId: number;
       turnId: number;
       trivia: Trivia;
+      participantId?: number;
     }
   | {
       event: 'turn:end';
@@ -119,9 +120,11 @@ export type RoomIncomingMessage =
     }
   | {
       event: 'turn:feedback';
-      answered: number[];
       turnId: number;
-      userId: number;
+      answers: {
+        userId: number;
+        answered: number[];
+      }[];
     }
   | {
       event: 'presence';
@@ -215,5 +218,6 @@ export async function createGame(
 export async function createRoom(hostNickname: string) {
   return (await postJson(`${config.baseUrl}/api/room`, {
     hostNickname,
+    version: 1,
   })) as RoomAndSelf;
 }

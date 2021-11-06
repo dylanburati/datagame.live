@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Image,
   SafeAreaView,
   ScrollView,
   Text,
@@ -18,34 +19,81 @@ import { useRouteTyped } from '../helpers/navigation';
 import {
   allCorrect,
   canAnswerTrivia,
+  feedbackFor,
   getOptionStyles,
+  isFeedbackStage,
   RoomPlayerList,
   RoomStage,
   RoomState,
   shouldShowAdvanceButton,
   shouldShowTrivia,
   statToNumber,
+  triviaRequiredAnswers,
 } from '../helpers/nplayerLogic';
 import { useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
 import {
   RoomIncomingMessage,
   RoomOutgoingMessage,
-  Trivia,
   TriviaOption,
 } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
+import { argsort } from '../helpers/math';
+import { kissMarryShoot, medals } from '../helpers/iconography';
 import { styleConfig, styles } from '../styles';
 
 type StatDisplayProps = {
-  trivia: Trivia;
+  roomState: RoomState;
   option: TriviaOption;
+  answers: OrderedSet<number>;
+  index: number;
 };
 
-function StatDisplay({ trivia, option }: StatDisplayProps) {
-  const { statDef } = trivia;
+function StatDisplay({ roomState, option, answers, index }: StatDisplayProps) {
+  const { trivia } = roomState;
+  if (!trivia) {
+    return null;
+  }
+  const { statDef, answerType } = trivia;
   const numValue = statToNumber(statDef, option.questionValue);
-  if (statDef && !Number.isNaN(numValue)) {
+  if (answerType === 'matchrank') {
+    const otherId =
+      roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
+        ? roomState.players.activeId
+        : roomState.participantId;
+    const recvArray = roomState.receivedAnswers.get(otherId ?? -1);
+    if (!recvArray) {
+      return null;
+    }
+    const order = argsort(recvArray, (a, b) => a - b);
+    const emojiArr = /\bkill\b/i.test(trivia.question)
+      ? kissMarryShoot()
+      : medals();
+    const selfSource = answers.getIndex(index) ?? -1;
+    const otherSource = order[index] ?? -1;
+    const isMatch = order[index] === (answers.getIndex(index) ?? -1);
+    return (
+      <>
+        {selfSource >= 0 && selfSource < emojiArr.length && (
+          <Image
+            style={[styles.square20Px, styles.raiseMinusOne]}
+            source={emojiArr[selfSource]}
+          />
+        )}
+        {!isMatch && (
+          <>
+            {' // '}
+            {otherSource >= 0 && otherSource < emojiArr.length && (
+              <Image
+                style={[styles.square20Px, styles.raiseMinusOne]}
+                source={emojiArr[otherSource]}
+              />
+            )}
+          </>
+        )}
+      </>
+    );
+  } else if (statDef && !Number.isNaN(numValue)) {
     switch (statDef.type) {
       case 'number':
         return <FormattedNumber value={numValue} />;
@@ -76,17 +124,24 @@ function TriviaContainer({
   children,
 }: React.PropsWithChildren<TriviaContainerProps>) {
   const selfTurn = state.players.activeId === state.selfId;
-  const whoseTurn = selfTurn ? 'You' : `${state.players.activeName ?? '???'}`;
+  let whoseTurn = selfTurn ? 'You' : `${state.players.activeName ?? '???'}`;
+  let showLarge = selfTurn || state.participantId === state.selfId;
+  if (state.participantId !== undefined) {
+    const participant = state.players.array.find(
+      (item) => item.id === state.participantId
+    );
+    const p2 =
+      state.participantId === state.selfId ? 'you' : participant?.name ?? '???';
+    whoseTurn += ` + ${p2}`;
+  }
 
   return (
     <View style={style}>
       <View style={[styles.row, styles.itemsBaseline, styles.justifyCenter]}>
-        <Text style={[styles.textLg]}>{whoseTurn}</Text>
-        <Text style={[styles.ml2]}>
-          (P{state.players.startedPlayerIndex + 1})
-        </Text>
+        <Text>(P{state.players.startedPlayerIndex + 1})</Text>
+        <Text style={[styles.ml2, styles.textLg]}>{whoseTurn}</Text>
       </View>
-      {selfTurn ? (
+      {showLarge ? (
         <>{children}</>
       ) : (
         <View
@@ -157,29 +212,33 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
     };
   }
   if (message.event === 'turn:start') {
+    state.receivedAnswers.clear();
     return {
       ...state,
       stage:
         message.userId === state.selfId
           ? RoomStage.SELF_TURN
+          : message.participantId === state.selfId
+          ? RoomStage.PARTICIPANT
           : RoomStage.SPECTATOR,
       trivia: message.trivia,
       turnId: message.turnId,
+      participantId: message.participantId,
       players: state.players.startTurn(message.userId),
-      receivedAnswers: undefined,
     };
   }
   if (message.event === 'turn:feedback') {
-    return {
-      ...state,
-      stage: RoomStage.FEEDBACK,
-      // TODO send most recent turn start in after_join
-      // players: state.players.startTurn(message.userId),
-      receivedAnswers:
-        message.turnId === state.turnId
-          ? message.answered
-          : state.receivedAnswers,
-    };
+    message.answers.forEach((obj) => {
+      state.receivedAnswers.set(obj.userId, obj.answered);
+    });
+    if (state.receivedAnswers.size >= triviaRequiredAnswers(state)) {
+      return {
+        ...state,
+        stage: feedbackFor(state.stage),
+      };
+    } else {
+      return state;
+    }
   }
   if (message.event === 'turn:end') {
     return {
@@ -222,6 +281,7 @@ export function RoomScreen() {
       stage: RoomStage.LOBBY,
       players: new RoomPlayerList([]),
       turnId: -1,
+      receivedAnswers: new Map(),
     },
   });
 
@@ -237,7 +297,7 @@ export function RoomScreen() {
       return;
     }
     let waitMs = turnsToWait * 10000;
-    if (!room.state.trivia) {
+    if (!room.state.trivia && room.state.turnId > 0) {
       room.broadcast({ event: 'replay:turn:start' });
       waitMs = Math.max(waitMs, 2000);
     }
@@ -271,16 +331,21 @@ export function RoomScreen() {
 
   useEffect(() => {
     if (room.state.trivia) {
-      if (room.state.receivedAnswers) {
-        setTriviaAnswers(
-          triviaAnswers.clear().extend(room.state.receivedAnswers)
+      if (room.state.stage === RoomStage.FEEDBACK_SPECTATOR) {
+        const feedbackAns = room.state.receivedAnswers.get(
+          room.state.players.activeId ?? -1
         );
-      } else {
+        if (feedbackAns) {
+          setTriviaAnswers(triviaAnswers.clear().extend(feedbackAns));
+        }
+      } else if (!isFeedbackStage(room.state.stage)) {
         setTriviaAnswers(triviaAnswers.clear());
       }
     }
   }, [
+    room.state.players,
     room.state.receivedAnswers,
+    room.state.stage,
     room.state.trivia,
     setTriviaAnswers,
     triviaAnswers,
@@ -299,20 +364,20 @@ export function RoomScreen() {
 
   const isCreator =
     room.state.selfId != null && room.state.selfId === room.state.creatorId;
-  const triviaOptionStyles = getOptionStyles(room.state, triviaAnswers);
 
   const doneAnswering =
     room.state.trivia && triviaAnswers.size >= room.state.trivia.minAnswers;
   const advanceBtnBackground =
-    room.state.stage === RoomStage.FEEDBACK
+    room.state.stage === RoomStage.FEEDBACK_SELF_TURN
       ? styles.bgBlue900
       : doneAnswering
       ? styles.bgGreen
       : styles.bgGray300;
   const advanceBtnTextStyle =
-    room.state.stage === RoomStage.FEEDBACK || doneAnswering
+    room.state.stage === RoomStage.FEEDBACK_SELF_TURN || doneAnswering
       ? styles.textWhite
       : styles.textPenFaint;
+  const triviaOptionStyles = getOptionStyles(room.state, triviaAnswers);
   return (
     <SafeAreaView style={styles.topContainer}>
       <ScrollView style={styles.flex1} keyboardShouldPersistTaps="handled">
@@ -355,7 +420,7 @@ export function RoomScreen() {
                 triviaOptionStyles[index].chip,
               ]}
               onPress={({ index }) => {
-                if (room.state.stage === RoomStage.SELF_TURN) {
+                if (canAnswerTrivia(room.state.stage)) {
                   setTriviaAnswers(
                     triviaAnswers
                       .toggle(index)
@@ -369,7 +434,7 @@ export function RoomScreen() {
                   style={[styles.py2, styles.pl2, styles.pr4, styles.flex1]}
                 >
                   {triviaOptionStyles[index].barGraph &&
-                    room.state.stage === RoomStage.FEEDBACK && (
+                    isFeedbackStage(room.state.stage) && (
                       <View
                         style={[
                           styles.absolute,
@@ -383,19 +448,23 @@ export function RoomScreen() {
                     style={[
                       styles.textMd,
                       styles.fontBold,
-                      room.state.stage === RoomStage.FEEDBACK
+                      isFeedbackStage(room.state.stage)
                         ? [styles.mt2]
                         : [styles.my4],
                     ]}
                   >
                     {item.answer}
                   </Text>
-                  {room.state.stage === RoomStage.FEEDBACK &&
-                    room.state.trivia && (
-                      <Text style={[styles.textMd, styles.italic, styles.mb2]}>
-                        <StatDisplay trivia={room.state.trivia} option={item} />
-                      </Text>
-                    )}
+                  {isFeedbackStage(room.state.stage) && room.state.trivia && (
+                    <Text style={[styles.textMd, styles.italic, styles.mb2]}>
+                      <StatDisplay
+                        roomState={room.state}
+                        option={item}
+                        answers={triviaAnswers}
+                        index={index}
+                      />
+                    </Text>
+                  )}
                   {triviaAnswers.has(index) &&
                     triviaOptionStyles[index].selectionOrderDisp && (
                       <View
@@ -426,33 +495,36 @@ export function RoomScreen() {
                   styles.p4,
                   advanceBtnBackground,
                 ]}
-                disabled={!doneAnswering}
+                disabled={
+                  !doneAnswering &&
+                  room.state.stage !== RoomStage.FEEDBACK_SELF_TURN
+                }
                 onPress={() => {
                   if (room.state.selfId === undefined || !doneAnswering) {
                     return;
                   }
-                  if (room.state.stage === RoomStage.SELF_TURN) {
+                  if (canAnswerTrivia(room.state.stage)) {
                     room.broadcast({
                       event: 'turn:feedback',
                       answered: triviaAnswers.toList(),
                     });
                   } else {
+                    const score = allCorrect(room.state, triviaAnswers) ? 1 : 0;
+                    const userIds = [room.state.selfId];
+                    if (room.state.participantId !== undefined) {
+                      userIds.push(room.state.participantId);
+                    }
                     room.broadcast({
                       event: 'turn:end',
-                      scoreChanges: room.state.players.scoresWithUpdates([
-                        {
-                          userId: room.state.selfId,
-                          score: allCorrect(room.state, triviaAnswers) ? 1 : 0,
-                        },
-                      ]),
+                      scoreChanges: room.state.players.scoresWithUpdates(
+                        userIds.map((userId) => ({ userId, score }))
+                      ),
                     });
                   }
                 }}
               >
                 <Text style={[styles.textCenter, advanceBtnTextStyle]}>
-                  {room.state.stage === RoomStage.SELF_TURN
-                    ? 'SUBMIT'
-                    : 'CONTINUE'}
+                  {canAnswerTrivia(room.state.stage) ? 'SUBMIT' : 'CONTINUE'}
                 </Text>
               </TouchableOpacity>
             )}

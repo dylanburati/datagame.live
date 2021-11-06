@@ -3,16 +3,18 @@ import { TextProps, ViewProps } from 'react-native';
 import { RoomScoreEntry, Trivia } from './api';
 import { OrderedSet } from './data';
 import { styles } from '../styles';
-import { acceptableOrders } from './math';
+import { acceptableOrders, argsort } from './math';
 
 export enum RoomStage {
-  LOBBY,
-  UNKNOWN_TURN,
-  SELF_TURN,
-  FEEDBACK,
-  SPECTATOR,
-  PARTICIPANT,
-  RESULTS,
+  LOBBY = 0x0,
+  UNKNOWN_TURN = 0x1,
+  SELF_TURN = 0x2,
+  PARTICIPANT = 0x3,
+  SPECTATOR = 0x4,
+  FEEDBACK_SELF_TURN = 0x12,
+  FEEDBACK_PARTICIPANT = 0x13,
+  FEEDBACK_SPECTATOR = 0x14,
+  RESULTS = 0x20,
 }
 
 export type RoomPlayer = {
@@ -147,14 +149,32 @@ export type RoomState = {
   players: RoomPlayerList;
   turnId: number;
   trivia?: Trivia;
-  receivedAnswers?: number[];
+  participantId?: number;
+  receivedAnswers: Map<number, number[]>;
 };
+
+export function feedbackFor(stage: RoomStage) {
+  const lut: Partial<Record<RoomStage, RoomStage>> = {
+    [RoomStage.SELF_TURN]: RoomStage.FEEDBACK_SELF_TURN,
+    [RoomStage.PARTICIPANT]: RoomStage.FEEDBACK_PARTICIPANT,
+    [RoomStage.SPECTATOR]: RoomStage.FEEDBACK_SPECTATOR,
+  };
+  return lut[stage] || stage;
+}
+
+export function isFeedbackStage(stage: RoomStage) {
+  return (
+    stage === RoomStage.FEEDBACK_SELF_TURN ||
+    stage === RoomStage.FEEDBACK_PARTICIPANT ||
+    stage === RoomStage.FEEDBACK_SPECTATOR
+  );
+}
 
 export function shouldShowAdvanceButton(state: RoomState) {
   return (
     state.stage === RoomStage.SELF_TURN ||
-    (state.stage === RoomStage.FEEDBACK &&
-      state.selfId === state.players.activeId)
+    state.stage === RoomStage.PARTICIPANT ||
+    state.stage === RoomStage.FEEDBACK_SELF_TURN
   );
 }
 
@@ -162,14 +182,25 @@ export function shouldShowTrivia(stage: RoomStage) {
   return (
     stage === RoomStage.SELF_TURN ||
     stage === RoomStage.PARTICIPANT ||
-    stage === RoomStage.FEEDBACK ||
+    isFeedbackStage(stage) ||
     stage === RoomStage.SPECTATOR
   );
 }
 
+export function triviaRequiredAnswers(state: RoomState) {
+  if (state.trivia && state.trivia.answerType === 'matchrank') {
+    return 2;
+  }
+  return 1;
+}
+
 function hasSelectionOrder(trivia: Trivia) {
   const { answerType } = trivia;
-  return answerType === 'stat.asc' || answerType === 'stat.desc';
+  return (
+    answerType === 'stat.asc' ||
+    answerType === 'stat.desc' ||
+    answerType === 'matchrank'
+  );
 }
 
 export function canAnswerTrivia(stage: RoomStage) {
@@ -204,14 +235,32 @@ export function statToNumber(
   }
 }
 
-type TriviaOptionStyle = {
+export type TriviaOptionStyle = {
   chip: ViewProps['style'];
   selectionOrderDisp?: TextProps['style'];
   barGraph?: ViewProps['style'];
 };
 
-function getCorrectArray(trivia: Trivia, answers: OrderedSet<number>) {
-  const { statDef, options } = trivia;
+function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
+  const { trivia } = state;
+  if (!trivia) {
+    return [];
+  }
+  const { statDef, options, answerType } = trivia;
+  if (answerType === 'matchrank') {
+    const otherId =
+      state.stage === RoomStage.FEEDBACK_PARTICIPANT
+        ? state.players.activeId
+        : state.participantId;
+    const recvArray = state.receivedAnswers.get(otherId ?? -1);
+    if (!recvArray) {
+      return [];
+    }
+    const order = argsort(recvArray, (a, b) => a - b);
+    return options.map(
+      (_, index) => order[index] === (answers.getIndex(index) ?? -1)
+    );
+  }
   if (hasSelectionOrder(trivia)) {
     if (!statDef || statDef.type === 'string') {
       return [];
@@ -221,7 +270,7 @@ function getCorrectArray(trivia: Trivia, answers: OrderedSet<number>) {
     );
     const order = acceptableOrders(
       numeric,
-      (a, b) => (a - b) * (trivia.answerType === 'stat.desc' ? -1 : 1)
+      (a, b) => (a - b) * (answerType === 'stat.desc' ? -1 : 1)
     );
     // true if the answered ranking matches a possible position for the option
     return numeric.map((num, whichOption) =>
@@ -236,11 +285,7 @@ function getCorrectArray(trivia: Trivia, answers: OrderedSet<number>) {
 }
 
 export function allCorrect(state: RoomState, answers: OrderedSet<number>) {
-  const { trivia } = state;
-  if (!trivia) {
-    return false;
-  }
-  return getCorrectArray(trivia, answers).every((e) => e);
+  return getCorrectArray(state, answers).every((e) => e);
 }
 
 export function getOptionStyles(
@@ -258,7 +303,7 @@ export function getOptionStyles(
       ? styles.bgPaperDarker
       : styles.bgGray350;
   const { statDef, options } = trivia;
-  if (stage !== RoomStage.FEEDBACK) {
+  if (!isFeedbackStage(stage)) {
     return trivia.options.map((_, index) => ({
       chip: answers.has(index)
         ? [styles.bgPurple300, styles.borderPurpleAccent]
@@ -267,14 +312,23 @@ export function getOptionStyles(
     }));
   }
   const showIncorrect = true; // state.players.activeId === state.selfId;
-  if (hasSelectionOrder(trivia)) {
+  if (trivia.answerType === 'matchrank') {
+    const correctArr = getCorrectArray(state, answers);
+    return correctArr.map((isCorrect) => ({
+      chip: isCorrect
+        ? [styles.borderGreenAccent, styles.bgSeaGreen300]
+        : showIncorrect
+        ? [styles.borderRedAccent, styles.bgRed300]
+        : [defaultBg],
+    }));
+  } else if (hasSelectionOrder(trivia)) {
     if (!statDef || statDef.type === 'string') {
       return [];
     }
     const numeric = options.map((opt) =>
       statToNumber(statDef, opt.questionValue, 0)
     );
-    const correctArr = getCorrectArray(trivia, answers);
+    const correctArr = getCorrectArray(state, answers);
 
     let max = Math.max(...numeric);
     let min = Math.min(...numeric);

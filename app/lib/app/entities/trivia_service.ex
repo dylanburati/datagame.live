@@ -320,8 +320,13 @@ defmodule App.Entities.TriviaService do
     {:ok, trivia_def, result}
   end
 
-  def get_any_trivia() do
-    case tdef = Repo.one(from(TriviaDef, order_by: fragment("random()"), limit: 1)) do
+  def get_any_trivia(opts \\ []) do
+    query = from(TriviaDef, order_by: fragment("random()"), limit: 1)
+    query = case Keyword.get(opts, :not, []) do
+      [] -> query
+      lst -> query |> where([tdef], not (tdef.answer_type in ^lst))
+    end
+    case tdef = Repo.one(query) do
       %TriviaDef{} -> get_trivia(tdef)
       _ -> {:error, "No trivia definitions found"}
     end

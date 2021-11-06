@@ -1,21 +1,38 @@
 defmodule AppWeb.RoomChannel do
   use AppWeb, :channel
 
-  import App.Utils
-
   alias AppWeb.Presence
   alias AppWeb.TriviaView
   alias App.Entities.RoomUser
   alias App.Entities.RoomService
   alias App.Entities.TriviaService
 
+  @doc """
+  Gets the current version of the Room client-server protocol
+  """
+  def version(), do: 1
+
   defp cache_keys(room_id, subkeys) do
     Enum.map(subkeys, fn sk -> "RoomChannel.#{room_id}" <> sk end)
   end
 
-  defp cache_key(room_id, subkey), do: List.first(cache_keys(room_id, [subkey]))
+  # defp cache_key(room_id, subkey), do: List.first(cache_keys(room_id, [subkey]))
 
-  def join("room:" <> room_id, %{"userId" => user_id, "displayName" => name}, socket) do
+  @impl true
+  def join("room:" <> room_id, params = %{"version" => cl_version}, socket) do
+    cond do
+      cl_version != version() -> {:error, %{reason: "Please upgrade your app"}}
+      not Map.has_key?(params, "displayName") -> {:error, %{reason: "Nickname is required"}}
+      true -> join_impl(room_id, params, socket)
+    end
+  end
+
+  @impl true
+  def join(_room_id, _, _socket) do
+    {:error, %{reason: "Please upgrade your app"}}
+  end
+
+  def join_impl(room_id, %{"userId" => user_id, "displayName" => name}, socket) do
     with {:ok, room_user} <- RoomService.get_user_in_room(room_id, user_id) do
       case RoomService.change_user_name(room_user, name) do
         {:ok, _} ->
@@ -36,7 +53,7 @@ defmodule AppWeb.RoomChannel do
     end
   end
 
-  def join("room:" <> room_id, %{"displayName" => name}, socket) do
+  def join_impl("room:" <> room_id, %{"displayName" => name}, socket) do
     with {:ok, room} <- RoomService.get_by_code(room_id) do
       with {:ok, room_user} <- RoomService.join(room, name) do
         send(self(), :after_join)
@@ -47,11 +64,6 @@ defmodule AppWeb.RoomChannel do
     else
       _ -> {:error, %{reason: "room #{room_id} doesn't exist"}}
     end
-  end
-
-  @impl true
-  def join(_room_id, _, _socket) do
-    {:error, %{reason: "name required"}}
   end
 
   @impl true
@@ -144,20 +156,32 @@ defmodule AppWeb.RoomChannel do
   @impl true
   def handle_in("turn:start", payload, socket) do
     %{room_id: room_id, user_id: user_id} = socket.assigns
-    [k_turn_counter, k_curr_player, k_turn_start] = cache_keys(room_id,
-      ["turn_counter", "curr_player", "turn_start"])
+    [k_turn_counter, k_curr_player, k_turn_start, k_turn_answers] = cache_keys(room_id,
+      ["turn_counter", "curr_player", "turn_start", "turn_answers"])
     with %{"fromTurnId" => from_turn} <- payload,
          next_turn = from_turn + 1,
          {:ok, ^next_turn} <- App.Cache.try_incr_atomic(k_turn_counter, from_turn) do
-      with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia() do
+      other_user_id = Presence.list(socket)
+      |> Enum.map(fn {str, _} -> String.to_integer(str, 10) end)
+      |> Enum.filter(fn uid -> uid != user_id end)
+      |> Enum.shuffle()
+      |> List.first()
+      exclude_types = if is_nil(other_user_id), do: ["matchrank"], else: []
+
+      with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia(not: exclude_types) do
         trivia_out = TriviaView.trivia_json(trivia_def, trivia)
         turn_info = %{
           "userId" => user_id,
           "turnId" => next_turn,
           "trivia" => trivia_out,
         }
+        turn_info = case trivia_def.answer_type do
+          "matchrank" -> Map.put(turn_info, "participantId", other_user_id)
+          _ -> turn_info
+        end
         App.Cache.insert(k_curr_player, user_id)
         App.Cache.insert(k_turn_start, turn_info)
+        App.Cache.insert(k_turn_answers, %{})
         broadcast(socket, "turn:start", turn_info)
         {:reply, {:ok, %{}}, socket}
       else
@@ -193,10 +217,13 @@ defmodule AppWeb.RoomChannel do
   @impl true
   def handle_in("turn:feedback", payload, socket) do
     %{user_id: user_id, room_id: room_id} = socket.assigns
-    k_turn_counter = cache_key(room_id, "turn_counter")
+    [k_turn_counter, k_turn_answers] = cache_keys(room_id, ["turn_counter", "turn_answers"])
     turn_id = App.Cache.get_atomic(k_turn_counter, 0)
+    ans_info = Map.merge(payload, %{"userId" => user_id})
+    ans_map = App.Cache.update(k_turn_answers, %{user_id => ans_info},
+      &(Map.put(&1, user_id, ans_info)))
     broadcast(socket, "turn:feedback",
-      Map.merge(payload, %{"userId" => user_id, "turnId" => turn_id}))
+      %{"answers" => Map.values(ans_map), "turnId" => turn_id})
     {:reply, {:ok, %{}}, socket}
   end
 

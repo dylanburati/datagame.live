@@ -35,7 +35,7 @@ defmodule App.Entities.TriviaDef do
     |> validate_inclusion(:question_source, ~w(card.title card.tag1 tag))
     |> validate_inclusion(:option_source, ~w(card.title card.tag1 tag stat))
     |> validate_inclusion(:selection_compare_type, ~w(t eq neq))
-    |> validate_inclusion(:answer_type, ~w(selection stat.asc stat.desc))
+    |> validate_inclusion(:answer_type, ~w(selection stat.asc stat.desc matchrank))
     |> validate_number(:selection_length, greater_than: 0)
     |> validate_number(
       :selection_max_true,

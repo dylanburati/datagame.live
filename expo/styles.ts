@@ -372,6 +372,10 @@ export const styles = StyleSheet.create({
     height: 16,
     width: 16,
   },
+  square20Px: {
+    height: 20,
+    width: 20,
+  },
   zMinusOne: {
     zIndex: -1,
   },
@@ -383,5 +387,8 @@ export const styles = StyleSheet.create({
   },
   leadingLg: {
     lineHeight: 20,
+  },
+  raiseMinusOne: {
+    transform: [{ translateY: 4 }],
   },
 });
