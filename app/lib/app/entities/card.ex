@@ -8,7 +8,8 @@ defmodule App.Entities.Card do
     field :is_disabled, :boolean, default: false
     field :notes, :string
     field :popularity, :float
-    field :tag1, :string
+    field :cat1, :string
+    field :cat2, :string
     field :title, :string
     # {deck, unique_id} is unique to allow per-card settings to stay across deck updates
     # cards without a unique_id are always deleted when the deck is updated

@@ -16,9 +16,9 @@ defmodule App.Entities.DeckService do
     query = from c in Card,
       where: c.deck_id == ^deck.id,
       where: c.is_disabled == false,
-      where: not is_nil(c.tag1),
-      group_by: [c.tag1],
-      select: {c.tag1, count(c.id)},
+      where: not is_nil(c.cat1),
+      group_by: [c.cat1],
+      select: {c.cat1, count(c.id)},
       order_by: [desc: count(c.id)],
       limit: 10
 

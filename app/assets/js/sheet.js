@@ -294,7 +294,7 @@ export class SheetPage {
       const kCol = deck.values[tagLabelPos];
       const vCol = deck.values[tagLabelPos + 1];
       for (let i = 1; i < Math.min(kCol.length, vCol.length); i++) {
-        if (/^(Tag|Stat)/.test(kCol[i]) && vCol[i]) {
+        if (/^(Category|Tag|Stat)/.test(kCol[i]) && vCol[i]) {
           tagLabels[kCol[i]] = vCol[i];
         }
       }
@@ -386,11 +386,11 @@ export class SheetPage {
           longCol = col;
           numRows = colRep.rows.length;
         }
-        if (/^(Tag|Stat)/.test(col[0])) {
+        if (/^(Category|Tag|Stat)/.test(col[0])) {
           if (!tagLabels[col[0]]) {
             warnings.push(`Column '${col[0]}' needs a descriptive label`);
           }
-          if (col[0].startsWith('Tag')) {
+          if (col[0].startsWith('Tag') || col[0].startsWith('Category')) {
             tagColCounts[col[0]] = col.slice(1).reduce(countTagOccurrences, {
               total: 0,
               grouped: {},
@@ -441,31 +441,31 @@ export class SheetPage {
         );
       });
     }
-    if (!tagColCounts['Tag1']) {
-      warnings.push("Column 'Tag1' is not filled out - the game customization sliders will be disabled");
+    if (!tagColCounts['Category1']) {
+      warnings.push("Column 'Category1' is not filled out - the game customization sliders will be disabled");
     } else {
-      const counts1 = tagColCounts['Tag1'];
+      const counts1 = tagColCounts['Category1'];
       if (counts1.multi) {
-        warnings.push("Column 'Tag1' should not have multiple values in any cell");
+        warnings.push("Column 'Category1' should not have multiple values in any cell");
       }
       if (counts1.total < enabledCount) {
         warnings.push(
-          `Column 'Tag1' is blank for ${enabledCount - counts1.total} cells`
+          `Column 'Category1' is blank for ${enabledCount - counts1.total} cells`
         );
       }
       const smallGroups = [];
-      Object.entries(counts1.grouped).forEach(([tag, size]) => {
+      Object.entries(counts1.grouped).forEach(([cat, size]) => {
         if (size < 10) {
-          smallGroups.push(tag);
+          smallGroups.push(cat);
         }
       });
-      smallGroups.forEach(tag => {
-        warnings.push(`Fewer than 10 cards have the primary tag: ${tag}`);
+      smallGroups.forEach(cat => {
+        warnings.push(`Fewer than 10 cards have the primary category: ${cat}`);
       });
       const gCount = Object.keys(counts1.grouped).length;
       if (gCount > 10) {
         warnings.push(
-          `Column 'Tag1' has ${gCount} categories - the game customization menu only allows 10`
+          `Column 'Category1' has ${gCount} categories - the game customization menu only allows 10`
         );
       }
     }

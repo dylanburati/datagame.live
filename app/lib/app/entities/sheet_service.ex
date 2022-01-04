@@ -96,7 +96,7 @@ defmodule App.Entities.SheetService do
   end
 
   defp card_tags(col_names, row) do
-    tag_to_pos = %{"Tag2" => 2, "Tag3" => 3, "Tag4" => 4}
+    tag_to_pos = %{"Tag1" => 1, "Tag2" => 2, "Tag3" => 3, "Tag4" => 4}
 
     Enum.zip(col_names, row)
     |> Enum.flat_map(fn {nm, maybe_val} ->
@@ -132,7 +132,8 @@ defmodule App.Entities.SheetService do
         "Disable?" -> {:is_disabled, is_binary(val) and val != ""}
         "Popularity" -> {:popularity_unscaled, float_or_nil(val)}
         "ID" -> {:unique_id, non_empty_or_nil(val)}
-        "Tag1" -> {:tag1, non_empty_or_nil(val)}
+        "Category1" -> {:cat1, non_empty_or_nil(val)}
+        "Category2" -> {:cat2, non_empty_or_nil(val)}
         "Notes" -> {:notes, val}
         _ -> {:unused, nil}
       end
@@ -149,8 +150,10 @@ defmodule App.Entities.SheetService do
   end
 
   defp insert_deck(spreadsheet_id, sheet_name, labels, col_names, rows) do
-    ctdefs = for {col_name, pos} <- Enum.with_index(["Tag2", "Tag3", "Tag4"], 2) do
-      %{position: pos, label: Map.get(labels, col_name, col_name)}
+    nonblank_labels = Enum.filter(labels, fn {_, v} -> is_binary(v) and String.length(v) end)
+    |> Map.new()
+    ctdefs = for {col_name, pos} <- Enum.with_index(["Tag1", "Tag2", "Tag3", "Tag4"], 1) do
+      %{position: pos, label: Map.get(nonblank_labels, col_name, col_name)}
     end
 
     cards_with_tags = deck_cards(col_names, rows)
@@ -167,12 +170,15 @@ defmodule App.Entities.SheetService do
       values = Enum.map(cards, fn %{stat_box: %{^key => val}} -> val end)
       key_s = Atom.to_string(key)
       label = Map.get(labels, Card.sheet_col_for_stat(key), key_s)
-      case CardStatDef.infer_type(values) do
-        {:ok, stat_type} ->
-          %{key: key_s,
-            label: label,
-            stat_type: stat_type}
-        _ -> nil
+      case Enum.find_index(values, &(not is_nil(&1))) do
+        nil -> nil
+        _ -> case CardStatDef.infer_type(values) do
+          {:ok, stat_type} ->
+            %{key: key_s,
+              label: label,
+              stat_type: stat_type}
+          _ -> nil
+        end
       end
     end)
     |> Enum.filter(&(not is_nil(&1)))
@@ -181,6 +187,10 @@ defmodule App.Entities.SheetService do
     |> MapSet.new()
     |> MapSet.delete(nil)
     |> Enum.to_list()
+    cat1_nunique = Enum.map(cards, &(&1.cat1))
+    |> MapSet.new()
+    |> MapSet.delete(nil)
+    |> Enum.count()
 
     deck_stats = %{}
     |> Map.put(:enabled_count, Enum.count(cards, &(not &1.is_disabled)))
@@ -193,10 +203,10 @@ defmodule App.Entities.SheetService do
       Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.unique_id))))
     )
     |> Map.put(
-      :has_tag1_count,
-      Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.tag1))))
+      :has_cat1_count,
+      Enum.count(cards, &(not (&1.is_disabled or is_nil(&1.cat1))))
     )
-    |> Map.put(:tag1_nunique, length(card_user_ids))
+    |> Map.put(:cat1_nunique, cat1_nunique)
 
     pop_series = Enum.filter(cards, &(not &1.is_disabled))
     |> Enum.map(&(&1.popularity_unscaled))
@@ -219,16 +229,12 @@ defmodule App.Entities.SheetService do
       Map.put(c, :popularity, :math.pow(normalized, curve_factor))
     end)
 
-    nonblank_labels = Enum.filter(labels, fn {_, v} ->
-      is_binary(v) and String.length(v)
-    end)
-    |> Map.new()
     deck_changeset = %Deck{}
     |> change(deck_stats)
     |> change(%{
       spreadsheet_id: spreadsheet_id,
       sheet_name: sheet_name,
-      category_label: Map.get(nonblank_labels, "Tag1", "Category"),
+      category_label: Map.get(nonblank_labels, "Category1", "Category"),
       title: sheet_name |> replace("Deck:", "", global: false) |> replace(":", " / "),
     })
     |> Deck.validations()
@@ -238,6 +244,14 @@ defmodule App.Entities.SheetService do
       :deck, deck_changeset,
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: [:spreadsheet_id, :sheet_name]
+    )
+    |> Ecto.Multi.delete_all(
+      :removed_card_stat_defs, fn %{deck: deck} ->
+        kept = Enum.map(card_stat_defs, &(&1.key))
+        from csd in CardStatDef,
+          where: csd.deck_id != ^deck.id,
+          where: not (csd.key in ^kept)
+      end
     )
     |> Ecto.Multi.insert_all(
       :card_stat_def, CardStatDef, fn %{deck: deck} ->

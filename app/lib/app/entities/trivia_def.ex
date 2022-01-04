@@ -32,8 +32,8 @@ defmodule App.Entities.TriviaDef do
       :selection_min_true, :selection_max_true,
       :selection_length, :selection_compare_type, :answer_type
     ])
-    |> validate_inclusion(:question_source, ~w(card.title card.tag1 tag))
-    |> validate_inclusion(:option_source, ~w(card.title card.tag1 tag stat))
+    |> validate_inclusion(:question_source, ~w(card.title card.cat1 card.cat2 tag))
+    |> validate_inclusion(:option_source, ~w(card.title card.cat1 card.cat2 tag stat))
     |> validate_inclusion(:selection_compare_type, ~w(t eq neq))
     |> validate_inclusion(:answer_type, ~w(selection stat.asc stat.desc matchrank))
     |> validate_number(:selection_length, greater_than: 0)
@@ -54,7 +54,7 @@ defmodule App.Entities.TriviaDef do
       get_field(changeset, :question_source),
       get_field(changeset, :option_source),
     }
-    wrong_join_type_msg = "at least one side of the trivia def must be 'title' or 'tag1'"
+    wrong_join_type_msg = "at least one side of the trivia def must be a card title or category"
     changeset = case join_type do
       {"card." <> _, "card." <> _} -> changeset
       {"card." <> _, "tag"} ->

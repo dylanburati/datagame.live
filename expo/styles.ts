@@ -95,6 +95,9 @@ export const styles = StyleSheet.create({
   bgBlue: {
     backgroundColor: '#1D4ED8',
   },
+  bgBlue100: {
+    backgroundColor: '#DBEAFE',
+  },
   bgBlue300: {
     backgroundColor: '#95B5FF',
   },

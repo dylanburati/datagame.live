@@ -15,8 +15,8 @@ defmodule App.Entities.Deck do
     field :enabled_count, :integer
     field :has_popularity_count, :integer
     field :has_id_count, :integer
-    field :has_tag1_count, :integer
-    field :tag1_nunique, :integer
+    field :has_cat1_count, :integer
+    field :cat1_nunique, :integer
     field :image_url, :string
     field :image_dominant_color, :string
     field :category_counts, {:array, :map}, virtual: true
@@ -34,7 +34,7 @@ defmodule App.Entities.Deck do
   end
 
   def can_select_categories?(deck) do
-    (deck.tag1_nunique > 1) and ((deck.has_tag1_count / deck.enabled_count) >= 0.9)
+    (deck.cat1_nunique > 1) and ((deck.has_cat1_count / deck.enabled_count) >= 0.9)
   end
 
   @doc false
@@ -43,7 +43,7 @@ defmodule App.Entities.Deck do
     |> validate_required([
       :spreadsheet_id, :sheet_name, :category_label,
       :enabled_count, :has_popularity_count, :has_id_count,
-      :has_tag1_count, :tag1_nunique, :title
+      :has_cat1_count, :cat1_nunique, :title
     ])
     |> validate_number(:enabled_count, greater_than: 0)
   end

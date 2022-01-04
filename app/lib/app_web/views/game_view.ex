@@ -15,7 +15,7 @@ defmodule AppWeb.GameView do
       id: card.id,
       title: card.title,
       popularity: card.popularity,
-      category: card.tag1,
+      category: card.cat1,
     }
     |> maybe_put_lazy(Ecto.assoc_loaded?(card.tags), :tags, fn ->
       card_tag_json(card.tags)

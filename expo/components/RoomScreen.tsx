@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Image,
   SafeAreaView,
@@ -14,7 +14,6 @@ import { SwipeUpHandle } from './SwipeUpHandle';
 import { RoomCreatorControls } from './RoomCreatorControls';
 import { ChipPicker } from './ChipPicker';
 import { RoomLobbyControls } from './RoomLobbyControls';
-import { GridLayout } from './GridLayout';
 import { useRouteTyped } from '../helpers/navigation';
 import {
   allCorrect,
@@ -40,7 +39,8 @@ import {
 import { OrderedSet } from '../helpers/data';
 import { argsort } from '../helpers/math';
 import { kissMarryShoot, medals } from '../helpers/iconography';
-import { styleConfig, styles } from '../styles';
+import { styles } from '../styles';
+import { RoomLeaderboard } from './RoomLeaderboard';
 
 type StatDisplayProps = {
   roomState: RoomState;
@@ -263,6 +263,7 @@ export function RoomScreen() {
     new OrderedSet<number>()
   );
   const [isPanelActive, setPanelActive] = useState(false);
+  const replayTurnStartSent = useRef(false);
 
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
@@ -297,8 +298,13 @@ export function RoomScreen() {
       return;
     }
     let waitMs = turnsToWait * 10000;
-    if (!room.state.trivia && room.state.turnId > 0) {
+    if (
+      !room.state.trivia &&
+      room.state.turnId > 0 &&
+      !replayTurnStartSent.current
+    ) {
       room.broadcast({ event: 'replay:turn:start' });
+      replayTurnStartSent.current = true;
       waitMs = Math.max(waitMs, 2000);
     }
     const timeout = setTimeout(() => {
@@ -331,7 +337,11 @@ export function RoomScreen() {
 
   useEffect(() => {
     if (room.state.trivia) {
-      if (room.state.stage === RoomStage.FEEDBACK_SPECTATOR) {
+      // answers could have been entered in another session
+      const answersLost =
+        room.state.stage === RoomStage.FEEDBACK_SELF_TURN &&
+        triviaAnswers.isEmpty();
+      if (room.state.stage === RoomStage.FEEDBACK_SPECTATOR || answersLost) {
         const feedbackAns = room.state.receivedAnswers.get(
           room.state.players.activeId ?? -1
         );
@@ -562,27 +572,10 @@ export function RoomScreen() {
           >
             {roomId}
           </Text>
-          <GridLayout
-            gridMaxWidth={styleConfig.topMaxWidth}
-            horizontalInset={0}
-            minColumnWidth={1}
-            maxColumnCount={1}
-            style={styles.mt4}
-            data={room.state.players.array}
-          >
-            {({ item }) => (
-              <View
-                key={item.id}
-                style={[styles.row, styles.flex1, styles.mt2, styles.mx6]}
-              >
-                <Text>
-                  {item.name}
-                  {item.isPresent ? '' : ' (offline)'}
-                </Text>
-                <Text>{room.state.players.getScore(item.id) ?? '?'}</Text>
-              </View>
-            )}
-          </GridLayout>
+          <RoomLeaderboard
+            selfId={room.state.selfId}
+            players={room.state.players}
+          />
         </SwipeablePanel>
       )}
     </SafeAreaView>

@@ -31,7 +31,7 @@ defmodule App.Entities.GameService do
       fn {cat, amount}, dyn_column ->
         dynamic(
           [c],
-          ^dyn_column * fragment("case when ? = ? then ? else 1.0 end", c.tag1, ^cat, ^amount)
+          ^dyn_column * fragment("case when ? = ? then ? else 1.0 end", c.cat1, ^cat, ^amount)
         )
       end
     )

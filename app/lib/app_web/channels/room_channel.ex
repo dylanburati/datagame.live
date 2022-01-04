@@ -3,6 +3,7 @@ defmodule AppWeb.RoomChannel do
 
   alias AppWeb.Presence
   alias AppWeb.TriviaView
+  alias App.Entities.RoomData
   alias App.Entities.RoomUser
   alias App.Entities.RoomService
   alias App.Entities.TriviaService
@@ -11,12 +12,6 @@ defmodule AppWeb.RoomChannel do
   Gets the current version of the Room client-server protocol
   """
   def version(), do: 1
-
-  defp cache_keys(room_id, subkeys) do
-    Enum.map(subkeys, fn sk -> "RoomChannel.#{room_id}" <> sk end)
-  end
-
-  # defp cache_key(room_id, subkey), do: List.first(cache_keys(room_id, [subkey]))
 
   @impl true
   def join("room:" <> room_id, params = %{"version" => cl_version}, socket) do
@@ -53,7 +48,7 @@ defmodule AppWeb.RoomChannel do
     end
   end
 
-  def join_impl("room:" <> room_id, %{"displayName" => name}, socket) do
+  def join_impl(room_id, %{"displayName" => name}, socket) do
     with {:ok, room} <- RoomService.get_by_code(room_id) do
       with {:ok, room_user} <- RoomService.join(room, name) do
         send(self(), :after_join)
@@ -73,25 +68,19 @@ defmodule AppWeb.RoomChannel do
     with {:ok, room} <- RoomService.get_by_code(room_id),
          room_user <- Enum.find(room.users, fn %{id: id} -> id == user_id end),
          %RoomUser{} <- room_user do
-      [k_ongoing_round, k_turn_counter, k_last_player, k_scores] = cache_keys(room_id,
-        ["round_start", "turn_counter", "last_player", "scores"])
+      room_data = RoomData.current_room(socket)
 
       just_joined = %{"userId" => user_id, "displayName" => room_user.name}
       room_extras = %{"creatorId" => room.creator.id, "createdAt" => room.inserted_at}
       push(socket, "join", Map.merge(just_joined, room_extras))
       if is_new, do: broadcast(socket, "user:new", Map.put(just_joined, "isNow", true))
 
-      ongoing_round = App.Cache.lookup(k_ongoing_round)
-      scores = App.Cache.lookup(k_scores)
-      if not is_nil(ongoing_round) do
-        turn_id = App.Cache.get_atomic(k_turn_counter, 0)
-        last_player = App.Cache.lookup(k_last_player)
-        scores_out = case scores do
-          nil -> nil
-          map -> Enum.map(map, fn {k, v} -> %{"userId" => k, "score" => v} end)
-        end
-        push(socket, "round:start", Map.merge(ongoing_round,
-          %{"turnId" => turn_id, "lastTurnUserId" => last_player, "scores" => scores_out}))
+      case RoomData.get_round(room_data) do
+        {ongoing_round, turn_id, last_player_id, _, scores} ->
+          scores_out = Enum.map(scores, fn {k, v} -> %{"userId" => k, "score" => v} end)
+          push(socket, "round:start", Map.merge(ongoing_round,
+            %{"turnId" => turn_id, "lastTurnUserId" => last_player_id, "scores" => scores_out}))
+        _ -> nil
       end
 
       # send the details of every other user in the room
@@ -141,29 +130,19 @@ defmodule AppWeb.RoomChannel do
 
   @impl true
   def handle_in("round:start", payload, socket) do
-    %{room_id: room_id} = socket.assigns
-    [k_turn_counter, k_round_start, k_scores] = cache_keys(room_id,
-      ["turn_counter", "round_start", "scores"])
-    :ok = App.Cache.new_atomic(k_turn_counter)
-    :ok = App.Cache.set_atomic(k_turn_counter, 0)
-    :ok = App.Cache.insert(k_round_start, payload)
-    participants = Map.get(payload, "playerOrder", [])
-    :ok = App.Cache.insert(k_scores, Map.new(participants, fn id -> {id, 0} end))
+    :ok = RoomData.current_room(socket) |> RoomData.init_round(payload)
     broadcast(socket, "round:start", Map.put(payload, "turnId", 0))
     {:reply, {:ok, %{}}, socket}
   end
 
   @impl true
   def handle_in("turn:start", payload, socket) do
-    %{room_id: room_id, user_id: user_id} = socket.assigns
-    [k_turn_counter, k_curr_player, k_turn_start, k_turn_answers] = cache_keys(room_id,
-      ["turn_counter", "curr_player", "turn_start", "turn_answers"])
+    room_data = RoomData.current_room(socket)
     with %{"fromTurnId" => from_turn} <- payload,
-         next_turn = from_turn + 1,
-         {:ok, ^next_turn} <- App.Cache.try_incr_atomic(k_turn_counter, from_turn) do
+         {:ok, next_turn} <- RoomData.request_turn(room_data, from_turn) do
       other_user_id = Presence.list(socket)
       |> Enum.map(fn {str, _} -> String.to_integer(str, 10) end)
-      |> Enum.filter(fn uid -> uid != user_id end)
+      |> Enum.filter(fn uid -> uid != room_data.user_id end)
       |> Enum.shuffle()
       |> List.first()
       exclude_types = if is_nil(other_user_id), do: ["matchrank"], else: []
@@ -171,7 +150,7 @@ defmodule AppWeb.RoomChannel do
       with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia(not: exclude_types) do
         trivia_out = TriviaView.trivia_json(trivia_def, trivia)
         turn_info = %{
-          "userId" => user_id,
+          "userId" => room_data.user_id,
           "turnId" => next_turn,
           "trivia" => trivia_out,
         }
@@ -179,9 +158,7 @@ defmodule AppWeb.RoomChannel do
           "matchrank" -> Map.put(turn_info, "participantId", other_user_id)
           _ -> turn_info
         end
-        App.Cache.insert(k_curr_player, user_id)
-        App.Cache.insert(k_turn_start, turn_info)
-        App.Cache.insert(k_turn_answers, %{})
+        :ok = RoomData.init_turn(room_data, turn_info)
         broadcast(socket, "turn:start", turn_info)
         {:reply, {:ok, %{}}, socket}
       else
@@ -200,49 +177,44 @@ defmodule AppWeb.RoomChannel do
 
   @impl true
   def handle_in("turn:end", payload, socket) do
-    %{user_id: user_id, room_id: room_id} = socket.assigns
-    [k_scores, k_last_player] = cache_keys(room_id, ["scores", "last_player"])
-
-    App.Cache.insert(k_last_player, user_id)
     score_changes = Map.get(payload, "scoreChanges", [])
     |> Enum.filter(&(Map.has_key?(&1, "userId") and Map.has_key?(&1, "score")))
     |> Map.new(fn %{"userId" => k, "score" => v} -> {k, v} end)
-    if map_size(score_changes) > 0 do
-      App.Cache.update(k_scores, %{}, fn map -> Map.merge(map, score_changes) end)
-    end
-    broadcast(socket, "turn:end", Map.merge(payload, %{"userId" => user_id}))
+
+    room_data = RoomData.current_room(socket)
+    :ok = RoomData.end_turn(room_data, score_changes)
+    broadcast(socket, "turn:end", Map.merge(payload, %{"userId" => room_data.user_id}))
     {:reply, {:ok, %{}}, socket}
   end
 
   @impl true
   def handle_in("turn:feedback", payload, socket) do
-    %{user_id: user_id, room_id: room_id} = socket.assigns
-    [k_turn_counter, k_turn_answers] = cache_keys(room_id, ["turn_counter", "turn_answers"])
-    turn_id = App.Cache.get_atomic(k_turn_counter, 0)
-    ans_info = Map.merge(payload, %{"userId" => user_id})
-    ans_map = App.Cache.update(k_turn_answers, %{user_id => ans_info},
-      &(Map.put(&1, user_id, ans_info)))
+    room_data = RoomData.current_room(socket)
+    ans_info = Map.merge(payload, %{"userId" => room_data.user_id})
+    ans_map = RoomData.update_answers(room_data, ans_info)
     broadcast(socket, "turn:feedback",
-      %{"answers" => Map.values(ans_map), "turnId" => turn_id})
+      %{"answers" => Map.values(ans_map), "turnId" => RoomData.turn_id(room_data)})
     {:reply, {:ok, %{}}, socket}
   end
 
   def handle_in("replay:turn:start", _payload, socket) do
-    %{room_id: room_id} = socket.assigns
-    [k_curr_player, k_turn_start] = cache_keys(room_id, ["curr_player", "turn_start"])
-    is_stale = case App.Cache.lookup(k_curr_player) do
+    room_data = RoomData.current_room(socket)
+    is_stale = case RoomData.curr_player_id(room_data) do
       nil -> true
-      uid ->
-        presence = Presence.get_by_key(socket, uid)
-        if is_map(presence) do
-          not Map.has_key?(presence, :metas)
-        else
-          true
-        end
+      uid -> is_nil(Presence.get_by_key(socket, uid))
     end
     unless is_stale do
-      turn_info = App.Cache.lookup(k_turn_start)
-      if not is_nil(turn_info), do: push(socket, "turn:start", turn_info)
+      case RoomData.get_turn(room_data) do
+        {turn_info, ans_map} ->
+          push(socket, "turn:start", turn_info)
+          if not Enum.empty?(ans_map) do
+            feedback_payload = %{
+              "answers" => Map.values(ans_map), "turnId" => RoomData.turn_id(room_data)
+            }
+            push(socket, "turn:feedback", feedback_payload)
+          end
+        _ -> nil
+      end
     end
     {:reply, {:ok, %{}}, socket}
   end
