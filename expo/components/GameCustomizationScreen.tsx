@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Slider from '@react-native-community/slider';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import {
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { StackActions } from '@react-navigation/native';
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { createGame, Deck, inspectADeck } from '../helpers/api';
@@ -77,7 +83,7 @@ export function GameCustomizationScreen() {
       : null;
 
   return (
-    <View style={styles.topContainer}>
+    <SafeAreaView style={styles.topContainer}>
       <ScrollView contentContainerStyle={styles.allowFab}>
         <View style={[styles.m4]}>
           <Text style={[styles.textXl, styles.fontBold]}>
@@ -196,6 +202,6 @@ export function GameCustomizationScreen() {
           <Text style={[styles.textXl, styles.textWhite]}>PLAY</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }

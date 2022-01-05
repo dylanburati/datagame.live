@@ -11,6 +11,7 @@ export type RootStackParamList = {
   Game: Game & { gameLength: number };
   GameCustomization: { topic: number };
   Room: { roomId: string; savedSession?: RoomUser };
+  LogViewer: undefined;
 };
 
 export function useNavigationTyped() {

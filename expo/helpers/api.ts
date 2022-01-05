@@ -1,6 +1,7 @@
 import { Presence } from 'phoenix';
 import { ColorValue } from 'react-native';
 import config from '../config';
+import { LogPersist } from './storage';
 
 export type Deck = {
   id: number;
@@ -60,7 +61,13 @@ export type TriviaOption = {
   questionValue: string | string[];
 };
 
-export type TriviaStatType = 'number' | 'string' | 'date' | 'dollar_amount';
+export type TriviaStatType =
+  | 'number'
+  | 'string'
+  | 'date'
+  | 'dollar_amount'
+  | 'km_distance'
+  | 'lon_lat';
 
 export type Trivia = {
   question: string;
@@ -129,7 +136,8 @@ export type RoomIncomingMessage =
   | {
       event: 'presence';
       presence: Presence;
-    };
+    }
+  | { event: 'reply:replay:turn:start' };
 
 export type RoomOutgoingMessage =
   | {
@@ -156,19 +164,25 @@ export type RoomOutgoingMessage =
   | { event: 'replay:turn:start' };
 
 async function getJson(url: string) {
+  LogPersist.info({ called: 'getJson', url });
   const resp = await fetch(url);
   if (resp.ok) {
     return await resp.json();
   } else if (
     /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
   ) {
-    throw new Error(await resp.json());
+    const err = await resp.json();
+    LogPersist.error(err);
+    throw new Error(err);
   } else {
-    throw new Error(await resp.text());
+    const err = await resp.text();
+    LogPersist.error(err);
+    throw new Error(err);
   }
 }
 
 async function postJson(url: string, body: any) {
+  LogPersist.info({ called: 'postJson', url, body });
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
@@ -182,12 +196,15 @@ async function postJson(url: string, body: any) {
     /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
   ) {
     let content = await resp.json();
+    LogPersist.error(content);
     if (typeof content === 'object' && content?.error) {
       content = content.error;
     }
     throw new Error(content);
   } else {
-    throw new Error(await resp.text());
+    const err = await resp.text();
+    LogPersist.error(err);
+    throw new Error(err);
   }
 }
 

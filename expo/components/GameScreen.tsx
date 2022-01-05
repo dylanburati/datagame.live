@@ -27,6 +27,7 @@ import {
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { Card } from '../helpers/api';
 import { styles } from '../styles';
+import { LogPersist } from '../helpers/storage';
 
 export type GameData = {
   id: number;
@@ -245,6 +246,7 @@ export function GameScreen() {
           sounds.finish.loadAsync(require('../assets/finish.wav')),
         ]);
       } catch (err) {
+        LogPersist.error(err);
         console.error(err);
       } finally {
         setSoundReady(true);
@@ -258,6 +260,7 @@ export function GameScreen() {
           sounds.skip.unloadAsync(),
         ]);
       } catch (err) {
+        LogPersist.error(err);
         console.error(err);
       }
     };
@@ -325,6 +328,7 @@ export function GameScreen() {
           }
         }
       } catch (err) {
+        LogPersist.error(err);
         console.error(err);
       }
     };
@@ -337,6 +341,7 @@ export function GameScreen() {
         try {
           await sounds.finish.replayAsync();
         } catch (err) {
+          LogPersist.error(err);
           console.error(err);
         }
       }
@@ -356,6 +361,7 @@ export function GameScreen() {
           await sounds.start.replayAsync();
         }
       } catch (err) {
+        LogPersist.error(err);
         console.error(err);
       }
     };
@@ -370,6 +376,7 @@ export function GameScreen() {
       try {
         await sounds.finalSeconds.replayAsync();
       } catch (err) {
+        LogPersist.error(err);
         console.error(err);
       }
     };

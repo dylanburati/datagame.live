@@ -28,6 +28,15 @@ defmodule App.Entities.Card do
     timestamps()
   end
 
+  def column_map() do
+    %{
+      "title" => :title,
+      "popularity" => :popularity,
+      "cat1" => :cat1,
+      "cat2" => :cat2
+    }
+  end
+
   def key_for_stat(which_stat) do
     case which_stat do
       "1" -> :stat1

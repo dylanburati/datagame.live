@@ -144,6 +144,7 @@ defmodule App.Entities.RoomData do
   def end_turn(room_data, score_changes) do
     k = cache_keys(room_data)
     %{user_id: user_id} = room_data
+    :ok = App.Cache.insert(k.turn_start, nil)
     :ok = App.Cache.insert(k.last_player, user_id)
     if map_size(score_changes) > 0 do
       App.Cache.update(k.scores, %{}, fn map -> Map.merge(map, score_changes) end)

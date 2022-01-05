@@ -92,6 +92,9 @@ export const styles = StyleSheet.create({
   bgGray350: {
     backgroundColor: '#BBBBC2',
   },
+  bgBlack: {
+    backgroundColor: '#000',
+  },
   bgBlue: {
     backgroundColor: '#1D4ED8',
   },
@@ -110,14 +113,17 @@ export const styles = StyleSheet.create({
   bgSeaGreen300: {
     backgroundColor: '#75F0B5',
   },
-  bgRed300: {
-    backgroundColor: '#FCA5A5',
-  },
   bgGreen: {
     backgroundColor: '#059669',
   },
+  bgRed300: {
+    backgroundColor: '#FCA5A5',
+  },
   bgRed: {
     backgroundColor: '#f44',
+  },
+  bgAmber200: {
+    backgroundColor: '#FDE68A',
   },
   inset0: {
     top: 0,
@@ -168,6 +174,10 @@ export const styles = StyleSheet.create({
   px2: {
     paddingLeft: 8,
     paddingRight: 8,
+  },
+  px4: {
+    paddingLeft: 16,
+    paddingRight: 16,
   },
   p0: {
     paddingLeft: 0,
@@ -294,6 +304,12 @@ export const styles = StyleSheet.create({
   roundedMd: {
     borderRadius: 4,
   },
+  roundedTopLeftLg: {
+    borderTopLeftRadius: 8,
+  },
+  roundedBottomLeftLg: {
+    borderBottomLeftRadius: 8,
+  },
   roundedLg: {
     borderRadius: 8,
   },
@@ -315,6 +331,9 @@ export const styles = StyleSheet.create({
   },
   borderGray300: {
     borderColor: '#D1D5DB',
+  },
+  borderGray400: {
+    borderColor: '#9CA3AF',
   },
   borderPurpleAccent: {
     borderColor: '#7707FF',

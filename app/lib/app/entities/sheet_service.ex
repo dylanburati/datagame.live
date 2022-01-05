@@ -249,7 +249,7 @@ defmodule App.Entities.SheetService do
       :removed_card_stat_defs, fn %{deck: deck} ->
         kept = Enum.map(card_stat_defs, &(&1.key))
         from csd in CardStatDef,
-          where: csd.deck_id != ^deck.id,
+          where: csd.deck_id == ^deck.id,
           where: not (csd.key in ^kept)
       end
     )

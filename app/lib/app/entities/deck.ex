@@ -6,6 +6,7 @@ defmodule App.Entities.Deck do
   alias App.Entities.CardTagDef
   alias App.Entities.CardStatDef
   alias App.Entities.DeckTag
+  alias App.Entities.Pairing
 
   schema "deck" do
     field :category_label, :string
@@ -24,6 +25,7 @@ defmodule App.Entities.Deck do
     has_many :cards, Card
     has_many :card_tag_defs, CardTagDef
     has_many :card_stat_defs, CardStatDef
+    has_many :pairings, Pairing
     many_to_many :tags, DeckTag, join_through: "deck_deck_tag"
 
     timestamps()

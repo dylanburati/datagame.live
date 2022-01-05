@@ -43,7 +43,6 @@ export function prettyPrint(obj, info = null, currentIndent = 0) {
   }
   if (typeof info !== 'object') return ' '.repeat(currentIndent) + info;
   const { breakLines, isArray, strings } = info;
-  console.log(strings);
   const nextIndent = breakLines ? currentIndent + 2 : 0;
   const joiner = breakLines ? ',\n' : ', ';
   const content = strings.map(child => prettyPrint(null, child, nextIndent)).join(joiner);

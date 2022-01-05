@@ -10,6 +10,7 @@ import React, {
 import type { Comparator } from 'lodash';
 import { Presence } from 'phoenix';
 import { SocketContext } from '../components/SocketProvider';
+import { LogPersist } from './storage';
 
 export function useSet<T>(initialValue: Set<T>) {
   const set = useRef(initialValue).current;
@@ -122,10 +123,13 @@ export function useChannel<
     const channel = socket.channel(topic, paramObj);
     const presence = new Presence(channel);
     channel.onMessage = (event, payload) => {
-      dispatch({
-        event,
-        ...payload,
-      });
+      if (!/^(phx|chan)_reply/.test(event)) {
+        LogPersist.info({ received: 'room.message', event, payload });
+        dispatch({
+          event,
+          ...payload,
+        });
+      }
       return payload;
     };
     presence.onSync(() => {
@@ -142,32 +146,43 @@ export function useChannel<
       { event, ...payload },
       catcher
     ) => {
+      LogPersist.info({ called: 'room.broadcast', event, payload });
       channel
         .push(event, payload)
-        .receive('ok', (reply) =>
-          dispatch({ event: `reply:${event}`, ...reply })
-        )
-        .receive('error', (err) => catcher && catcher(err.reason))
-        .receive('timeout', () => catcher && catcher('Timeout'));
+        .receive('ok', (reply) => {
+          LogPersist.info({ received: 'room.broadcast:ok', event, reply });
+          dispatch({ event: `reply:${event}`, ...reply });
+        })
+        .receive('error', (err) => {
+          LogPersist.error({ received: 'room.broadcast:error', event, err });
+          catcher && catcher(err.reason);
+        })
+        .receive('timeout', () => {
+          LogPersist.error({ received: 'room.broadcast:timeout', event });
+          catcher && catcher('Timeout');
+        });
     };
+    LogPersist.info({ called: 'room.join', payload: paramObj });
     channel
       .join()
-      .receive('ok', (resp) => {
+      .receive('ok', (reply) => {
         if (!cancel) {
-          dispatch({ event: 'reply:join', ...resp });
-          console.log(`joined ${topic}`, resp);
+          LogPersist.info({ received: 'room.join:ok', reply });
+          dispatch({ event: 'reply:join', ...reply });
           setLoading(false);
           setBroadcast(() => func);
         }
       })
-      .receive('error', (resp) => {
+      .receive('error', (err) => {
         if (!cancel) {
+          LogPersist.error({ received: 'room.join:error', err });
           setLoading(false);
-          setError(resp.reason);
+          setError(err.reason);
         }
       })
       .receive('timeout', () => {
         if (!cancel) {
+          LogPersist.error({ received: 'room.join:timeout' });
           setError('Timeout');
         }
       });

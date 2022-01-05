@@ -151,6 +151,7 @@ export type RoomState = {
   trivia?: Trivia;
   participantId?: number;
   receivedAnswers: Map<number, number[]>;
+  lastReplayRecvTime: number;
 };
 
 export function feedbackFor(stage: RoomStage) {
@@ -220,13 +221,19 @@ export function statToNumber(
   value: string | string[],
   _default = NaN
 ) {
-  if (Array.isArray(value) || !statDef || statDef.type === 'string') {
+  if (
+    Array.isArray(value) ||
+    !statDef ||
+    statDef.type === 'string' ||
+    statDef.type === 'lon_lat'
+  ) {
     return _default;
   }
   switch (statDef.type) {
     case 'dollar_amount':
       return parseFloat(value.slice(1).replace(/,/g, ''));
     case 'number':
+    case 'km_distance':
       return parseFloat(value.replace(/,/g, ''));
     case 'date':
       return new Date(value).getTime();
@@ -240,6 +247,8 @@ export type TriviaOptionStyle = {
   selectionOrderDisp?: TextProps['style'];
   barGraph?: ViewProps['style'];
 };
+
+export type RightWrongUnmarked = boolean | undefined;
 
 function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
   const { trivia } = state;
@@ -261,13 +270,31 @@ function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
       (_, index) => order[index] === (answers.getIndex(index) ?? -1)
     );
   }
-  if (hasSelectionOrder(trivia)) {
-    if (!statDef || statDef.type === 'string') {
-      return [];
-    }
-    const numeric = options.map((opt) =>
-      statToNumber(statDef, opt.questionValue, 0)
+  if (answerType === 'selection') {
+    // true for (correct, selected) and (incorrect, not selected).
+    return options.map(
+      ({ inSelection }, whichOption) => inSelection === answers.has(whichOption)
     );
+  }
+  if (!statDef || statDef.type === 'string') {
+    return [];
+  }
+  const numeric = options.map((opt) =>
+    statToNumber(statDef, opt.questionValue, 0)
+  );
+  if (answerType === 'stat.min') {
+    const idxOfMin = argsort(numeric, (a, b) => a - b)[0];
+    return numeric.map((x, whichOption) =>
+      answers.has(whichOption) ? whichOption === idxOfMin : undefined
+    );
+  }
+  if (answerType === 'stat.max') {
+    const idxOfMax = argsort(numeric, (a, b) => -a + b)[0];
+    return numeric.map((x, whichOption) =>
+      answers.has(whichOption) ? whichOption === idxOfMax : undefined
+    );
+  }
+  if (hasSelectionOrder(trivia)) {
     const order = acceptableOrders(
       numeric,
       (a, b) => (a - b) * (answerType === 'stat.desc' ? -1 : 1)
@@ -276,16 +303,12 @@ function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
     return numeric.map((num, whichOption) =>
       order[whichOption].has(answers.getIndex(whichOption) ?? -1)
     );
-  } else {
-    // true for (correct, selected) and (incorrect, not selected).
-    return options.map(
-      ({ inSelection }, whichOption) => inSelection === answers.has(whichOption)
-    );
   }
+  return [];
 }
 
 export function allCorrect(state: RoomState, answers: OrderedSet<number>) {
-  return getCorrectArray(state, answers).every((e) => e);
+  return getCorrectArray(state, answers).every((e) => e !== false);
 }
 
 export function getOptionStyles(
@@ -311,17 +334,25 @@ export function getOptionStyles(
       selectionOrderDisp: hasSelectionOrder(trivia) ? [] : undefined,
     }));
   }
-  const showIncorrect = true; // state.players.activeId === state.selfId;
   if (trivia.answerType === 'matchrank') {
     const correctArr = getCorrectArray(state, answers);
     return correctArr.map((isCorrect) => ({
-      chip: isCorrect
+      chip:
+        isCorrect === true
+          ? [styles.borderGreenAccent, styles.bgSeaGreen300]
+          : isCorrect === false
+          ? [styles.borderRedAccent, styles.bgRed300]
+          : [defaultBg],
+    }));
+  } else if (trivia.answerType === 'selection') {
+    return options.map(({ inSelection }, whichOption) => ({
+      chip: inSelection
         ? [styles.borderGreenAccent, styles.bgSeaGreen300]
-        : showIncorrect
+        : answers.has(whichOption)
         ? [styles.borderRedAccent, styles.bgRed300]
         : [defaultBg],
     }));
-  } else if (hasSelectionOrder(trivia)) {
+  } else {
     if (!statDef || statDef.type === 'string') {
       return [];
     }
@@ -333,7 +364,7 @@ export function getOptionStyles(
     let max = Math.max(...numeric);
     let min = Math.min(...numeric);
     const padding = Math.max((max - min) / 6, 0.01);
-    if (statDef.type === 'dollar_amount' || statDef.type === 'number') {
+    if (['dollar_amount', 'number', 'km_distance'].includes(statDef.type)) {
       min = Math.min(0, min);
     } else {
       min -= padding;
@@ -342,31 +373,33 @@ export function getOptionStyles(
     return numeric.map((num, i) => {
       const frac = (num - min) / (max - min);
       const isCorrect = correctArr[i];
+      let selectionOrderDisp = null;
+      if (hasSelectionOrder(trivia)) {
+        selectionOrderDisp = isCorrect
+          ? [styles.textEmerald]
+          : [styles.textRed];
+      }
       return {
         chip: [
           styles.bgPaperDarker,
-          isCorrect
+          isCorrect === true
             ? [styles.borderGreenAccent]
-            : showIncorrect
+            : isCorrect === false
             ? [styles.borderRedAccent]
-            : [],
+            : [styles.borderGray400],
         ],
         barGraph: [
-          !showIncorrect || isCorrect ? styles.bgSeaGreen300 : styles.bgRed300,
+          isCorrect === true
+            ? styles.bgSeaGreen300
+            : isCorrect === false
+            ? styles.bgRed300
+            : styles.bgGray350,
           {
             width: `${Math.round(100 * frac)}%`,
           },
         ],
-        selectionOrderDisp: isCorrect ? [styles.textEmerald] : [styles.textRed],
+        selectionOrderDisp,
       };
     });
-  } else {
-    return options.map(({ inSelection }, whichOption) => ({
-      chip: inSelection
-        ? [styles.borderGreenAccent, styles.bgSeaGreen300]
-        : showIncorrect && answers.has(whichOption)
-        ? [styles.borderRedAccent, styles.bgRed300]
-        : [defaultBg],
-    }));
   }
 }

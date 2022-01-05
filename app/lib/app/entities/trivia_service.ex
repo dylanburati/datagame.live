@@ -1,19 +1,12 @@
 defmodule App.Entities.TriviaService do
 
   import Ecto.Query
+  import App.Entities.Card, only: [column_map: 0]
+  import App.Entities.PairingService
 
   alias App.Repo
   alias App.Entities.Card
   alias App.Entities.TriviaDef
-
-  defp column_map() do
-    %{
-      "title" => :title,
-      "popularity" => :popularity,
-      "cat1" => :cat1,
-      "cat2" => :cat2
-    }
-  end
 
   defp column_not_null_map() do
     %{
@@ -95,6 +88,10 @@ defmodule App.Entities.TriviaService do
       where: ct.card_tag_def_id == ^card_tag_def.id,
       where: c.is_disabled == false,
       where: not is_nil(ct.value)
+  end
+
+  def get_question_instance(:pairing_questions, _trivia_def, _card_tag_def, _opt_type, _opt_info) do
+    ""
   end
 
   def get_question_instance(:tag_questions, trivia_def, card_tag_def, opt_type, opt_info) do
@@ -234,16 +231,19 @@ defmodule App.Entities.TriviaService do
     #     question_value = {id, "Kathryn Bigelow"}
     #     acol_name = "title"
     trivia_def = trivia_def
-    |> Repo.preload([:question_tag_def, :option_stat_def, :option_tag_def])
+    |> Repo.preload([:pairing, :question_tag_def, :option_stat_def, :option_tag_def])
     %{
       deck_id: deck_id,
+      pairing: pairing,
       question_format: question_format,
       question_source: qsource,
       question_tag_def: qcard_tag_def,
+      question_pairing_subset: qpairing_subset,
       option_source: osource,
       option_stat_def: ocard_stat_def,
       option_difficulty: option_diff_lvl,
       option_tag_def: ocard_tag_def,
+      option_format_separator: option_format_sep,
       selection_length: needs_length,
       selection_min_true: tl_min,
       selection_max_true: tl_max,
@@ -255,6 +255,7 @@ defmodule App.Entities.TriviaService do
     {q_type, q_info} = case qsource do
       "tag" -> {:tag_questions, qcard_tag_def}
       "card." <> col_name -> {:card_questions, {deck_id, col_name}}
+      "pairing" -> {:pairing_questions, pairing}
     end
     {opt_type, opt_info} = case osource do
       "tag" -> {:tag_options, ocard_tag_def}
@@ -268,17 +269,36 @@ defmodule App.Entities.TriviaService do
     end
 
     qinst = get_question_instance(q_type, trivia_def, q_info, opt_type, opt_info)
-    template = unique_answer_query(
-      opt_type,
-      opt_info,
-      [join: (q_type == :tag_questions)] ++ odiff_config
-    )
-    t_query = template
-    |> filter_answers(q_type, cmp, q_info, opt_type, qinst)
-    |> limit([], ^tl_max)
-    f_query = template
-    |> filter_answers(q_type, inv_cmp, q_info, opt_type, qinst)
-    |> limit([], ^fl_max)
+    {t_rows, f_rows} = cond do
+      q_type in [:tag_questions, :card_questions] ->
+        template = unique_answer_query(
+          opt_type,
+          opt_info,
+          [join: (q_type == :tag_questions)] ++ odiff_config
+        )
+        {template
+          |> filter_answers(q_type, cmp, q_info, opt_type, qinst)
+          |> limit([], ^tl_max)
+          |> Repo.all(),
+        template
+          |> filter_answers(q_type, inv_cmp, q_info, opt_type, qinst)
+          |> limit([], ^fl_max)
+          |> Repo.all()
+        }
+      q_type == :pairing_questions ->
+        fmt_opts = [title_sep: option_format_sep]
+        cmp_opts = %{
+          t: [],
+          f: [],
+          eq: [intersect: qpairing_subset],
+          neq: [subtract: qpairing_subset]
+        }
+        {
+          get_pairs(pairing, option_diff_lvl, tl_max, opt_type, opt_info, fmt_opts ++ cmp_opts[cmp]),
+          get_pairs(pairing, option_diff_lvl, fl_max, opt_type, opt_info, fmt_opts ++ cmp_opts[inv_cmp]),
+        }
+    end
+
 
     qtext = case qinst do
       {_t_id, q_value} -> q_value
@@ -286,15 +306,16 @@ defmodule App.Entities.TriviaService do
     end
 
     options = [
-      t_query |> Repo.all() |> Enum.map(&(Map.put(&1, :in_selection, true))),
-      f_query |> Repo.all() |> Enum.map(&(Map.put(&1, :in_selection, false)))
+      t_rows |> Enum.map(&(Map.put(&1, :in_selection, true))),
+      f_rows |> Enum.map(&(Map.put(&1, :in_selection, false)))
     ]
     |> Enum.concat()
     |> Enum.shuffle()
     |> Enum.take(needs_length)
 
-    options = case opt_type do
-      :stat_options -> options
+    options = case {q_type, opt_type} do
+      {:pairing_questions, _} -> options
+      {_, :stat_options} -> options
       _ ->
         back_query = unique_answer_query(opt_type, opt_info,
           join: (q_type == :tag_questions), random_order: false)

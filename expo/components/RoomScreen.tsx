@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Image,
   SafeAreaView,
@@ -95,6 +95,14 @@ function StatDisplay({ roomState, option, answers, index }: StatDisplayProps) {
     );
   } else if (statDef && !Number.isNaN(numValue)) {
     switch (statDef.type) {
+      case 'km_distance':
+        return (
+          <FormattedNumber
+            value={Math.round(numValue * 0.621371)}
+            style="unit"
+            unit="mile"
+          />
+        );
       case 'number':
         return <FormattedNumber value={numValue} />;
       case 'dollar_amount':
@@ -171,6 +179,12 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       selfId: message.userId,
       selfName: message.displayName,
       players: state.players.upsert(message.userId, message.displayName, true),
+    };
+  }
+  if (message.event === 'reply:replay:turn:start') {
+    return {
+      ...state,
+      lastReplayRecvTime: Date.now(),
     };
   }
   if (message.event === 'user:new') {
@@ -263,7 +277,7 @@ export function RoomScreen() {
     new OrderedSet<number>()
   );
   const [isPanelActive, setPanelActive] = useState(false);
-  const replayTurnStartSent = useRef(false);
+  const [lastReplaySendTime, setLastReplaySendTime] = useState(0);
 
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
@@ -283,6 +297,7 @@ export function RoomScreen() {
       players: new RoomPlayerList([]),
       turnId: -1,
       receivedAnswers: new Map(),
+      lastReplayRecvTime: 0,
     },
   });
 
@@ -301,10 +316,13 @@ export function RoomScreen() {
     if (
       !room.state.trivia &&
       room.state.turnId > 0 &&
-      !replayTurnStartSent.current
+      lastReplaySendTime === 0
     ) {
       room.broadcast({ event: 'replay:turn:start' });
-      replayTurnStartSent.current = true;
+      setLastReplaySendTime(Date.now());
+      return;
+    }
+    if (room.state.lastReplayRecvTime < lastReplaySendTime) {
       waitMs = Math.max(waitMs, 2000);
     }
     const timeout = setTimeout(() => {
@@ -317,7 +335,7 @@ export function RoomScreen() {
     return () => {
       clearTimeout(timeout);
     };
-  }, [room, room.state]);
+  }, [lastReplaySendTime, room, room.state]);
 
   const doNameChange = (name: string) => {
     if (!room.connected) {
@@ -450,6 +468,8 @@ export function RoomScreen() {
                           styles.absolute,
                           styles.inset0,
                           styles.zMinusOne,
+                          styles.roundedTopLeftLg,
+                          styles.roundedBottomLeftLg,
                           triviaOptionStyles[index].barGraph,
                         ]}
                       />

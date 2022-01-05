@@ -36,7 +36,8 @@ import { useSet } from './helpers/hooks';
 import { styleConfig, styles } from './styles';
 import config from './config';
 import { RoomScreen } from './components/RoomScreen';
-import { loadJson, roomStorageKey } from './helpers/storage';
+import { loadJson, LogPersist, roomStorageKey } from './helpers/storage';
+import { LogViewer } from './components/LogViewer';
 
 function randomColor(x: number, l2: number) {
   let h = (511 * (x + 31) * (x + 31) + 3 * (x - 31)) % 360;
@@ -92,7 +93,7 @@ export function HomeScreen() {
         setDeckList(await listDecks());
         setRetryCounter(0);
       } catch (err) {
-        console.error(err);
+        LogPersist.error(err);
         retryRef.current = setTimeout(
           () => setRetryCounter((n) => n + 1),
           1000 * Math.pow(1.6, retryCounter)
@@ -307,6 +308,16 @@ export function HomeScreen() {
               </TouchableOpacity>
             </View>
           )}
+          <View style={[styles.centerAll, styles.mt8]}>
+            <TouchableOpacity
+              style={[styles.bgBlack, styles.roundedLg, styles.px4, styles.py2]}
+              onPress={() => navigate('LogViewer')}
+            >
+              <Text style={[styles.textWhite, styles.textCenter]}>
+                VIEW LOGS
+              </Text>
+            </TouchableOpacity>
+          </View>
           <View style={[styles.mx6, styles.my8]}>
             <Text style={styles.textSm}>Copyright (c) 2021 Dylan Burati</Text>
           </View>
@@ -372,6 +383,11 @@ export default function App() {
               name="Room"
               component={RoomScreen}
               options={{ orientation: 'default', title: 'Room' }}
+            />
+            <Stack.Screen
+              name="LogViewer"
+              component={LogViewer}
+              options={{ orientation: 'default', title: 'Logs' }}
             />
           </Stack.Navigator>
         </NavigationContainer>
