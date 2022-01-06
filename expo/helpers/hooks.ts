@@ -11,6 +11,7 @@ import type { Comparator } from 'lodash';
 import { Presence } from 'phoenix';
 import { SocketContext } from '../components/SocketProvider';
 import { LogPersist } from './storage';
+import config from '../config';
 
 export function useSet<T>(initialValue: Set<T>) {
   const set = useRef(initialValue).current;
@@ -114,7 +115,7 @@ export function useChannel<
     typeof joinParams === 'function' ? joinParams(state) : joinParams;
   const paramObj = {
     ...userParams,
-    version: 1,
+    version: config.ROOM_API_VERSION,
   };
   useEffect(() => {
     if (disable) {

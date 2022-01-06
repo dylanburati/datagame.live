@@ -120,4 +120,16 @@ defmodule App.Utils do
     end)
     |> String.slice(0, num_chars)
   end
+
+  @spec find_last([elem], default, (elem -> boolean)) :: elem | default when elem: var, default: var
+  def find_last(lst, default \\ nil, pred) do
+    {_, result} = List.foldr(lst, {false, default}, fn el, acc ->
+      {found?, _} = acc
+      case found? do
+        true -> acc
+        _ -> if pred.(el), do: {true, el}, else: acc
+      end
+    end)
+    result
+  end
 end

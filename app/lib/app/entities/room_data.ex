@@ -1,7 +1,12 @@
 defmodule App.Entities.RoomData do
   alias App.Entities.RoomData
+  import App.Utils
 
   defstruct [:room_id, :user_id]
+
+  defmodule RoomCacheKeys do
+    defstruct [:round_messages, :scores, :turn_counter]
+  end
 
   # cache_keys(room_id,
   # ["round_start", "turn_counter", "last_player", "scores"])
@@ -15,16 +20,13 @@ defmodule App.Entities.RoomData do
     end
   end
 
+  @spec cache_keys(RoomData) :: RoomCacheKeys
   defp cache_keys(room_data) do
     %{room_id: room_id} = room_data
-    %{
-      round_start: "RoomChannel.#{room_id}.round_start",
+    %RoomCacheKeys{
+      round_messages: "RoomChannel.#{room_id}.round_messages",
       scores: "RoomChannel.#{room_id}.scores",
-      turn_counter: "RoomChannel.#{room_id}.turn_counter",
-      turn_start: "RoomChannel.#{room_id}.turn_start",
-      turn_answers: "RoomChannel.#{room_id}.turn_answers",
-      curr_player: "RoomChannel.#{room_id}.curr_player",
-      last_player: "RoomChannel.#{room_id}.last_player"
+      turn_counter: "RoomChannel.#{room_id}.turn_counter"
     }
   end
 
@@ -36,29 +38,25 @@ defmodule App.Entities.RoomData do
     k = cache_keys(room_data)
     :ok = App.Cache.new_atomic(k.turn_counter)
     :ok = App.Cache.set_atomic(k.turn_counter, 0)
-    :ok = App.Cache.insert(k.round_start, payload)
+    :ok = App.Cache.insert(k.round_messages, [{"round:start", payload}])
     participants = Map.get(payload, "playerOrder", [])
     App.Cache.insert(k.scores, Map.new(participants, fn id -> {id, 0} end))
   end
 
   @doc """
-  Gets the round start payload, current turn ID, last player's ID, current player's ID,
-  and scores.
+  Gets the list of round messages required to reconstruct the game state.
+
+  1. round:start (player order, etc)
+  2. turn:end (scores, turnId)
+  3. turn:start (trivia, turnId if no turn:end)
+  4. turn:feedback (one per answer submitted)
   """
-  @spec get_round(RoomData) :: nil | {map, integer, integer | nil, integer | nil, map}
+  @spec get_round(RoomData) :: [map]
   def get_round(room_data) do
     k = cache_keys(room_data)
-    ongoing_round = App.Cache.lookup(k.round_start)
-    if is_nil(ongoing_round) do
-      nil
-    else
-      {
-        ongoing_round,
-        App.Cache.get_atomic(k.turn_counter, 0),
-        App.Cache.lookup(k.last_player),
-        App.Cache.lookup(k.curr_player),
-        App.Cache.lookup(k.scores)
-      }
+    case App.Cache.lookup(k.round_messages) do
+      nil -> []
+      msgs -> Enum.map(msgs, fn {evt, payload} -> Map.put(payload, "event", evt) end)
     end
   end
 
@@ -67,21 +65,8 @@ defmodule App.Entities.RoomData do
   """
   @spec turn_id(RoomData) :: integer
   def turn_id(room_data) do
-    case get_round(room_data) do
-      {_, tid, _, _, _} -> tid
-      _ -> 0
-    end
-  end
-
-  @doc """
-  Gets the current turn player's ID.
-  """
-  @spec curr_player_id(RoomData) :: integer | nil
-  def curr_player_id(room_data) do
-    case get_round(room_data) do
-      {_, _, _, plid, _} -> plid
-      _ -> nil
-    end
+    k = cache_keys(room_data)
+    App.Cache.get_atomic(k.turn_counter, 0)
   end
 
   @doc """
@@ -104,37 +89,40 @@ defmodule App.Entities.RoomData do
   @spec init_turn(RoomData, map) :: :ok
   def init_turn(room_data, turn_info) do
     k = cache_keys(room_data)
-    %{user_id: user_id} = room_data
-    :ok = App.Cache.insert(k.curr_player, user_id)
-    :ok = App.Cache.insert(k.turn_start, turn_info)
-    App.Cache.insert(k.turn_answers, %{})
+    record = [{"turn:start", turn_info}]
+
+    # Keep the round:start and only 1 turn:end
+    App.Cache.update(k.round_messages, record, fn msgs ->
+      [find_last(msgs, fn {evt, _} -> evt == "round:start" end),
+       find_last(msgs, fn {evt, _} -> evt == "turn:end" end)]
+      |> Enum.filter(&(not is_nil(&1)))
+      |> Enum.concat(record)
+    end)
+    :ok
   end
 
   @doc """
-  Gets the turn start payload and answer map.
-  """
-  @spec get_turn(RoomData) :: nil | {map, map}
-  def get_turn(room_data) do
-    k = cache_keys(room_data)
-    ongoing_turn = App.Cache.lookup(k.turn_start)
-    if is_nil(ongoing_turn) do
-      nil
-    else
-      {
-        ongoing_turn,
-        App.Cache.lookup(k.turn_answers)
-      }
-    end
-  end
-
-  @doc """
-  Sets the user's answer to the current turns question.
+  Sets the user's answer to the current turn question.
   """
   @spec update_answers(RoomData, map) :: map
-  def update_answers(room_data, ans_info) do
+  def update_answers(room_data, answered) do
     k = cache_keys(room_data)
     %{user_id: user_id} = room_data
-    App.Cache.update(k.turn_answers, %{user_id => ans_info}, &(Map.put(&1, user_id, ans_info)))
+    ans_info = Map.merge(answered, %{"userId" => user_id})
+    record = [{"turn:feedback", ans_info}]
+
+    # replace previous answer in log, if any
+    App.Cache.update(k.round_messages, record, fn msgs ->
+      Enum.filter(msgs, fn {evt, payload} ->
+        cond do
+          evt in ["round:start", "turn:start", "turn:end"] -> true
+          evt == "turn:feedback" -> Map.get(payload, "userId") != user_id
+          true -> false
+        end
+      end)
+      |> Enum.concat(record)
+    end)
+    ans_info
   end
 
   @doc """
@@ -144,11 +132,17 @@ defmodule App.Entities.RoomData do
   def end_turn(room_data, score_changes) do
     k = cache_keys(room_data)
     %{user_id: user_id} = room_data
-    :ok = App.Cache.insert(k.turn_start, nil)
-    :ok = App.Cache.insert(k.last_player, user_id)
-    if map_size(score_changes) > 0 do
-      App.Cache.update(k.scores, %{}, fn map -> Map.merge(map, score_changes) end)
-    end
-    :ok
+    score_map = App.Cache.update(k.scores, %{}, fn map ->
+      Map.merge(map, score_changes, fn _, prev, increment -> prev + increment end)
+    end)
+    score_lst = Enum.map(score_map, fn {k, v} -> %{"userId" => k, "score" => v} end)
+    turn_info = %{"userId" => user_id, "turnId" => turn_id(room_data), "scores" => score_lst}
+    record = [{"turn:end", turn_info}]
+
+    App.Cache.update(k.round_messages, record, fn msgs ->
+      Enum.filter(msgs, fn {evt, _} -> evt == "round:start" end)
+      |> Enum.concat(record)
+    end)
+    turn_info
   end
 end

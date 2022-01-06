@@ -151,7 +151,6 @@ export type RoomState = {
   trivia?: Trivia;
   participantId?: number;
   receivedAnswers: Map<number, number[]>;
-  lastReplayRecvTime: number;
 };
 
 export function feedbackFor(stage: RoomStage) {

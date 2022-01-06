@@ -176,4 +176,68 @@ defmodule App.Entities.PairingService do
 
     query |> Repo.all()
   end
+
+  def generate_all_pairs(pairing) do
+    %{"filter" => cond_lst} = pairing.criteria
+
+    indep_conds = Enum.reduce(
+      cond_lst,
+      dynamic([], true),
+      fn cnd, ic ->
+        case cnd do
+          ["exists", stat_key = ("stat" <> _)] ->
+            # stat_key = Card.key_for_stat(which_stat)
+            dynamic([c], ^ic and c.stat_box[^stat_key] != fragment("'null'::jsonb"))
+          _ -> ic
+        end
+      end
+    )
+
+    stage1_query = from c1 in Card,
+      where: c1.deck_id == ^pairing.deck_id,
+      where: c1.is_disabled == false,
+      where: ^indep_conds
+
+    candidates = stage1_query |> Repo.all()
+    candidates
+    |> Enum.map(fn c1 ->
+      in_filter = Enum.map(candidates, fn c2 ->
+        Enum.reduce(
+          cond_lst,
+          true,
+          fn cnd, within_filter ->
+            case {cnd, within_filter} do
+              {_, false} -> false
+              {["mismatch", col_name], _} ->
+                case Map.fetch(column_map(), col_name) do
+                  {:ok, card_field} -> Map.fetch!(c1, card_field) != Map.fetch!(c2, card_field)
+                  _ ->
+                    sa = String.to_atom(col_name)
+                    Map.fetch!(c1.stat_box, sa) != Map.fetch!(c2.stat_box, sa)
+                end
+
+              {["match", left_col, right_col], _} ->
+                {lv1, lv2} = case Map.fetch(column_map(), left_col) do
+                  {:ok, card_field} -> {Map.fetch!(c1, card_field), Map.fetch!(c2, card_field)}
+                  _ ->
+                    sa = String.to_atom(left_col)
+                    {Map.fetch!(c1.stat_box, sa), Map.fetch!(c2.stat_box, sa)}
+                end
+                {rv1, rv2} = case Map.fetch(column_map(), right_col) do
+                  {:ok, card_field} -> {Map.fetch!(c1, card_field), Map.fetch!(c2, card_field)}
+                  _ ->
+                    sa = String.to_atom(right_col)
+                    {Map.fetch!(c1.stat_box, sa), Map.fetch!(c2.stat_box, sa)}
+                end
+                lv1 == rv2 and lv2 == rv1
+
+              _ -> true
+            end
+        end)
+      end)
+      |> Enum.count(&(&1))
+
+      {c1, in_filter}
+    end)
+  end
 end

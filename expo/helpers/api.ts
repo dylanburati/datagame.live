@@ -93,6 +93,11 @@ export type RoomIncomingMessage =
       createdAt: string;
       userId: number;
       displayName: string;
+      users: {
+        userId: number;
+        displayName: string;
+      }[];
+      roundMessages: RoomIncomingMessage[];
     }
   | {
       event: 'user:new';
@@ -108,9 +113,6 @@ export type RoomIncomingMessage =
   | {
       event: 'round:start';
       playerOrder: number[];
-      turnId: number;
-      lastTurnUserId?: number;
-      scores?: RoomScoreEntry[];
       pointTarget: number;
     }
   | {
@@ -122,22 +124,19 @@ export type RoomIncomingMessage =
     }
   | {
       event: 'turn:end';
+      turnId: number;
       userId: number;
-      scoreChanges: RoomScoreEntry[];
+      scores: RoomScoreEntry[];
     }
   | {
       event: 'turn:feedback';
-      turnId: number;
-      answers: {
-        userId: number;
-        answered: number[];
-      }[];
+      userId: number;
+      answered: number[];
     }
   | {
       event: 'presence';
       presence: Presence;
-    }
-  | { event: 'reply:replay:turn:start' };
+    };
 
 export type RoomOutgoingMessage =
   | {
@@ -160,8 +159,7 @@ export type RoomOutgoingMessage =
   | {
       event: 'turn:end';
       scoreChanges: RoomScoreEntry[];
-    }
-  | { event: 'replay:turn:start' };
+    };
 
 async function getJson(url: string) {
   LogPersist.info({ called: 'getJson', url });
@@ -235,6 +233,6 @@ export async function createGame(
 export async function createRoom(hostNickname: string) {
   return (await postJson(`${config.baseUrl}/api/room`, {
     hostNickname,
-    version: 1,
+    version: config.ROOM_API_VERSION,
   })) as RoomAndSelf;
 }

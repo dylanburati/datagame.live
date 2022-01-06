@@ -11,7 +11,7 @@ defmodule AppWeb.RoomChannel do
   @doc """
   Gets the current version of the Room client-server protocol
   """
-  def version(), do: 1
+  def version(), do: 2
 
   @impl true
   def join("room:" <> room_id, params = %{"version" => cl_version}, socket) do
@@ -72,23 +72,17 @@ defmodule AppWeb.RoomChannel do
 
       just_joined = %{"userId" => user_id, "displayName" => room_user.name}
       room_extras = %{"creatorId" => room.creator.id, "createdAt" => room.inserted_at}
-      push(socket, "join", Map.merge(just_joined, room_extras))
-      if is_new, do: broadcast(socket, "user:new", Map.put(just_joined, "isNow", true))
-
-      case RoomData.get_round(room_data) do
-        {ongoing_round, turn_id, last_player_id, _, scores} ->
-          scores_out = Enum.map(scores, fn {k, v} -> %{"userId" => k, "score" => v} end)
-          push(socket, "round:start", Map.merge(ongoing_round,
-            %{"turnId" => turn_id, "lastTurnUserId" => last_player_id, "scores" => scores_out}))
-        _ -> nil
-      end
-
-      # send the details of every other user in the room
-      Enum.filter(room.users, fn %{id: id} -> id != user_id end)
+      round_messages = RoomData.get_round(room_data)
+      users = Enum.filter(room.users, fn %{id: id} -> id != user_id end)
       |> Enum.map(fn %{id: id, name: name} ->
-        %{"userId" => id, "displayName" => name, "isNow" => false}
+        %{"userId" => id, "displayName" => name}
       end)
-      |> Enum.each(&(push(socket, "user:new", &1)))
+
+      join_info = just_joined
+      |> Map.merge(room_extras)
+      |> Map.merge(%{"roundMessages" => round_messages, "users" => users})
+      push(socket, "join", join_info)
+      if is_new, do: broadcast(socket, "user:new", Map.put(just_joined, "isNow", true))
 
       push(socket, "presence_state", Presence.list(socket))
       {:noreply, socket}
@@ -176,46 +170,22 @@ defmodule AppWeb.RoomChannel do
   end
 
   @impl true
+  def handle_in("turn:feedback", payload, socket) do
+    room_data = RoomData.current_room(socket)
+    ans_info = RoomData.update_answers(room_data, payload)
+    broadcast(socket, "turn:feedback", ans_info)
+    {:reply, {:ok, %{}}, socket}
+  end
+
+  @impl true
   def handle_in("turn:end", payload, socket) do
     score_changes = Map.get(payload, "scoreChanges", [])
     |> Enum.filter(&(Map.has_key?(&1, "userId") and Map.has_key?(&1, "score")))
     |> Map.new(fn %{"userId" => k, "score" => v} -> {k, v} end)
 
     room_data = RoomData.current_room(socket)
-    :ok = RoomData.end_turn(room_data, score_changes)
-    broadcast(socket, "turn:end", Map.merge(payload, %{"userId" => room_data.user_id}))
-    {:reply, {:ok, %{}}, socket}
-  end
-
-  @impl true
-  def handle_in("turn:feedback", payload, socket) do
-    room_data = RoomData.current_room(socket)
-    ans_info = Map.merge(payload, %{"userId" => room_data.user_id})
-    ans_map = RoomData.update_answers(room_data, ans_info)
-    broadcast(socket, "turn:feedback",
-      %{"answers" => Map.values(ans_map), "turnId" => RoomData.turn_id(room_data)})
-    {:reply, {:ok, %{}}, socket}
-  end
-
-  def handle_in("replay:turn:start", _payload, socket) do
-    room_data = RoomData.current_room(socket)
-    is_stale = case RoomData.curr_player_id(room_data) do
-      nil -> true
-      uid -> is_nil(Presence.get_by_key(socket, uid))
-    end
-    unless is_stale do
-      case RoomData.get_turn(room_data) do
-        {turn_info, ans_map} ->
-          push(socket, "turn:start", turn_info)
-          if not Enum.empty?(ans_map) do
-            feedback_payload = %{
-              "answers" => Map.values(ans_map), "turnId" => RoomData.turn_id(room_data)
-            }
-            push(socket, "turn:feedback", feedback_payload)
-          end
-        _ -> nil
-      end
-    end
+    turn_info = RoomData.end_turn(room_data, score_changes)
+    broadcast(socket, "turn:end", turn_info)
     {:reply, {:ok, %{}}, socket}
   end
 end

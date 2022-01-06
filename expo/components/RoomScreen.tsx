@@ -171,8 +171,9 @@ function TriviaContainer({
 
 function roomReducer(state: RoomState, message: RoomIncomingMessage) {
   if (message.event === 'join') {
-    storeJson(roomStorageKey(state.roomId), message);
-    return {
+    const { roundMessages, users, ...room } = message;
+    storeJson(roomStorageKey(state.roomId), room);
+    const withRoom: RoomState = {
       ...state,
       creatorId: message.creatorId,
       createdAt: message.createdAt,
@@ -180,12 +181,16 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       selfName: message.displayName,
       players: state.players.upsert(message.userId, message.displayName, true),
     };
-  }
-  if (message.event === 'reply:replay:turn:start') {
-    return {
-      ...state,
-      lastReplayRecvTime: Date.now(),
-    };
+    const withUsers: RoomState = users.reduce(
+      (acc, user) =>
+        roomReducer(acc, { event: 'user:new', isNow: false, ...user }),
+      withRoom
+    );
+    const withRound: RoomState = roundMessages.reduce(
+      (acc, msg) => roomReducer(acc, msg),
+      withUsers
+    );
+    return withRound;
   }
   if (message.event === 'user:new') {
     return {
@@ -218,11 +223,8 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
     return {
       ...state,
       stage: RoomStage.UNKNOWN_TURN,
-      players: state.players
-        .setOrder(message.playerOrder)
-        .endTurn(message.lastTurnUserId ?? -1)
-        .updateScores(message.scores ?? []),
-      turnId: message.turnId,
+      players: state.players.setOrder(message.playerOrder),
+      turnId: 0,
     };
   }
   if (message.event === 'turn:start') {
@@ -242,9 +244,7 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
     };
   }
   if (message.event === 'turn:feedback') {
-    message.answers.forEach((obj) => {
-      state.receivedAnswers.set(obj.userId, obj.answered);
-    });
+    state.receivedAnswers.set(message.userId, message.answered);
     if (state.receivedAnswers.size >= triviaRequiredAnswers(state)) {
       return {
         ...state,
@@ -260,7 +260,8 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       stage: RoomStage.UNKNOWN_TURN,
       players: state.players
         .endTurn(message.userId)
-        .updateScores(message.scoreChanges),
+        .updateScores(message.scores),
+      turnId: message.turnId,
     };
   }
 
@@ -277,7 +278,6 @@ export function RoomScreen() {
     new OrderedSet<number>()
   );
   const [isPanelActive, setPanelActive] = useState(false);
-  const [lastReplaySendTime, setLastReplaySendTime] = useState(0);
 
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
@@ -297,7 +297,6 @@ export function RoomScreen() {
       players: new RoomPlayerList([]),
       turnId: -1,
       receivedAnswers: new Map(),
-      lastReplayRecvTime: 0,
     },
   });
 
@@ -313,18 +312,6 @@ export function RoomScreen() {
       return;
     }
     let waitMs = turnsToWait * 10000;
-    if (
-      !room.state.trivia &&
-      room.state.turnId > 0 &&
-      lastReplaySendTime === 0
-    ) {
-      room.broadcast({ event: 'replay:turn:start' });
-      setLastReplaySendTime(Date.now());
-      return;
-    }
-    if (room.state.lastReplayRecvTime < lastReplaySendTime) {
-      waitMs = Math.max(waitMs, 2000);
-    }
     const timeout = setTimeout(() => {
       room.broadcast(
         { event: 'turn:start', fromTurnId: room.state.turnId },
@@ -335,7 +322,7 @@ export function RoomScreen() {
     return () => {
       clearTimeout(timeout);
     };
-  }, [lastReplaySendTime, room, room.state]);
+  }, [room, room.state]);
 
   const doNameChange = (name: string) => {
     if (!room.connected) {
@@ -546,9 +533,10 @@ export function RoomScreen() {
                     }
                     room.broadcast({
                       event: 'turn:end',
-                      scoreChanges: room.state.players.scoresWithUpdates(
-                        userIds.map((userId) => ({ userId, score }))
-                      ),
+                      scoreChanges: userIds.map((userId) => ({
+                        userId,
+                        score,
+                      })),
                     });
                   }
                 }}
