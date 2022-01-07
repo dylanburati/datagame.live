@@ -224,7 +224,7 @@ export function statToNumber(
     Array.isArray(value) ||
     !statDef ||
     statDef.type === 'string' ||
-    statDef.type === 'lon_lat'
+    statDef.type === 'lat_lon'
   ) {
     return _default;
   }

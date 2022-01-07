@@ -18,7 +18,7 @@ defmodule App.Entities.PairingService do
           nil -> {:error, "Invalid aggregate source: #{stat_key}"}
           def ->
             case {def.stat_type, funcname} do
-              {"lon_lat", "geodist"} -> :ok
+              {"lat_lon", "geodist"} -> :ok
               _ -> {:error, "Invalid aggregation for type #{def.stat_type}: #{funcname}"}
             end
         end
@@ -36,19 +36,38 @@ defmodule App.Entities.PairingService do
     x * x
   end
 
-  def calc_agg(_deck, {stat_key, "geodist"}, box1, box2) do
-    [lon1, lat1] = Map.get(box1, stat_key)
-    |> String.split(",")
-    |> Enum.map(&(parse_float!(&1) * :math.pi() / 180.0))
-    [lon2, lat2] = Map.get(box2, stat_key)
-    |> String.split(",")
-    |> Enum.map(&(parse_float!(&1) * :math.pi() / 180.0))
+  defp sin2(num) do
+    x = :math.sin(num)
+    x * x
+  end
 
+  defp cos2(num) do
+    x = :math.cos(num)
+    x * x
+  end
+
+  def calc_agg(_stat_def, "geodist", v1, v2) do
+    [lat1, lon1] = String.split(v1, ",")
+    |> Enum.map(&(parse_float!(&1) * :math.pi / 180.0))
+    [lat2, lon2] = String.split(v2, ",")
+    |> Enum.map(&(parse_float!(&1) * :math.pi / 180.0))
+
+    flattening = 1.0 / 298.257223563
+    radius_km = 6371.009
+
+    # lambert's formula
+    b1 = :math.atan((1.0 - flattening) * :math.tan(lat1))
+    b2 = :math.atan((1.0 - flattening) * :math.tan(lat2))
     dlambda = abs(lon1 - lon2)
-    dphi = abs(lat1 - lat2)
+    dphi = abs(b1 - b2)
     central2 = haversin(dphi) + haversin(dlambda) * (1.0 - haversin(dphi) - haversin(lat1 + lat2))
-    central = 2 * :math.asin(:math.sqrt(central2))
-    Float.to_string(6371.0088 * central)
+    halfcentral = :math.asin(:math.sqrt(central2))
+    central = 2 * halfcentral
+    p = 0.5 * (b1 + b2)
+    q = 0.5 * (b2 - b1)
+    x = (central - :math.sin(central)) * sin2(p) * cos2(q) / cos2(halfcentral)
+    y = (central + :math.sin(central)) * sin2(q) * cos2(p) / sin2(halfcentral)
+    radius_km * (central - 0.5 * flattening * (x + y))
   end
 
   def get_pairs(pairing, difficulty, limit, ans_type, ans_info, opts \\ []) do
@@ -87,9 +106,11 @@ defmodule App.Entities.PairingService do
           {:stat_options, card_stat_def} ->
             sa = String.to_atom(card_stat_def.key)
             {_, funcname} = Enum.find(aggs, fn {k, _} -> k == card_stat_def.key end)
+            v1 = Map.get(c1.stat_box, sa)
+            v2 = Map.get(c2.stat_box, sa)
             %{
               answer: Enum.join([c1.title, c2.title], title_sep),
-              question_value: calc_agg(deck, {sa, funcname}, c1.stat_box, c2.stat_box)
+              question_value: to_string(calc_agg(card_stat_def, funcname, v1, v2))
             }
         end
       end)

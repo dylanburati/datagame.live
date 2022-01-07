@@ -13,7 +13,7 @@ defmodule App.Entities.CardStatDef do
 
   @spec all_stat_types() :: [String.t]
   def all_stat_types() do
-    ~w(string number date dollar_amount lon_lat)
+    ~w(string number date dollar_amount lat_lon)
   end
 
   defp can_be_type(_, nil), do: true
@@ -28,11 +28,11 @@ defmodule App.Entities.CardStatDef do
       _ -> false
     end
   end
-  defp can_be_type("lon_lat", str) do
+  defp can_be_type("lat_lon", str) do
     case String.split(str, ",") do
-      [lon_s, lat_s] ->
-        case {Float.parse(String.trim(lon_s)), Float.parse(String.trim(lat_s))} do
-          {{lon, ""}, {lat, ""}} -> abs(lon) <= 180 and abs(lat) <= 90
+      [lat_s, lon_s] ->
+        case {Float.parse(String.trim(lat_s)), Float.parse(String.trim(lon_s))} do
+          {{lat, ""}, {lon, ""}} -> abs(lat) <= 90 and abs(lon) <= 180
           _ -> false
         end
       _ -> false

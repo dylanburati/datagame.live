@@ -67,7 +67,7 @@ export type TriviaStatType =
   | 'date'
   | 'dollar_amount'
   | 'km_distance'
-  | 'lon_lat';
+  | 'lat_lon';
 
 export type Trivia = {
   question: string;
