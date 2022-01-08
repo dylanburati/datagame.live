@@ -1,32 +1,32 @@
 defmodule App.Entities.RoomData do
-  alias App.Entities.RoomData
   import App.Utils
+  alias App.Entities.RoomData
 
-  defstruct [:room_id, :user_id]
+  defstruct [:room_code, :user_id]
 
   defmodule RoomCacheKeys do
     defstruct [:round_messages, :scores, :turn_counter]
   end
 
-  # cache_keys(room_id,
+  # cache_keys(room_code,
   # ["round_start", "turn_counter", "last_player", "scores"])
 
-  # cache_keys(room_id,
+  # cache_keys(room_code,
   # ["turn_counter", "curr_player", "turn_start", "turn_answers"])
 
   def current_room(socket) do
-    with %{room_id: room_id, user_id: user_id} <- socket.assigns do
-      %RoomData{room_id: room_id, user_id: user_id}
+    with %{room_code: room_code, user_id: user_id} <- socket.assigns do
+      %RoomData{room_code: room_code, user_id: user_id}
     end
   end
 
   @spec cache_keys(RoomData) :: RoomCacheKeys
   defp cache_keys(room_data) do
-    %{room_id: room_id} = room_data
+    %{room_code: room_code} = room_data
     %RoomCacheKeys{
-      round_messages: "RoomChannel.#{room_id}.round_messages",
-      scores: "RoomChannel.#{room_id}.scores",
-      turn_counter: "RoomChannel.#{room_id}.turn_counter"
+      round_messages: "RoomChannel.#{room_code}.round_messages",
+      scores: "RoomChannel.#{room_code}.scores",
+      turn_counter: "RoomChannel.#{room_code}.turn_counter"
     }
   end
 
@@ -40,7 +40,20 @@ defmodule App.Entities.RoomData do
     :ok = App.Cache.set_atomic(k.turn_counter, 0)
     :ok = App.Cache.insert(k.round_messages, [{"round:start", payload}])
     participants = Map.get(payload, "playerOrder", [])
-    App.Cache.insert(k.scores, Map.new(participants, fn id -> {id, 0} end))
+    start_scores = Map.new(participants, fn id -> {id, 0} end)
+    App.Cache.update(k.scores, start_scores, fn prev ->
+      rng = Map.values(prev) |> Enum.min_max(fn -> :empty end)
+      case rng do
+        :empty -> start_scores
+        {smin, smax} ->
+          new_player_scores = Map.new(participants, fn id ->
+            score = smin + floor(:rand.uniform() * (smax - smin))
+            {id, score}
+          end)
+          Map.merge(new_player_scores, prev)
+      end
+    end)
+    :ok
   end
 
   @doc """
@@ -57,6 +70,21 @@ defmodule App.Entities.RoomData do
     case App.Cache.lookup(k.round_messages) do
       nil -> []
       msgs -> Enum.map(msgs, fn {evt, payload} -> Map.put(payload, "event", evt) end)
+    end
+  end
+
+  @doc """
+  Gets the player order of the active round.
+  """
+  @spec get_player_order(RoomData) :: [number]
+  def get_player_order(room_data) do
+    k = cache_keys(room_data)
+    case App.Cache.lookup(k.round_messages) do
+      nil -> []
+      msgs -> case Enum.find(msgs, fn {evt, _} -> evt == "round:start" end) do
+        {_, %{"playerOrder" => arr}} -> arr
+        _ -> []
+      end
     end
   end
 

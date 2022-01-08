@@ -14,7 +14,7 @@ export function LogViewer() {
   ];
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [included, setIncluded] = useStateNoCmp(
-    new OrderedSet().extend(['INFO', 'WARNING', 'ERROR'])
+    new OrderedSet<string>().extend(['INFO', 'WARNING', 'ERROR'])
   );
 
   useEffect(() => {
@@ -25,6 +25,9 @@ export function LogViewer() {
     const spaceIdx = line.indexOf(' ');
     return spaceIdx > 0 && included.has(line.slice(0, spaceIdx));
   });
+  if (included.has('new→old')) {
+    logsToShow.reverse();
+  }
   return (
     <SafeAreaView style={styles.topContainer}>
       <ChipPicker
@@ -35,7 +38,7 @@ export function LogViewer() {
           styles.startAll,
           styles.flexWrap,
         ]}
-        data={levels}
+        data={[...levels, { name: 'new→old' }]}
         keySelector={(item) => `toggle-${item.name}`}
         onPress={({ item }) => setIncluded(included.toggle(item.name))}
         chipStyle={({ item }) => [

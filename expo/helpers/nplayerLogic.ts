@@ -6,15 +6,16 @@ import { styles } from '../styles';
 import { acceptableOrders, argsort } from './math';
 
 export enum RoomStage {
-  LOBBY = 0x0,
-  UNKNOWN_TURN = 0x1,
-  SELF_TURN = 0x2,
-  PARTICIPANT = 0x3,
-  SPECTATOR = 0x4,
-  FEEDBACK_SELF_TURN = 0x12,
-  FEEDBACK_PARTICIPANT = 0x13,
-  FEEDBACK_SPECTATOR = 0x14,
-  RESULTS = 0x20,
+  LOBBY,
+  WAITING_ROOM,
+  UNKNOWN_TURN,
+  SELF_TURN,
+  PARTICIPANT,
+  SPECTATOR,
+  FEEDBACK_SELF_TURN,
+  FEEDBACK_PARTICIPANT,
+  FEEDBACK_SPECTATOR,
+  RESULTS,
 }
 
 export type RoomPlayer = {
@@ -152,6 +153,10 @@ export type RoomState = {
   participantId?: number;
   receivedAnswers: Map<number, number[]>;
 };
+
+export function shouldShowLobby(stage: RoomStage) {
+  return stage === RoomStage.LOBBY || stage === RoomStage.WAITING_ROOM;
+}
 
 export function feedbackFor(stage: RoomStage) {
   const lut: Partial<Record<RoomStage, RoomStage>> = {

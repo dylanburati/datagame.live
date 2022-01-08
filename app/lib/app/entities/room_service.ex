@@ -1,32 +1,10 @@
 defmodule App.Entities.RoomService do
   import Ecto.Changeset
   import Ecto.Query
-  import App.Utils
 
   alias App.Repo
   alias App.Entities.Room
   alias App.Entities.RoomUser
-
-  @code_alpha "ABCEFHJKMNRSTVXZ"
-  # random looking codes without the birthday paradox
-  defp id_to_code(room_id) do
-    cond do
-      room_id < 0x10000 ->
-        to_base16(rem(room_id * 6561, 0x10000), @code_alpha)
-        |> String.pad_leading(4, "A")
-      true ->
-        to_base16(room_id, @code_alpha)
-    end
-  end
-
-  defp code_to_id(room_code) do
-    with {:ok, num} <- from_base16(room_code, @code_alpha) do
-      cond do
-        num < 0x10000 -> {:ok, rem(num * 2657, 0x10000)}
-        true -> {:ok, num}
-      end
-    end
-  end
 
   def create(host_nickname) do
     creator_changeset = %RoomUser{}
@@ -55,12 +33,12 @@ defmodule App.Entities.RoomService do
 
     with {:ok, rmap = %{room: room}} <- result do
       {:ok,
-       %{rmap | room: Map.put(room, :code, id_to_code(room.id))}}
+       %{rmap | room: Map.put(room, :code, Room.id_to_code(room.id))}}
     end
   end
 
   def get_by_code(room_code) do
-    with {:ok, room_id} <- code_to_id(room_code) do
+    with {:ok, room_id} <- Room.code_to_id(room_code) do
       room_q = preload(Room, [:creator, :users])
       case result = Repo.get(room_q, room_id) do
         %Room{} ->
@@ -75,7 +53,7 @@ defmodule App.Entities.RoomService do
   end
 
   def get_user_in_room(room_code, user_id) do
-    with {:ok, room_id} <- code_to_id(room_code) do
+    with {:ok, room_id} <- Room.code_to_id(room_code) do
       query = from ru in RoomUser,
         join: r in assoc(ru, :room),
         where: r.id == ^room_id,

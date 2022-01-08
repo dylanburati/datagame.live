@@ -9,11 +9,15 @@ import { indexEncircled } from '../helpers/iconography';
 
 export type RoomCreatorControlsProps = {
   roomState: RoomState;
+  canCancel: boolean;
+  doCancel: () => void;
   doBegin: (playerOrder: number[]) => void;
 };
 
 export function RoomCreatorControls({
   roomState,
+  canCancel,
+  doCancel,
   doBegin,
 }: RoomCreatorControlsProps) {
   const [draftOrder, setDraftOrder] = useStateNoCmp(new OrderedSet<number>());
@@ -24,9 +28,9 @@ export function RoomCreatorControls({
 
   useEffect(() => {
     if (roomState.selfId) {
-      draftOrder.append(roomState.selfId);
+      setDraftOrder(draftOrder.append(roomState.selfId));
     }
-  }, [draftOrder, roomState.selfId]);
+  }, [draftOrder, roomState.selfId, setDraftOrder]);
 
   const btnColor = canBegin ? [styles.bgGreen] : [styles.bgGray300];
   const textColor = canBegin ? [styles.textWhite] : [styles.textPenFaint];
@@ -74,6 +78,20 @@ export function RoomCreatorControls({
         >
           <Text style={[textColor, styles.textCenter]}>BEGIN</Text>
         </TouchableOpacity>
+        {canCancel && (
+          <TouchableOpacity
+            style={[
+              styles.bgBlue300,
+              styles.roundedLg,
+              styles.flexGrow,
+              styles.p4,
+              styles.ml4,
+            ]}
+            onPress={doCancel}
+          >
+            <Text style={[styles.textCenter]}>CANCEL</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </>
   );

@@ -14,25 +14,25 @@ defmodule AppWeb.RoomChannel do
   def version(), do: 2
 
   @impl true
-  def join("room:" <> room_id, params = %{"version" => cl_version}, socket) do
+  def join("room:" <> room_code, params = %{"version" => cl_version}, socket) do
     cond do
       cl_version != version() -> {:error, %{reason: "Please upgrade your app"}}
       not Map.has_key?(params, "displayName") -> {:error, %{reason: "Nickname is required"}}
-      true -> join_impl(room_id, params, socket)
+      true -> join_impl(room_code, params, socket)
     end
   end
 
   @impl true
-  def join(_room_id, _, _socket) do
+  def join(_room_code, _, _socket) do
     {:error, %{reason: "Please upgrade your app"}}
   end
 
-  def join_impl(room_id, %{"userId" => user_id, "displayName" => name}, socket) do
-    with {:ok, room_user} <- RoomService.get_user_in_room(room_id, user_id) do
+  def join_impl(room_code, %{"userId" => user_id, "displayName" => name}, socket) do
+    with {:ok, room_user} <- RoomService.get_user_in_room(room_code, user_id) do
       case RoomService.change_user_name(room_user, name) do
         {:ok, _} ->
           send(self(), :after_join)
-          {:ok, assign(socket, user_id: user_id, room_id: room_id, is_new: false)}
+          {:ok, assign(socket, user_id: user_id, room_code: room_code, is_new: false)}
 
         {:error, changeset} ->
           pair = {Keyword.get(changeset.errors, :name), Keyword.get(changeset.errors, :room_id)}
@@ -48,24 +48,24 @@ defmodule AppWeb.RoomChannel do
     end
   end
 
-  def join_impl(room_id, %{"displayName" => name}, socket) do
-    with {:ok, room} <- RoomService.get_by_code(room_id) do
+  def join_impl(room_code, %{"displayName" => name}, socket) do
+    with {:ok, room} <- RoomService.get_by_code(room_code) do
       with {:ok, room_user} <- RoomService.join(room, name) do
         send(self(), :after_join)
-        {:ok, assign(socket, user_id: room_user.id, room_id: room_id, is_new: true)}
+        {:ok, assign(socket, user_id: room_user.id, room_code: room_code, is_new: true)}
       else
         _ -> {:error, %{reason: "name has already been taken"}}
       end
     else
-      _ -> {:error, %{reason: "room #{room_id} doesn't exist"}}
+      _ -> {:error, %{reason: "room #{room_code} doesn't exist"}}
     end
   end
 
   @impl true
   def handle_info(:after_join, socket) do
-    %{room_id: room_id, user_id: user_id, is_new: is_new} = socket.assigns
+    %{room_code: room_code, user_id: user_id, is_new: is_new} = socket.assigns
     {:ok, _} = Presence.track(socket, user_id, %{online_at: 0})
-    with {:ok, room} <- RoomService.get_by_code(room_id),
+    with {:ok, room} <- RoomService.get_by_code(room_code),
          room_user <- Enum.find(room.users, fn %{id: id} -> id == user_id end),
          %RoomUser{} <- room_user do
       room_data = RoomData.current_room(socket)
@@ -100,9 +100,9 @@ defmodule AppWeb.RoomChannel do
 
   @impl true
   def handle_in("user:change", payload, socket) do
-    %{room_id: room_id, user_id: user_id} = socket.assigns
+    %{room_code: room_code, user_id: user_id} = socket.assigns
     with %{"displayName" => name} <- payload do
-      with {:ok, room_user} <- RoomService.get_user_in_room(room_id, user_id),
+      with {:ok, room_user} <- RoomService.get_user_in_room(room_code, user_id),
            {:ok, _} <- RoomService.change_user_name(room_user, name) do
         broadcast(socket, "user:change", %{"userId" => user_id, "displayName" => name})
         {:reply, {:ok, %{}}, socket}
@@ -134,9 +134,12 @@ defmodule AppWeb.RoomChannel do
     room_data = RoomData.current_room(socket)
     with %{"fromTurnId" => from_turn} <- payload,
          {:ok, next_turn} <- RoomData.request_turn(room_data, from_turn) do
-      other_user_id = Presence.list(socket)
+      present_users = Presence.list(socket)
       |> Enum.map(fn {str, _} -> String.to_integer(str, 10) end)
+      |> MapSet.new()
+      other_user_id = RoomData.get_player_order(room_data)
       |> Enum.filter(fn uid -> uid != room_data.user_id end)
+      |> Enum.filter(fn uid -> MapSet.member?(present_users, uid) end)
       |> Enum.shuffle()
       |> List.first()
       exclude_types = if is_nil(other_user_id), do: ["matchrank"], else: []

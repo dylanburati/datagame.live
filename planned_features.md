@@ -1,7 +1,7 @@
 ## Short-term
 
 - Party
-  - Host can reorder or remove players (s/leaderboard/host options/)
+  - Timer after submitting before automatically continuing
 
 ## Medium-term
 
@@ -9,7 +9,6 @@
   - miles or km
   - date format?
 - Party
-  - Timer after submitting before automatically continuing
   - Reject out-of-order takeovers (?)
   - Report answer (inaccurate, offensive, etc)
   - Websocket reconnects
@@ -22,7 +21,8 @@
       'serial killer': 'not a person',
       'weight class (boxing)': 'not a person',
       'united states presidential approval rating': 'not a person',
-      'simon &amp; garfunkel': "paul simon's already here"
+      'simon &amp; garfunkel': "paul simon's already here",
+      'the scream': 'not a person'
     - Places
       'masters tournament': 'not really a place',
       'greater london': "london's already here",

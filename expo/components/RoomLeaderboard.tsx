@@ -10,10 +10,12 @@ export type RoomLeaderboardProps = {
 };
 
 export function RoomLeaderboard({ selfId, players }: RoomLeaderboardProps) {
-  const array = players.array.map((pl) => ({
-    player: pl,
-    score: players.getScore(pl.id) ?? 0,
-  }));
+  const array = players.array
+    .filter(({ id }) => players.playerOrder.includes(id))
+    .map((pl) => ({
+      player: pl,
+      score: players.getScore(pl.id) ?? 0,
+    }));
   array.sort((a, b) => -a.score + b.score);
   const rowStyles = [styles.row, styles.flex1, styles.mx6, styles.p1];
   return (
