@@ -53,7 +53,7 @@ defmodule App.Entities.PairingService do
     |> Enum.map(&(parse_float!(&1) * :math.pi / 180.0))
 
     flattening = 1.0 / 298.257223563
-    radius_km = 6371.009
+    radius_km = 6378.137
 
     # lambert's formula
     b1 = :math.atan((1.0 - flattening) * :math.tan(lat1))
