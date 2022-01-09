@@ -4,12 +4,14 @@ import React, {
   useReducer,
   useEffect,
   useCallback,
+  useContext,
 } from 'react';
 import { Audio } from 'expo-av';
 import { Accelerometer, ThreeAxisMeasurement } from 'expo-sensors';
-import { Subscription } from '@unimodules/core';
+import { Subscription } from 'expo-modules-core';
 import {
   Animated,
+  Platform,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -26,8 +28,8 @@ import {
 } from '../helpers/gameLogic';
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
 import { Card } from '../helpers/api';
+import { RestClientContext } from './RestClientProvider';
 import { styles } from '../styles';
-import { LogPersist } from '../helpers/storage';
 
 export type GameData = {
   id: number;
@@ -203,9 +205,15 @@ function useGameState(
     if (!isSoundReady) {
       return;
     }
-    accelSubscription.current = Accelerometer.addListener((data) =>
-      dispatch({ kind: 'accel', data })
-    );
+    accelSubscription.current = Accelerometer.addListener((rawData) => {
+      let data = rawData;
+      // Android's accelerometer is backwards, e.g. z is +9.8 when the device is face up
+      // Fix was never merged: https://github.com/expo/expo/pull/3277
+      if (Platform.OS === 'android') {
+        data = { x: -data.x, y: -data.y, z: -data.z };
+      }
+      dispatch({ kind: 'accel', data });
+    });
 
     return () => {
       if (accelSubscription.current) {
@@ -221,6 +229,7 @@ function useGameState(
 }
 
 export function GameScreen() {
+  const { logger } = useContext(RestClientContext);
   const navigation = useNavigationTyped();
   const {
     params: { deck, cards: propCards, gameLength },
@@ -246,7 +255,7 @@ export function GameScreen() {
           sounds.finish.loadAsync(require('../assets/finish.wav')),
         ]);
       } catch (err) {
-        LogPersist.error(err);
+        logger.error(err);
         console.error(err);
       } finally {
         setSoundReady(true);
@@ -260,7 +269,7 @@ export function GameScreen() {
           sounds.skip.unloadAsync(),
         ]);
       } catch (err) {
-        LogPersist.error(err);
+        logger.error(err);
         console.error(err);
       }
     };
@@ -269,7 +278,7 @@ export function GameScreen() {
     return () => {
       unloadAll();
     };
-  }, [sounds]);
+  }, [logger, sounds]);
   const { gameState, setGameState } = useGameState(
     propCards,
     gameLength,
@@ -328,27 +337,27 @@ export function GameScreen() {
           }
         }
       } catch (err) {
-        LogPersist.error(err);
+        logger.error(err);
         console.error(err);
       }
     };
 
     soundEffect();
-  }, [gameState.stage, gameState.previousAnswered, sounds]);
+  }, [gameState.stage, gameState.previousAnswered, logger, sounds]);
   useEffect(() => {
     const soundEffect = async () => {
       if (gameState.stage === GameStage.FINISHED) {
         try {
           await sounds.finish.replayAsync();
         } catch (err) {
-          LogPersist.error(err);
+          logger.error(err);
           console.error(err);
         }
       }
     };
 
     soundEffect();
-  }, [gameState.stage, sounds]);
+  }, [gameState.stage, logger, sounds]);
   useEffect(() => {
     if (gameState.readyCountdown < -3) {
       return;
@@ -361,13 +370,13 @@ export function GameScreen() {
           await sounds.start.replayAsync();
         }
       } catch (err) {
-        LogPersist.error(err);
+        logger.error(err);
         console.error(err);
       }
     };
 
     soundEffect();
-  }, [gameState.readyCountdown, sounds]);
+  }, [gameState.readyCountdown, logger, sounds]);
   useEffect(() => {
     if (!gameState.inFinalSeconds) {
       return;
@@ -376,13 +385,13 @@ export function GameScreen() {
       try {
         await sounds.finalSeconds.replayAsync();
       } catch (err) {
-        LogPersist.error(err);
+        logger.error(err);
         console.error(err);
       }
     };
 
     soundEffect();
-  }, [gameState.inFinalSeconds, sounds]);
+  }, [gameState.inFinalSeconds, logger, sounds]);
 
   let mainText = 'HOLD UP TO YOUR FOREHEAD';
   const { stage } = gameState;

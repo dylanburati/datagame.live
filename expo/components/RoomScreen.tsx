@@ -181,7 +181,7 @@ export function RoomScreen() {
     if (turnsToWait < 0) {
       return;
     }
-    let waitMs = turnsToWait * 10000;
+    const waitMs = turnsToWait * 10000;
     const timeout = setTimeout(() => {
       room.broadcast(
         { event: 'turn:start', fromTurnId: room.state.turnId },

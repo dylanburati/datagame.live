@@ -32,4 +32,5 @@
       'lower manhattan': "nyc's already here",
       'terraced house': 'not a place',
       'william h. seward': 'secretary of state',
-      'english country house': 'not a place'
+      'english country house': 'not a place',
+      'kansas city, kansas': 'kc missouri is already here'

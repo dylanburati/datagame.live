@@ -3,7 +3,7 @@ import { Text, TextProps } from 'react-native';
 import { styles } from '../styles';
 
 export function indexEncircled(index: number | undefined, width: number) {
-  let styleArr: TextProps['style'] = [styles.textLg, { width }];
+  const styleArr: TextProps['style'] = [styles.textLg, { width }];
   let content = '';
   if (index === undefined) {
     content = '+';

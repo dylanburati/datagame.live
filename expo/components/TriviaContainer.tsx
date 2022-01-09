@@ -21,7 +21,7 @@ export function TriviaContainer({
 
   const selfTurn = state.players.activeId === state.selfId;
   let whoseTurn = selfTurn ? 'You' : `${state.players.activeName ?? '???'}`;
-  let showLarge = selfTurn || state.participantId === state.selfId;
+  const showLarge = selfTurn || state.participantId === state.selfId;
   if (state.participantId !== undefined) {
     const participant = state.players.array.find(
       (item) => item.id === state.participantId
