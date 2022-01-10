@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import Slider from '@react-native-community/slider';
 import {
   SafeAreaView,
@@ -9,14 +9,16 @@ import {
 } from 'react-native';
 import { StackActions } from '@react-navigation/native';
 import { useNavigationTyped, useRouteTyped } from '../helpers/navigation';
-import { createGame, Deck, inspectADeck } from '../helpers/api';
+import { Deck } from '../helpers/api';
 import { styles } from '../styles';
 import { ExpandingInfoHeader } from './ExpandingInfoHeader';
 import { FormattedRelativeDate } from './FormattedRelativeDate';
+import { RestClientContext } from './RestClientProvider';
 
 const gameLengthOptions = [1, 30, 60, 90, 120];
 
 export function GameCustomizationScreen() {
+  const { client, logger } = useContext(RestClientContext);
   const [gameLength, setGameLength] = useState(60);
   const [deck, setDeck] = useState<Deck>();
   const [difficulty, setDifficulty] = useState(0);
@@ -32,14 +34,15 @@ export function GameCustomizationScreen() {
   useEffect(() => {
     const get = async () => {
       try {
-        setDeck(await inspectADeck(topic));
+        setDeck(await client.inspectADeck(topic));
         setCategoryFrequencies({});
       } catch (err) {
+        logger.error(err);
         console.error(err);
       }
     };
     get();
-  }, [topic]);
+  }, [client, logger, topic]);
 
   const topicRef = useRef<number | null>(topic);
   useEffect(() => {
@@ -51,7 +54,11 @@ export function GameCustomizationScreen() {
   }, [topic]);
   const getCards = async () => {
     try {
-      const game = await createGame(topic, difficulty, categoryFrequencies);
+      const game = await client.createGame(
+        topic,
+        difficulty,
+        categoryFrequencies
+      );
       if (topicRef.current === topic) {
         if (!game.cards.length) {
           navigation.goBack();
@@ -62,6 +69,7 @@ export function GameCustomizationScreen() {
         }
       }
     } catch (err) {
+      logger.error(err);
       console.error(err);
     }
   };

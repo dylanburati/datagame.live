@@ -14,11 +14,11 @@ export function acceptableOrders<T>(
     return [];
   }
   const order = argsort(array, sorter);
-  let positionsForIndex = new Array(array.length)
+  const positionsForIndex = new Array(array.length)
     .fill(0)
     .map(() => new Set<number>());
+  const indices = [order[0]];
   let position = 0;
-  let indices = [order[0]];
   let val = array[order[0]];
   for (let j = 1; j <= order.length; j++) {
     const val2 =

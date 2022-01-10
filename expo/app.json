@@ -2,6 +2,7 @@
   "expo": {
     "name": "Datagame Live",
     "slug": "datagame",
+    "owner": "dylanburati",
     "version": "1.0.1",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -19,11 +20,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.dylanburati.datagame",
-      "buildNumber": "7"
+      "buildNumber": "9"
     },
     "android": {
       "package": "com.dylanburati.datagame",
-      "versionCode": 7,
+      "versionCode": 9,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#242527"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   lockAsync as lockOrientationAsync,
@@ -25,7 +25,7 @@ import { GameScreen } from './components/GameScreen';
 import { Loader } from './components/Loader';
 import { GameCustomizationScreen } from './components/GameCustomizationScreen';
 import { RootStackParamList, useNavigationTyped } from './helpers/navigation';
-import { createRoom, Deck, listDecks, RoomUser } from './helpers/api';
+import { Deck, RoomUser } from './helpers/api';
 import { SocketProvider } from './components/SocketProvider';
 import {
   defaultInfoContainerStyle,
@@ -36,8 +36,12 @@ import { useSet } from './helpers/hooks';
 import { styleConfig, styles } from './styles';
 import config from './config';
 import { RoomScreen } from './components/RoomScreen';
-import { loadJson, LogPersist, roomStorageKey } from './helpers/storage';
+import { loadJson, roomStorageKey } from './helpers/storage';
 import { LogViewer } from './components/LogViewer';
+import {
+  RestClientContext,
+  RestClientProvider,
+} from './components/RestClientProvider';
 
 function randomColor(x: number, l2: number) {
   let h = (511 * (x + 31) * (x + 31) + 3 * (x - 31)) % 360;
@@ -64,6 +68,7 @@ const AvoidKeyboardView = ({ children }: React.PropsWithChildren<{}>) => {
 };
 
 export function HomeScreen() {
+  const { client, logger } = useContext(RestClientContext);
   const [deckList, setDeckList] = useState<Deck[]>([]);
   const [loading, setLoading] = useState(false);
   const { navigate } = useNavigationTyped();
@@ -90,10 +95,10 @@ export function HomeScreen() {
     const get = async () => {
       setLoading(true);
       try {
-        setDeckList(await listDecks());
+        setDeckList(await client.listDecks());
         setRetryCounter(0);
       } catch (err) {
-        LogPersist.error(err);
+        logger.error(err);
         retryRef.current = setTimeout(
           () => setRetryCounter((n) => n + 1),
           1000 * Math.pow(1.6, retryCounter)
@@ -105,7 +110,7 @@ export function HomeScreen() {
     if (retryCounter > 0) {
       get();
     }
-  }, [retryCounter, retryRef]);
+  }, [client, logger, retryCounter, retryRef]);
 
   useEffect(() => {
     if (retryRef.current) {
@@ -131,9 +136,12 @@ export function HomeScreen() {
     }
     hostRequestRunning.current = true;
     try {
-      const { roomId, ...details } = await createRoom(draftRoomNickname.text);
+      const { roomId, ...details } = await client.createRoom(
+        draftRoomNickname.text
+      );
       navigate('Room', { roomId, savedSession: details ?? undefined });
     } catch (err) {
+      logger.error(err);
       setDraftRoomNickname((val) => ({
         ...val,
         error: err instanceof Error ? err.message : 'Unknown error',
@@ -340,58 +348,62 @@ export default function App() {
 
   return (
     <IntlProvider locale={locale}>
-      <SocketProvider wsUrl={`${config.baseUrl.replace(/^http/, 'ws')}/socket`}>
-        <NavigationContainer>
-          <Stack.Navigator initialRouteName="Home">
-            <Stack.Screen
-              name="Home"
-              listeners={{
-                focus: () => {
-                  if (isMobile) {
-                    lockOrientationAsync(OrientationLock.DEFAULT);
-                  }
-                },
-              }}
-              component={HomeScreen}
-              options={{ orientation: 'default' }}
-            />
-            <Stack.Screen
-              name="GameCustomization"
-              listeners={{
-                focus: () => {
-                  if (isMobile) {
-                    lockOrientationAsync(OrientationLock.DEFAULT);
-                  }
-                },
-              }}
-              component={GameCustomizationScreen}
-              options={{ orientation: 'default', title: 'Adjust settings' }}
-            />
-            <Stack.Screen
-              name="Game"
-              listeners={{
-                focus: () => {
-                  if (isMobile) {
-                    lockOrientationAsync(OrientationLock.LANDSCAPE_LEFT);
-                  }
-                },
-              }}
-              component={GameScreen}
-              options={{ orientation: 'landscape_left' }}
-            />
-            <Stack.Screen
-              name="Room"
-              component={RoomScreen}
-              options={{ orientation: 'default', title: 'Room' }}
-            />
-            <Stack.Screen
-              name="LogViewer"
-              component={LogViewer}
-              options={{ orientation: 'default', title: 'Logs' }}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </SocketProvider>
+      <RestClientProvider>
+        <SocketProvider
+          wsUrl={`${config.baseUrl.replace(/^http/, 'ws')}/socket`}
+        >
+          <NavigationContainer>
+            <Stack.Navigator initialRouteName="Home">
+              <Stack.Screen
+                name="Home"
+                listeners={{
+                  focus: () => {
+                    if (isMobile) {
+                      lockOrientationAsync(OrientationLock.DEFAULT);
+                    }
+                  },
+                }}
+                component={HomeScreen}
+                options={{ orientation: 'default' }}
+              />
+              <Stack.Screen
+                name="GameCustomization"
+                listeners={{
+                  focus: () => {
+                    if (isMobile) {
+                      lockOrientationAsync(OrientationLock.DEFAULT);
+                    }
+                  },
+                }}
+                component={GameCustomizationScreen}
+                options={{ orientation: 'default', title: 'Adjust settings' }}
+              />
+              <Stack.Screen
+                name="Game"
+                listeners={{
+                  focus: () => {
+                    if (isMobile) {
+                      lockOrientationAsync(OrientationLock.LANDSCAPE_LEFT);
+                    }
+                  },
+                }}
+                component={GameScreen}
+                options={{ orientation: 'landscape_left' }}
+              />
+              <Stack.Screen
+                name="Room"
+                component={RoomScreen}
+                options={{ orientation: 'default', title: 'Room' }}
+              />
+              <Stack.Screen
+                name="LogViewer"
+                component={LogViewer}
+                options={{ orientation: 'default', title: 'Logs' }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SocketProvider>
+      </RestClientProvider>
     </IntlProvider>
   );
 }

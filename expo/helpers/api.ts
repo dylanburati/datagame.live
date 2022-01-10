@@ -1,7 +1,7 @@
 import { Presence } from 'phoenix';
 import { ColorValue } from 'react-native';
 import config from '../config';
-import { LogPersist } from './storage';
+import { AsyncStorageLogger } from './logging';
 
 export type Deck = {
   id: number;
@@ -161,78 +161,86 @@ export type RoomOutgoingMessage =
       scoreChanges: RoomScoreEntry[];
     };
 
-async function getJson(url: string) {
-  LogPersist.info({ called: 'getJson', url });
-  const resp = await fetch(url);
-  if (resp.ok) {
-    return await resp.json();
-  } else if (
-    /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
-  ) {
-    const err = await resp.json();
-    LogPersist.error(err);
-    throw new Error(err);
-  } else {
-    const err = await resp.text();
-    LogPersist.error(err);
-    throw new Error(err);
-  }
-}
+export class RestClient {
+  logger: AsyncStorageLogger;
 
-async function postJson(url: string, body: any) {
-  LogPersist.info({ called: 'postJson', url, body });
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (resp.ok) {
-    return await resp.json();
-  } else if (
-    /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
-  ) {
-    let content = await resp.json();
-    LogPersist.error(content);
-    if (typeof content === 'object' && content?.error) {
-      content = content.error;
+  constructor(logger: AsyncStorageLogger) {
+    this.logger = logger;
+  }
+
+  async getJson(url: string) {
+    this.logger.info({ called: 'getJson', url });
+    const resp = await fetch(url);
+    if (resp.ok) {
+      return await resp.json();
+    } else if (
+      /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
+    ) {
+      const err = await resp.json();
+      this.logger.error(err);
+      throw new Error(err);
+    } else {
+      const err = await resp.text();
+      this.logger.error(err);
+      throw new Error(err);
     }
-    throw new Error(content);
-  } else {
-    const err = await resp.text();
-    LogPersist.error(err);
-    throw new Error(err);
   }
-}
 
-export async function listDecks() {
-  return (await getJson(`${config.baseUrl}/api/decks`)) as Deck[];
-}
+  async postJson(url: string, body: any) {
+    this.logger.info({ called: 'postJson', url, body });
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (resp.ok) {
+      return await resp.json();
+    } else if (
+      /\bapplication\/json\b/.test(resp.headers.get('Content-Type') || '')
+    ) {
+      let content = await resp.json();
+      this.logger.error(content);
+      if (typeof content === 'object' && content?.error) {
+        content = content.error;
+      }
+      throw new Error(content);
+    } else {
+      const err = await resp.text();
+      this.logger.error(err);
+      throw new Error(err);
+    }
+  }
 
-export async function inspectADeck(id: number) {
-  return (await getJson(`${config.baseUrl}/api/decks/${id}`)) as Deck;
-}
+  async listDecks() {
+    return (await this.getJson(`${config.baseUrl}/api/decks`)) as Deck[];
+  }
 
-export async function createGame(
-  deckId: number,
-  difficulty: number,
-  categoryFrequencies: Record<string, number>
-) {
-  const diffQ = difficulty.toFixed(1);
-  let categoryQ = Object.entries(categoryFrequencies)
-    .flatMap(([name, lvl]) => [name, lvl.toFixed(1)])
-    .join(',');
-  categoryQ = encodeURIComponent(categoryQ);
-  return (await getJson(
-    `${config.baseUrl}/api/game/new/${deckId}` +
-      `?difficulty=${diffQ}&categoryFreqs=${categoryQ}`
-  )) as Game;
-}
+  async inspectADeck(id: number) {
+    return (await this.getJson(`${config.baseUrl}/api/decks/${id}`)) as Deck;
+  }
 
-export async function createRoom(hostNickname: string) {
-  return (await postJson(`${config.baseUrl}/api/room`, {
-    hostNickname,
-    version: config.ROOM_API_VERSION,
-  })) as RoomAndSelf;
+  async createGame(
+    deckId: number,
+    difficulty: number,
+    categoryFrequencies: Record<string, number>
+  ) {
+    const diffQ = difficulty.toFixed(1);
+    let categoryQ = Object.entries(categoryFrequencies)
+      .flatMap(([name, lvl]) => [name, lvl.toFixed(1)])
+      .join(',');
+    categoryQ = encodeURIComponent(categoryQ);
+    return (await this.getJson(
+      `${config.baseUrl}/api/game/new/${deckId}` +
+        `?difficulty=${diffQ}&categoryFreqs=${categoryQ}`
+    )) as Game;
+  }
+
+  async createRoom(hostNickname: string) {
+    return (await this.postJson(`${config.baseUrl}/api/room`, {
+      hostNickname,
+      version: config.ROOM_API_VERSION,
+    })) as RoomAndSelf;
+  }
 }

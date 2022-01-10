@@ -10,7 +10,7 @@ import React, {
 import type { Comparator } from 'lodash';
 import { Presence } from 'phoenix';
 import { SocketContext } from '../components/SocketProvider';
-import { LogPersist } from './storage';
+import { RestClientContext } from '../components/RestClientProvider';
 import config from '../config';
 
 export function useSet<T>(initialValue: Set<T>) {
@@ -85,17 +85,22 @@ export type SendFunc<T extends HasEvent> = (
   catcher?: (reason: string | undefined) => void
 ) => void;
 
+export type ChannelHookArgs<TState, TAction> = {
+  topic: string;
+  disable: boolean;
+  joinParams:
+    | Record<string, unknown>
+    | ((state: TState) => Record<string, unknown>);
+  reducer: React.Reducer<TState, TAction>;
+  initialState: TState;
+};
+
 export function useChannel<
   TSend extends HasEvent,
   TState,
   TAction extends HasEvent
->(params: {
-  topic: string;
-  disable: boolean;
-  joinParams: object | ((state: TState) => object);
-  reducer: React.Reducer<TState, TAction>;
-  initialState: TState;
-}) {
+>(params: ChannelHookArgs<TState, TAction>) {
+  const { logger } = useContext(RestClientContext);
   const { topic, joinParams, disable, reducer, initialState } = params;
   const socket = useContext(SocketContext);
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -125,7 +130,7 @@ export function useChannel<
     const presence = new Presence(channel);
     channel.onMessage = (event, payload) => {
       if (!/^(phx|chan)_reply/.test(event)) {
-        LogPersist.info({ received: 'room.message', event, payload });
+        logger.info({ received: 'room.message', event, payload });
         dispatch({
           event,
           ...payload,
@@ -143,32 +148,29 @@ export function useChannel<
     let cancel = false;
     setLoading(true);
     setError(undefined);
-    const func: SendFunc<HasEvent & object> = (
-      { event, ...payload },
-      catcher
-    ) => {
-      LogPersist.info({ called: 'room.broadcast', event, payload });
+    const func: SendFunc<TSend> = ({ event, ...payload }, catcher) => {
+      logger.info({ called: 'room.broadcast', event, payload });
       channel
         .push(event, payload)
         .receive('ok', (reply) => {
-          LogPersist.info({ received: 'room.broadcast:ok', event, reply });
+          logger.info({ received: 'room.broadcast:ok', event, reply });
           dispatch({ event: `reply:${event}`, ...reply });
         })
         .receive('error', (err) => {
-          LogPersist.error({ received: 'room.broadcast:error', event, err });
+          logger.error({ received: 'room.broadcast:error', event, err });
           catcher && catcher(err.reason);
         })
         .receive('timeout', () => {
-          LogPersist.error({ received: 'room.broadcast:timeout', event });
+          logger.error({ received: 'room.broadcast:timeout', event });
           catcher && catcher('Timeout');
         });
     };
-    LogPersist.info({ called: 'room.join', payload: paramObj });
+    logger.info({ called: 'room.join', payload: paramObj });
     channel
       .join()
       .receive('ok', (reply) => {
         if (!cancel) {
-          LogPersist.info({ received: 'room.join:ok', reply });
+          logger.info({ received: 'room.join:ok', reply });
           dispatch({ event: 'reply:join', ...reply });
           setLoading(false);
           setBroadcast(() => func);
@@ -176,14 +178,14 @@ export function useChannel<
       })
       .receive('error', (err) => {
         if (!cancel) {
-          LogPersist.error({ received: 'room.join:error', err });
+          logger.error({ received: 'room.join:error', err });
           setLoading(false);
           setError(err.reason);
         }
       })
       .receive('timeout', () => {
         if (!cancel) {
-          LogPersist.error({ received: 'room.join:timeout' });
+          logger.error({ received: 'room.join:timeout' });
           setError('Timeout');
         }
       });

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { SafeAreaView, FlatList, Text } from 'react-native';
-import { LogPersist, LogLine } from '../helpers/storage';
 import { useStateNoCmp } from '../helpers/hooks';
 import { OrderedSet } from '../helpers/data';
+import { LogLine } from '../helpers/logging';
 import { ChipPicker } from './ChipPicker';
 import { styles } from '../styles';
+import { RestClientContext } from './RestClientProvider';
 
 export function LogViewer() {
   const levels = [
@@ -16,10 +17,11 @@ export function LogViewer() {
   const [included, setIncluded] = useStateNoCmp(
     new OrderedSet<string>().extend(['INFO', 'WARNING', 'ERROR'])
   );
+  const { logger } = useContext(RestClientContext);
 
   useEffect(() => {
-    LogPersist.readLogs().then((theLogs) => setLogs(theLogs));
-  }, []);
+    logger.readLogs().then((theLogs) => setLogs(theLogs));
+  }, [logger]);
 
   const logsToShow = logs.filter(([_, line]) => {
     const spaceIdx = line.indexOf(' ');
