@@ -143,8 +143,9 @@ defmodule AppWeb.RoomChannel do
       |> Enum.shuffle()
       |> List.first()
       exclude_types = if is_nil(other_user_id), do: ["matchrank"], else: []
+      past_def_ids = RoomData.player_trivia_def_ids(room_data)
 
-      with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia(not: exclude_types) do
+      with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia(past_def_ids, not: exclude_types) do
         trivia_out = TriviaView.trivia_json(trivia_def, trivia)
         turn_info = %{
           "userId" => room_data.user_id,
@@ -155,7 +156,7 @@ defmodule AppWeb.RoomChannel do
           "matchrank" -> Map.put(turn_info, "participantId", other_user_id)
           _ -> turn_info
         end
-        :ok = RoomData.init_turn(room_data, turn_info)
+        :ok = RoomData.init_turn(room_data, trivia_def.id, turn_info)
         broadcast(socket, "turn:start", turn_info)
         {:reply, {:ok, %{}}, socket}
       else

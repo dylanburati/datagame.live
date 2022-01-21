@@ -48,7 +48,8 @@ defmodule App.MixProject do
       {:bcrypt_elixir, "~> 2.3.0"},
       {:joken, "~> 2.4.0"},
       {:httpoison, "~> 1.8"},
-      {:csv, "~> 2.4.1"}
+      {:csv, "~> 2.4.1"},
+      {:heap, "~> 2.0"}
     ]
   end
 

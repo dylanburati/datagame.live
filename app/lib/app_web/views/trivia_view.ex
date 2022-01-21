@@ -15,6 +15,20 @@ defmodule AppWeb.TriviaView do
     }
   end
 
+  defp option_stat_def_json(pairing_or_nil, %{key: k, label: label, stat_type: typ}) do
+    with (pairing = %Pairing{}) <- pairing_or_nil,
+          %{"agg" => aggs} <- pairing.criteria,
+          {:ok, funcname} <- Map.fetch(aggs, k) do
+      case funcname do
+        "geodist" -> %{"label" => "Distance", "type" => "km_distance"}
+      end
+    else
+      _ -> %{"label" => label, "type" => typ}
+    end
+  end
+
+  defp option_stat_def_json(_, _), do: nil
+
   def trivia_json(trivia_def, trivia) do
     trivia_def = trivia_def |> Repo.preload([:pairing])
     min_answers = case trivia_def.answer_type do
@@ -34,20 +48,10 @@ defmodule AppWeb.TriviaView do
       "minAnswers" => min_answers,
       "maxAnswers" => max_answers
     }
-    |> maybe_put_lazy(Ecto.assoc_loaded?(trivia_def.option_stat_def), "statDef", fn ->
-      case trivia_def.option_stat_def do
-        %{key: k, label: label, stat_type: typ} ->
-          with (pairing = %Pairing{}) <- trivia_def.pairing,
-               %{"agg" => aggs} <- pairing.criteria,
-               {:ok, funcname} <- Map.fetch(aggs, k) do
-            case funcname do
-              "geodist" -> %{"label" => "Distance", "type" => "km_distance"}
-            end
-          else
-            _ -> %{"label" => label, "type" => typ}
-          end
-        _ -> nil
-      end
-    end)
+    |> maybe_put_lazy(
+      Ecto.assoc_loaded?(trivia_def.option_stat_def),
+      "statDef",
+      fn -> option_stat_def_json(trivia_def.pairing, trivia_def.option_stat_def) end
+    )
   end
 end

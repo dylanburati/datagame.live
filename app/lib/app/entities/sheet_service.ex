@@ -29,20 +29,16 @@ defmodule App.Entities.SheetService do
     auth_headers = [{"Content-Type", "application/x-www-form-urlencoded"}]
     with {:ok, data} <- post_fetch_json(auth_url, req_body, auth_headers) do
       tkn = data["access_token"]
-      t0 = System.system_time(:second)
-      App.Cache.insert(@tkn_cache_key, {tkn, t0 + data["expires_in"]})
+      App.Cache.insert_with_ttl(@tkn_cache_key, tkn, data["expires_in"] - 3)
       IO.puts "New Google access token"
       {:ok, tkn}
     end
   end
 
   def authorize() do
-    t0 = System.system_time(:second)
     case App.Cache.lookup(@tkn_cache_key) do
-      {tkn, exp} when exp > t0 + 3 ->
-        {:ok, tkn}
-      _ ->
-        get_new_token()
+      nil -> get_new_token()
+      tkn -> tkn
     end
   end
 

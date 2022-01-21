@@ -351,13 +351,33 @@ defmodule App.Entities.TriviaService do
     {:ok, trivia_def, result}
   end
 
-  def get_any_trivia(opts \\ []) do
-    query = from(TriviaDef, order_by: fragment("random()"), limit: 1)
-    query = case Keyword.get(opts, :not, []) do
-      [] -> query
-      lst -> query |> where([tdef], not (tdef.answer_type in ^lst))
+  def get_trivia_defs(opts \\ []) do
+    {query, cache_key} = case Keyword.get(opts, :not, []) do
+      [] -> {from(TriviaDef), "TriviaService.trivia_defs"}
+      lst ->
+        lst_key = Enum.sort(lst) |> Enum.join(",")
+        {from(tdef in TriviaDef, where: not (tdef.answer_type in ^lst)),
+         "TriviaService.trivia_defs.not(#{lst_key})"}
     end
-    case tdef = Repo.one(query) do
+    case App.Cache.lookup(cache_key) do
+      nil ->
+        defs = Repo.all(query)
+        App.Cache.insert_with_ttl(cache_key, defs, 60)
+        defs
+      result -> result
+    end
+  end
+
+  def get_any_trivia(id_log, opts \\ []) do
+    boost_map = Enum.with_index(id_log)
+    |> Map.new(fn {id, turns_since} -> {id, :math.pow(0.8, max(0, 6 - turns_since)) - 0.1} end)
+
+    tdef = get_trivia_defs(opts)
+    |> Enum.max_by(
+      fn %{id: id} -> Map.get(boost_map, id, 1) * :rand.uniform() end,
+      fn -> nil end
+    )
+    case tdef do
       %TriviaDef{} -> get_trivia(tdef)
       _ -> {:error, "No trivia definitions found"}
     end

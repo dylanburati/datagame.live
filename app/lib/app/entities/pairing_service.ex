@@ -1,4 +1,5 @@
 defmodule App.Entities.PairingService do
+  import App.Utils
   import Ecto.Query
   # import App.Utils
   import App.Entities.Card, only: [column_map: 0]
@@ -79,7 +80,31 @@ defmodule App.Entities.PairingService do
     with :ok <- validate_aggs(deck, aggs |> Map.to_list()) do
       result = case Keyword.get(opts, :intersect) do
         nil ->
-          generate_pairs(deck, pairing, difficulty, limit, Keyword.get(opts, :subtract))
+          ids = case Keyword.get(opts, :subtract) do
+            nil -> sample_pairs(pairing, difficulty, 4 * limit)
+            subset ->
+              possible_ids = sample_pairs(pairing, difficulty, 4 * limit)
+              combined_ids = Enum.map(possible_ids, fn {id1, id2} -> id1 <> id2 end)
+              subtractquery = from p in PairingInstance,
+                join: c1 in assoc(p, :card1),
+                join: c2 in assoc(p, :card2),
+                select: {c1.id, c2.id},
+                where: p.pairing_id == ^pairing.id,
+                where: p.subset == ^subset,
+                where: (fragment("concat(?,?)", c1.id, c2.id) in ^combined_ids)
+                       or (fragment("concat(?,?)", c2.id, c1.id) in ^combined_ids)
+              subtract_ids = subtractquery |> Repo.all() |> MapSet.new()
+              MapSet.new(possible_ids) |> MapSet.difference(subtract_ids)
+          end
+          id_filter = Enum.reduce(ids, dynamic([], false), fn {id1, id2}, acc ->
+            dynamic([c1, c2], ^acc or (c1.id == ^id1 and c2.id == ^id2))
+          end)
+          query = from c1 in Card,
+            cross_join: c2 in Card,
+            select: {c1, c2, %{}},
+            where: ^id_filter,
+            limit: ^limit
+          query |> Repo.all()
         subset ->
           query = from p in PairingInstance,
             join: c1 in assoc(p, :card1),
@@ -105,7 +130,7 @@ defmodule App.Entities.PairingService do
             }
           {:stat_options, card_stat_def} ->
             sa = String.to_atom(card_stat_def.key)
-            {_, funcname} = Enum.find(aggs, fn {k, _} -> k == card_stat_def.key end)
+            {_, funcname} = Enum.find(aggs, &(elem(&1, 0) == card_stat_def.key))
             v1 = Map.get(c1.stat_box, sa)
             v2 = Map.get(c2.stat_box, sa)
             %{
@@ -117,85 +142,94 @@ defmodule App.Entities.PairingService do
     end
   end
 
-  def generate_pairs(deck, pairing, difficulty, limit, subtract_subset) do
-    %{"filter" => cond_lst} = pairing.criteria
-
-    {indep_conds, join_conds} = Enum.reduce(
-      cond_lst,
-      {dynamic([], true), dynamic([], true)},
-      fn cnd, {ic, jc} ->
-        case cnd do
-          ["exists", stat_key = ("stat" <> _)] ->
-            # stat_key = Card.key_for_stat(which_stat)
-            ic = dynamic([c], ^ic and c.stat_box[^stat_key] != fragment("'null'::jsonb"))
-            {ic, jc}
-          ["mismatch", col_name] ->
-            jc = case Map.fetch(column_map(), col_name) do
-              {:ok, card_field} ->
-                dynamic([c2, c1], ^jc and field(c1, ^card_field) != field(c2, ^card_field))
-              _ ->
-                dynamic([c2, c1], ^jc and
-                  fragment("jsonb_extract_path_text(?, ?)", c1.stat_box, ^col_name) !=
-                    fragment("jsonb_extract_path_text(?, ?)", c2.stat_box, ^col_name))
-            end
-            {ic, jc}
-          ["match", left_col, right_col] ->
-            jc = case {Map.fetch(column_map(), left_col), Map.fetch(column_map(), right_col)} do
-              {{:ok, left_field}, {:ok, right_field}} ->
-                dynamic([c2, c1], ^jc and field(c1, ^left_field) == field(c2, ^right_field)
-                  and field(c2, ^left_field) == field(c1, ^right_field))
-              {{:ok, left_field}, _} ->
-                dynamic([c2, c1], ^jc and field(c1, ^left_field) == fragment("jsonb_extract_path_text(?, ?)", c2.stat_box, ^right_col)
-                  and field(c2, ^left_field) == fragment("jsonb_extract_path_text(?, ?)", c1.stat_box, ^right_col))
-              {_, {:ok, right_field}} ->
-                dynamic([c2, c1], ^jc and fragment("jsonb_extract_path_text(?, ?)", c1.stat_box, ^left_col) == field(c2, ^right_field)
-                  and fragment("jsonb_extract_path_text(?, ?)", c2.stat_box, ^left_col) == field(c1, ^right_field))
-              {_, _} ->
-                dynamic([c2, c1], ^jc and
-                  fragment("jsonb_extract_path_text(?, ?)", c1.stat_box, ^left_col) ==
-                    fragment("jsonb_extract_path_text(?, ?)", c2.stat_box, ^right_col)
-                  and fragment("jsonb_extract_path_text(?, ?)", c2.stat_box, ^left_col) ==
-                    fragment("jsonb_extract_path_text(?, ?)", c1.stat_box, ^right_col))
-            end
-            {ic, jc}
-        end
-      end
-    )
-
-    stage1_limit = min(20, floor(deck.enabled_count / 10))
-    stage1_query = from c1 in Card,
-      where: c1.deck_id == ^deck.id,
-      where: c1.is_disabled == false,
-      where: ^indep_conds,
-      order_by: fragment("exp(?) / -log(random())", ^difficulty * c1.popularity),
-      limit: ^stage1_limit
-
-    query = from c2 in Card,
-      as: :card2,
-      cross_join: c1 in subquery(stage1_query), as: :card1,
-      select: {c1, c2, %{}},
-      where: c2.deck_id == ^deck.id,
-      where: c2.is_disabled == false,
-      where: ^indep_conds,
-      where: ^join_conds,
-      order_by: fragment("exp(?) / -log(random())", ^difficulty * c1.popularity * c2.popularity),
-      limit: ^limit
-
-    query = case subtract_subset do
-      nil -> query
-      subset ->
-        query
-        |> where(not exists(
-          from(p in PairingInstance,
-               where: p.id == ^pairing.id,
-               where: p.subset == ^subset,
-               where: (parent_as(:card1).id == p.card_id1 and parent_as(:card2).id == p.card_id2)
-                   or (parent_as(:card1).id == p.card_id2 and parent_as(:card2).id == p.card_id1)
-          )
-        ))
+  defp cascade_error([]), do: {:ok, []}
+  defp cascade_error([:error | _]), do: :error
+  defp cascade_error([{:ok, v} | rest]) do
+    case cascade_error(rest) do
+      {:ok, lst} -> {:ok, [v | lst]}
+      _ -> :error
     end
+  end
 
-    query |> Repo.all()
+  def sample_pairs(pairing, difficulty, limit) do
+    cache_ns = "PairingService.sample_pairs.#{pairing.id}.#{pairing.updated_at}"
+    subkeys = sample_without_replacement(0..99, 10)
+    tasks = Enum.map(subkeys, fn sk ->
+      Task.async(fn ->
+        cache_key = "#{cache_ns}.#{sk}"
+        case App.Cache.lookup(cache_key) do
+          nil -> :error
+          lst ->
+            items = Enum.map(lst, fn {id1, pop1, id2, pop2} ->
+              w = :math.exp(difficulty * pop1 * pop2)
+              prio = -w / :math.log(:rand.uniform())
+              {prio, id1, pop1, id2, pop2}
+            end)
+            |> sample_without_replacement(limit, &(elem(&1, 0)))
+            {:ok, items}
+        end
+      end)
+    end)
+    results = Task.await_many(tasks)
+
+    lists = case cascade_error(results) do
+      {:ok, r} -> r
+      :error ->
+        edges = generate_all_pairs(pairing)
+        Stream.chunk_every(edges, ceil(length(edges) / 100))
+        |> Stream.with_index()
+        |> Enum.reduce([], fn {lst, sk}, acc ->
+          :ok = App.Cache.insert("#{cache_ns}.#{sk}", lst)
+
+          if sk in subkeys do
+            items = Enum.map(lst, fn {id1, pop1, id2, pop2} ->
+              w = :math.exp(difficulty * pop1 * pop2)
+              prio = -w / :math.log(:rand.uniform())
+              {prio, id1, pop1, id2, pop2}
+            end)
+            |> sample_without_replacement(limit, &(elem(&1, 0)))
+            [items | acc]
+          else
+            acc
+          end
+        end)
+    end
+    Enum.concat(lists)
+    |> Enum.sort_by(&(elem(&1, 0)))
+    |> Enum.reduce({[], %{}}, fn {sort, id1, pop1, id2, pop2}, {pairs, counter} ->
+      occurs = Map.get(counter, id1, 0) + Map.get(counter, id2, 0)
+      discounted = {sort * :math.pow(1.3, occurs), id1, pop1, id2, pop2}
+      {pairs ++ [discounted],
+        counter |> Map.update(id1, 1, &(&1 + 1)) |> Map.update(id2, 1, &(&1 + 1))}
+    end)
+    |> elem(0)
+    |> Enum.sort_by(&(elem(&1, 0)))
+    |> Enum.map(fn {_, id1, _, id2, _} -> {id1, id2} end)
+    |> Enum.take(limit)
+  end
+
+  defp card_fetch(card, col_name) do
+    case Map.fetch(column_map(), col_name) do
+      {:ok, card_field} -> Map.fetch!(card, card_field)
+      _ ->
+        sa = String.to_atom(col_name)
+        Map.fetch!(card.stat_box, sa)
+    end
+  end
+
+  def eval_join_conditions([], _, _), do: true
+  def eval_join_conditions([cnd | rest], card1, card2) do
+    curr = case cnd do
+      ["mismatch", col_name] ->
+        card_fetch(card1, col_name) != card_fetch(card2, col_name)
+
+      ["match", left_col, right_col] ->
+        (card_fetch(card1, left_col) == card_fetch(card2, right_col)
+         and card_fetch(card2, left_col) == card_fetch(card1, right_col))
+
+      _ -> true
+    end
+    curr and eval_join_conditions(rest, card1, card2)
   end
 
   def generate_all_pairs(pairing) do
@@ -217,48 +251,18 @@ defmodule App.Entities.PairingService do
     stage1_query = from c1 in Card,
       where: c1.deck_id == ^pairing.deck_id,
       where: c1.is_disabled == false,
-      where: ^indep_conds
+      where: ^indep_conds,
+      order_by: c1.id
 
     candidates = stage1_query |> Repo.all()
+
     candidates
-    |> Enum.map(fn c1 ->
-      in_filter = Enum.map(candidates, fn c2 ->
-        Enum.reduce(
-          cond_lst,
-          true,
-          fn cnd, within_filter ->
-            case {cnd, within_filter} do
-              {_, false} -> false
-              {["mismatch", col_name], _} ->
-                case Map.fetch(column_map(), col_name) do
-                  {:ok, card_field} -> Map.fetch!(c1, card_field) != Map.fetch!(c2, card_field)
-                  _ ->
-                    sa = String.to_atom(col_name)
-                    Map.fetch!(c1.stat_box, sa) != Map.fetch!(c2.stat_box, sa)
-                end
-
-              {["match", left_col, right_col], _} ->
-                {lv1, lv2} = case Map.fetch(column_map(), left_col) do
-                  {:ok, card_field} -> {Map.fetch!(c1, card_field), Map.fetch!(c2, card_field)}
-                  _ ->
-                    sa = String.to_atom(left_col)
-                    {Map.fetch!(c1.stat_box, sa), Map.fetch!(c2.stat_box, sa)}
-                end
-                {rv1, rv2} = case Map.fetch(column_map(), right_col) do
-                  {:ok, card_field} -> {Map.fetch!(c1, card_field), Map.fetch!(c2, card_field)}
-                  _ ->
-                    sa = String.to_atom(right_col)
-                    {Map.fetch!(c1.stat_box, sa), Map.fetch!(c2.stat_box, sa)}
-                end
-                lv1 == rv2 and lv2 == rv1
-
-              _ -> true
-            end
-        end)
+    |> Enum.flat_map(fn c1 ->
+      Enum.take_while(candidates, fn c2 -> c2.id <= c1.id end)
+      |> Enum.filter(fn c2 -> eval_join_conditions(cond_lst, c1, c2) end)
+      |> Enum.map(fn c2 ->
+        {c1.id, c1.popularity, c2.id, c2.popularity}
       end)
-      |> Enum.count(&(&1))
-
-      {c1, in_filter}
     end)
   end
 end

@@ -1,6 +1,8 @@
 defmodule App.Cache do
   use GenServer
 
+  @never_expires 9223372036854775807
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, [], opts)
   end
@@ -37,7 +39,12 @@ defmodule App.Cache do
   end
 
   def insert(key, value) do
-    GenServer.call(__MODULE__, {:insert, key, value})
+    GenServer.call(__MODULE__, {:insert, key, @never_expires, value})
+  end
+
+  def insert_with_ttl(key, value, ttl) do
+    expires = System.system_time(:microsecond) + floor(1000000 * ttl)
+    GenServer.call(__MODULE__, {:insert, key, expires, value})
   end
 
   @type t_cache_val :: any
@@ -97,23 +104,25 @@ defmodule App.Cache do
 
   @impl true
   def handle_call({:lookup, key}, _from, state) do
+    now = System.system_time(:microsecond)
     result = case :ets.lookup(:app_cache, key) do
-      [{^key, value}] -> value
+      [{^key, exp_time, value}] when now < exp_time -> value
       _ -> nil
     end
     {:reply, result, state}
   end
 
   @impl true
-  def handle_call({:insert, key, value}, _from, state) do
-    true = :ets.insert(:app_cache, {key, value})
+  def handle_call({:insert, key, exp_time, value}, _from, state) do
+    true = :ets.insert(:app_cache, {key, exp_time, value})
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:update, key, default_val, updater}, _from, state) do
+    now = System.system_time(:microsecond)
     result = case :ets.lookup(:app_cache, key) do
-      [{^key, value}] ->
+      [{^key, exp_time, value}] when now < exp_time ->
         next_val = updater.(value)
         :ets.insert(:app_cache, {key, next_val})
         next_val

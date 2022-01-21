@@ -5,7 +5,7 @@ defmodule App.Entities.RoomData do
   defstruct [:room_code, :user_id]
 
   defmodule RoomCacheKeys do
-    defstruct [:round_messages, :scores, :turn_counter]
+    defstruct [:round_messages, :scores, :turn_counter, :asked_def_ids]
   end
 
   # cache_keys(room_code,
@@ -22,11 +22,12 @@ defmodule App.Entities.RoomData do
 
   @spec cache_keys(RoomData) :: RoomCacheKeys
   defp cache_keys(room_data) do
-    %{room_code: room_code} = room_data
+    %{room_code: room_code, user_id: user_id} = room_data
     %RoomCacheKeys{
       round_messages: "RoomChannel.#{room_code}.round_messages",
       scores: "RoomChannel.#{room_code}.scores",
-      turn_counter: "RoomChannel.#{room_code}.turn_counter"
+      turn_counter: "RoomChannel.#{room_code}.turn_counter",
+      asked_def_ids: "RoomChannel.#{room_code}.#{user_id}.asked_def_ids"
     }
   end
 
@@ -112,17 +113,30 @@ defmodule App.Entities.RoomData do
   end
 
   @doc """
+  Lists the most recent trivia def IDs encountered by the player.
+  """
+  @spec player_trivia_def_ids(RoomData) :: list(integer)
+  def player_trivia_def_ids(room_data) do
+    k = cache_keys(room_data)
+    case App.Cache.lookup(k.asked_def_ids) do
+      nil -> []
+      lst -> lst
+    end
+  end
+
+  @doc """
   Caches the content for the turn, and resets the answers to previous turns.
   """
-  @spec init_turn(RoomData, map) :: :ok
-  def init_turn(room_data, turn_info) do
+  @spec init_turn(RoomData, integer, map) :: :ok
+  def init_turn(room_data, def_id, turn_info) do
     k = cache_keys(room_data)
     record = [{"turn:start", turn_info}]
 
+    App.Cache.update(k.asked_def_ids, [def_id], fn prev -> Enum.take([def_id | prev], 7) end)
     # Keep the round:start and only 1 turn:end
     App.Cache.update(k.round_messages, record, fn msgs ->
-      [find_last(msgs, fn {evt, _} -> evt == "round:start" end),
-       find_last(msgs, fn {evt, _} -> evt == "turn:end" end)]
+      [find_last(msgs, &(elem(&1, 0) == "round:start")),
+       find_last(msgs, &(elem(&1, 0) == "turn:end"))]
       |> Enum.filter(&(not is_nil(&1)))
       |> Enum.concat(record)
     end)
@@ -168,7 +182,7 @@ defmodule App.Entities.RoomData do
     record = [{"turn:end", turn_info}]
 
     App.Cache.update(k.round_messages, record, fn msgs ->
-      Enum.filter(msgs, fn {evt, _} -> evt == "round:start" end)
+      Enum.filter(msgs, &(elem(&1, 0) == "round:start"))
       |> Enum.concat(record)
     end)
     turn_info

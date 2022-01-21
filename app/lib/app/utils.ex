@@ -30,19 +30,24 @@ defmodule App.Utils do
     transpose_recur(enum_of_enums, total)
   end
 
-
-  def median_of_sorted_list([]), do: :error
-  def median_of_sorted_list([el]), do: el
-  def median_of_sorted_list(enum) do
+  def quantile_of_sorted_list([], _), do: :error
+  def quantile_of_sorted_list(_, q) when q < 0 or q > 1, do: :error
+  def quantile_of_sorted_list([el], _), do: el
+  def quantile_of_sorted_list(enum, q) do
     n = length(enum)
-    mid = floor((n - 1) / 2)
-    # sl = Enum.sort(enum)
-    case rem(n, 2) do
-      0 ->
-        [m1 | [m2 | _]] = Enum.drop(enum, mid)
-        0.5 * (m1 + m2)
-      1 -> Enum.at(enum, mid)
+    idx = q * (n - 1)
+    left = trunc(idx)
+    alpha = idx - left
+    if alpha == 0 do
+      Enum.at(enum, left)
+    else
+      [m1 | [m2 | _]] = Enum.drop(enum, left)
+      (1 - alpha) * m1 + alpha * m2
     end
+  end
+
+  def median_of_sorted_list(enum) do
+    quantile_of_sorted_list(enum, 0.5)
   end
 
   def float_or_nil(nil), do: nil
@@ -102,7 +107,7 @@ defmodule App.Utils do
     end
   end
 
-  def from_base16(str, alpha) when is_binary(str) do
+  def from_base16(str, alpha \\ "0123456789abcdef") when is_binary(str) do
     alpha_map = String.to_charlist(alpha)
     |> Enum.with_index()
     |> Map.new()
@@ -110,6 +115,10 @@ defmodule App.Utils do
       String.to_charlist(str) |> Enum.reverse(),
       alpha_map
     )
+  end
+
+  def from_base16!(str, alpha \\ "0123456789abcdef") when is_binary(str) do
+    with {:ok, res} <- from_base16!(str, alpha), do: res
   end
 
   def hex_random(num_chars, alpha) do
@@ -131,5 +140,32 @@ defmodule App.Utils do
       end
     end)
     result
+  end
+
+  defp sample_heap(heap, len) do
+    Enum.reduce(1..len, {[], heap}, fn _, {acc, h} ->
+      case Heap.root(h) do
+        {_, v} -> {[v | acc], Heap.pop(h)}
+        _ -> {acc, h}
+      end
+    end)
+  end
+
+  def make_heap(lst, priority_getter) do
+    lst
+    |> Enum.map(fn el -> {priority_getter.(el), el} end)
+    |> Enum.into(Heap.min())
+  end
+
+  def sample_without_replacement(lst, len, priority_getter \\ fn _el -> :rand.uniform() end) do
+    {items, _} = make_heap(lst, priority_getter) |> sample_heap(len)
+    items
+  end
+
+  def swor_then_replace(heap, len, resetter, priority_getter \\ fn _el -> :rand.uniform() end) do
+    {items, poppedheap} = sample_heap(heap, len)
+    newheap = Enum.map(items, fn el -> resetter.(el) end)
+    |> Enum.reduce(poppedheap, fn el, acc -> Heap.push(acc, {priority_getter.(el), el}) end)
+    {items, newheap}
   end
 end
