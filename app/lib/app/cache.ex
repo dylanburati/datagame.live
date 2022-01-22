@@ -95,7 +95,7 @@ defmodule App.Cache do
       {:ok, counter} ->
         case :atomics.compare_exchange(counter, 1, exp_value, exp_value + 1) do
           :ok -> {:reply, {:ok, exp_value + 1}, state}
-          actual_value -> {:reply, {:ok, actual_value}, state}
+          actual_value -> {:reply, {:error, actual_value}, state}
         end
       _ ->
         {:reply, :error, state}
@@ -124,10 +124,10 @@ defmodule App.Cache do
     result = case :ets.lookup(:app_cache, key) do
       [{^key, exp_time, value}] when now < exp_time ->
         next_val = updater.(value)
-        :ets.insert(:app_cache, {key, next_val})
+        :ets.insert(:app_cache, {key, exp_time, next_val})
         next_val
       _ ->
-        :ets.insert(:app_cache, {key, default_val})
+        :ets.insert(:app_cache, {key, @never_expires, default_val})
         default_val
     end
     {:reply, result, state}

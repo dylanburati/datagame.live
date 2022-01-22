@@ -18,7 +18,7 @@ defmodule App.Application do
       # Heartbeat service
       AppWeb.Presence,
       # Start a worker by calling: App.Worker.start_link(arg)
-      {App.Cache, name: App.Cache}
+      App.CacheSupervisor
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

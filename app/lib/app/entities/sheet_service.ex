@@ -38,7 +38,7 @@ defmodule App.Entities.SheetService do
   def authorize() do
     case App.Cache.lookup(@tkn_cache_key) do
       nil -> get_new_token()
-      tkn -> tkn
+      tkn -> {:ok, tkn}
     end
   end
 

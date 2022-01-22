@@ -104,8 +104,7 @@ defmodule App.Entities.RoomData do
   @spec request_turn(RoomData, integer) :: {:ok, integer} | :error
   def request_turn(room_data, from_turn_id) do
     k = cache_keys(room_data)
-    next_turn = from_turn_id + 1
-    with {:ok, ^next_turn} <- App.Cache.try_incr_atomic(k.turn_counter, from_turn_id) do
+    with {:ok, next_turn} <- App.Cache.try_incr_atomic(k.turn_counter, from_turn_id) do
       {:ok, next_turn}
     else
       _ -> :error
