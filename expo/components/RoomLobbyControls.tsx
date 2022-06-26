@@ -64,6 +64,7 @@ export function RoomLobbyControls({
           styles.roundedLg,
         ]}
         placeholder="Enter name"
+        placeholderTextColor="#8E8E93"
         value={draftName}
         onChangeText={setDraftName}
       />

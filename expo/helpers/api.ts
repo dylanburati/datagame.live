@@ -78,6 +78,9 @@ export type Trivia = {
   statDef?: {
     label: string;
     type: TriviaStatType;
+    axisMod?: string;
+    axisMin?: number;
+    axisMax?: number;
   };
 };
 
@@ -121,6 +124,11 @@ export type RoomIncomingMessage =
       turnId: number;
       trivia: Trivia;
       participantId?: number;
+    }
+  | {
+      event: 'turn:abort';
+      userId: number;
+      turnId: number;
     }
   | {
       event: 'turn:end';

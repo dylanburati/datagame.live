@@ -6,6 +6,9 @@ defmodule App.Entities.CardStatDef do
     field :key, :string
     field :label, :string
     field :stat_type, :string
+    field :axis_mod, :string
+    field :axis_min, :float
+    field :axis_max, :float
     field :deck_id, :id
 
     timestamps()

@@ -107,7 +107,7 @@ defmodule App.Entities.RoomData do
     with {:ok, next_turn} <- App.Cache.try_incr_atomic(k.turn_counter, from_turn_id) do
       {:ok, next_turn}
     else
-      _ -> :error
+      e -> e
     end
   end
 

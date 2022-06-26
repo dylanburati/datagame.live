@@ -247,6 +247,7 @@ export function HomeScreen() {
             turn the group tries to earn points by completing challenges.
           </ExpandingInfoHeader>
           <SegmentedControl
+            appearance="light"
             style={styles.mx6}
             values={['Host', 'Join']}
             selectedIndex={hostOrJoin}
@@ -267,6 +268,7 @@ export function HomeScreen() {
                 autoCapitalize="none"
                 textContentType="nickname"
                 placeholder="Enter a username"
+                placeholderTextColor="#8E8E93"
                 value={draftRoomNickname.text}
                 onChangeText={(text) =>
                   setDraftRoomNickname({ text, error: undefined })
@@ -303,6 +305,7 @@ export function HomeScreen() {
                 ]}
                 autoCapitalize="characters"
                 placeholder="Enter code"
+                placeholderTextColor="#8E8E93"
                 value={draftRoomId}
                 onChangeText={(text) => setDraftRoomId(text.replace(/\s/g, ''))}
                 returnKeyType="go"

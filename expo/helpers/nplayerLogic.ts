@@ -3,7 +3,7 @@ import { TextProps, ViewProps } from 'react-native';
 import { RoomScoreEntry, Trivia } from './api';
 import { OrderedSet } from './data';
 import { styles } from '../styles';
-import { acceptableOrders, argsort } from './math';
+import { acceptableOrders, argsort, relativeDeltaToNow } from './math';
 
 export enum RoomStage {
   LOBBY,
@@ -240,6 +240,10 @@ export function statToNumber(
     case 'km_distance':
       return parseFloat(value.replace(/,/g, ''));
     case 'date':
+      if (statDef.axisMod === 'age') {
+        const [years, ms] = relativeDeltaToNow(new Date(value));
+        return years + ms / 365 / 24 / 3600 / 1000;
+      }
       return new Date(value).getTime();
     default:
       throw new Error('Unhandled stat type');
@@ -365,15 +369,24 @@ export function getOptionStyles(
     );
     const correctArr = getCorrectArray(state, answers);
 
-    let max = Math.max(...numeric);
-    let min = Math.min(...numeric);
+    const axisConsideredVals = [
+      ...numeric,
+      ...(statDef.axisMin != null ? [statDef.axisMin] : []),
+      ...(statDef.axisMax != null ? [statDef.axisMax] : []),
+    ];
+    let max = Math.max(...axisConsideredVals);
+    let min = Math.min(...axisConsideredVals);
     const padding = Math.max((max - min) / 6, 0.01);
-    if (['dollar_amount', 'number', 'km_distance'].includes(statDef.type)) {
-      min = Math.min(0, min);
-    } else {
-      min -= padding;
+    if (min !== statDef.axisMin) {
+      if (['dollar_amount', 'number', 'km_distance'].includes(statDef.type)) {
+        min = Math.min(0, min);
+      } else {
+        min -= padding;
+      }
     }
-    max += padding;
+    if (max !== statDef.axisMax) {
+      max += padding;
+    }
     return numeric.map((num, i) => {
       const frac = (num - min) / (max - min);
       const isCorrect = correctArr[i];

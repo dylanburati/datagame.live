@@ -145,7 +145,25 @@ defmodule App.Entities.SheetService do
     end
   end
 
-  defp insert_deck(spreadsheet_id, sheet_name, labels, col_names, rows) do
+  defp insert_deck(spreadsheet_id, sheet_name, col_metas, col_names, rows) do
+    labels = Enum.map(col_metas, fn {k, v} -> {k, Map.get(v, "Label")} end)
+    |> Map.new()
+    axis_props = Enum.map(col_metas, fn {k, v} -> {k, Map.get(v, "Y-Axis")} end)
+    |> Enum.filter(fn {_, v} -> is_binary(v) and String.length(v) end)
+    |> Enum.flat_map(fn {k, v} ->
+      with [_, maybe_mod, min_s, max_s] <- Regex.run(~r"([A-Za-z_][0-9A-Za-z_]*:)?(-?[0-9.]+),(-?[0-9.]+)", v),
+           {amin, _} <- Float.parse(min_s),
+           {amax, _} <- Float.parse(max_s) do
+        mod = case maybe_mod do
+          "" -> nil
+          x -> String.trim_trailing(x, ":")
+        end
+        [{k, %{axis_mod: mod, axis_min: amin, axis_max: amax}}]
+      else
+        _ -> []
+      end
+    end)
+    |> Map.new()
     nonblank_labels = Enum.filter(labels, fn {_, v} -> is_binary(v) and String.length(v) end)
     |> Map.new()
     ctdefs = for {col_name, pos} <- Enum.with_index(["Tag1", "Tag2", "Tag3", "Tag4"], 1) do
@@ -166,13 +184,12 @@ defmodule App.Entities.SheetService do
       values = Enum.map(cards, fn %{stat_box: %{^key => val}} -> val end)
       key_s = Atom.to_string(key)
       label = Map.get(labels, Card.sheet_col_for_stat(key), key_s)
+      def_axis_props = Map.get(axis_props, Card.sheet_col_for_stat(key), %{})
       case Enum.find_index(values, &(not is_nil(&1))) do
         nil -> nil
         _ -> case CardStatDef.infer_type(values) do
           {:ok, stat_type} ->
-            %{key: key_s,
-              label: label,
-              stat_type: stat_type}
+            Map.merge(%{key: key_s, label: label, stat_type: stat_type}, def_axis_props)
           _ -> nil
         end
       end
@@ -342,16 +359,22 @@ defmodule App.Entities.SheetService do
       with %{"title" => sheet_name, "values" => values} <- draft_deck do
         with [col_names | rows] <- transpose(values) do
           with 1 <- Enum.count(col_names, &(&1 == "Card")) do
-            label_loc = Enum.zip(col_names, Enum.drop(col_names, 1))
+            meta_loc = Enum.zip(col_names, Enum.drop(col_names, 1))
             |> Enum.find_index(fn pair -> pair == {"Column", "Label"} end)
-            labels = case label_loc do
+            col_metas = case meta_loc do
               nil -> %{}
               idx ->
-                Enum.map(rows, fn row -> Enum.drop(row, idx) |> Enum.take(2) end)
-                |> Enum.filter(fn [a, b] -> not (is_nil(a) and is_nil(b)) end)
-                |> Map.new(fn [k, lbl] -> {k, lbl} end)
+                headers_after_loc = Enum.drop(col_names, meta_loc + 1)
+                |> Enum.take_while(&(not is_nil(&1)))
+
+                Enum.map(rows, fn row -> Enum.drop(row, idx) end)
+                |> Enum.filter(fn [k | _] -> not is_nil(k) end)
+                |> Map.new(fn [k | rest] ->
+                  value = Enum.zip(headers_after_loc, rest) |> Map.new()
+                  {k, value}
+                end)
             end
-            with {:ok, %{deck: deck}} <- insert_deck(spreadsheet_id, sheet_name, labels, col_names, rows) do
+            with {:ok, %{deck: deck}} <- insert_deck(spreadsheet_id, sheet_name, col_metas, col_names, rows) do
               {:ok, [deck | lst], fails}
             else
               {:error, other, other_value, _} ->

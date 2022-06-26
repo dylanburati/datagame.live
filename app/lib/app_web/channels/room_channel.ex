@@ -160,12 +160,17 @@ defmodule AppWeb.RoomChannel do
         broadcast(socket, "turn:start", turn_info)
         {:reply, {:ok, %{}}, socket}
       else
-        {:error, reason} -> {:reply, {:error, %{reason: reason}}, socket}
-        _ -> {:reply, {:error, %{reason: "Unknown error"}}, socket}
+        obj ->
+          reason = case obj do
+            {:error, x} -> x
+            _ -> "Unknown error"
+          end
+          broadcast(socket, "turn:abort", %{"userId" => room_data.user_id, "turnId" => next_turn})
+          {:reply, {:error, %{reason: reason}}, socket}
       end
     else
       ^payload -> {:reply, {:error, %{reason: "Previous turn number is required"}}, socket}
-      {:ok, turn_id} ->
+      {:noop, turn_id} ->
         {:reply,
          {:error, %{reason: "Previous turn number was #{turn_id}"}},
          socket}

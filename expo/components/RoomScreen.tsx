@@ -112,6 +112,16 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       players: state.players.startTurn(message.userId),
     };
   }
+  if (message.event === 'turn:abort') {
+    state.receivedAnswers.clear();
+    return {
+      ...state,
+      stage: RoomStage.UNKNOWN_TURN,
+      trivia: undefined,
+      turnId: message.turnId,
+      players: state.players.startTurn(message.userId).endTurn(message.userId),
+    };
+  }
   if (message.event === 'turn:feedback') {
     state.receivedAnswers.set(message.userId, message.answered);
     if (state.receivedAnswers.size >= triviaRequiredAnswers(state)) {

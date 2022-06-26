@@ -15,6 +15,7 @@ export const SocketProvider = ({
     () =>
       new Socket(wsUrl, {
         transport: WebSocket,
+        heartbeatIntervalMs: 1000,
       }),
     [wsUrl]
   );

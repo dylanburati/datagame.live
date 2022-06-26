@@ -14,6 +14,8 @@ export type RoomCreatorControlsProps = {
   doBegin: (playerOrder: number[]) => void;
 };
 
+const soloGamePermitted = __DEV__;
+
 export function RoomCreatorControls({
   roomState,
   canCancel,
@@ -24,7 +26,7 @@ export function RoomCreatorControls({
   const canBegin =
     roomState.selfId !== undefined &&
     draftOrder.has(roomState.selfId) &&
-    draftOrder.size >= 2;
+    (soloGamePermitted || draftOrder.size >= 2);
 
   useEffect(() => {
     if (roomState.selfId) {

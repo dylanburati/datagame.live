@@ -95,7 +95,7 @@ defmodule App.Cache do
       {:ok, counter} ->
         case :atomics.compare_exchange(counter, 1, exp_value, exp_value + 1) do
           :ok -> {:reply, {:ok, exp_value + 1}, state}
-          actual_value -> {:reply, {:error, actual_value}, state}
+          actual_value -> {:reply, {:noop, actual_value}, state}
         end
       _ ->
         {:reply, :error, state}

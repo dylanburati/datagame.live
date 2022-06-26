@@ -4,7 +4,7 @@ import { FormattedDate, FormattedNumber } from 'react-intl';
 import { TriviaOption } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { kissMarryShoot, medals } from '../helpers/iconography';
-import { argsort } from '../helpers/math';
+import { argsort, relativeDeltaToNow } from '../helpers/math';
 import { RoomState, statToNumber, RoomStage } from '../helpers/nplayerLogic';
 import { styles } from '../styles';
 
@@ -81,6 +81,16 @@ export function TriviaStatDisplay({
           <FormattedNumber style="currency" currency="USD" value={numValue} />
         );
       case 'date':
+        if (statDef.axisMod === 'age' && !Array.isArray(option.questionValue)) {
+          const birthday = new Date(option.questionValue);
+          const [years] = relativeDeltaToNow(birthday);
+          return (
+            <>
+              {years} (born{' '}
+              <FormattedDate value={birthday} month="long" day="numeric" />)
+            </>
+          );
+        }
         return <FormattedDate value={numValue} year="numeric" month="long" />;
     }
   }
