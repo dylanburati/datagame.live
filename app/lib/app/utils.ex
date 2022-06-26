@@ -50,6 +50,11 @@ defmodule App.Utils do
     quantile_of_sorted_list(enum, 0.5)
   end
 
+  def parse_float!(str) do
+    {num, _} = Float.parse(str)
+    num
+  end
+
   def float_or_nil(nil), do: nil
   def float_or_nil(str) do
     case Float.parse(str) do
@@ -69,6 +74,12 @@ defmodule App.Utils do
   def add_timestamps(map) do
     dt = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
     Map.merge(map, %{inserted_at: dt, updated_at: dt})
+  end
+
+  @spec maybe_filter(Enumerable, boolean, (Enum.element -> boolean)) :: Enumerable
+  def maybe_filter(enum, false, _fun), do: enum
+  def maybe_filter(enum, true, fun) do
+    Enum.filter(enum, fun)
   end
 
   @spec maybe_put(map, boolean, any, any) :: map

@@ -8,6 +8,8 @@ defmodule App.Entities.PairingInstance do
   schema "pairing_instance" do
     field :subset, :string
     field :info, :string
+    field :partition_number, :integer
+    field :popularity, :float
 
     belongs_to :pairing, Pairing
     belongs_to :card1, Card, foreign_key: :card_id1, type: :binary_id

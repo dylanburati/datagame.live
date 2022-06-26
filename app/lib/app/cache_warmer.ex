@@ -11,16 +11,16 @@ defmodule App.CacheWarmer do
 
   @impl true
   def init(_) do
-    send(self(), :pairs)
+    send(self(), :pairings)
     {:ok, %{}}
   end
 
   @impl true
-  def handle_info(:pairs, state) do
+  def handle_info(:pairings, state) do
     now = System.system_time(:microsecond)
     Repo.all(Pairing)
     |> Task.async_stream(fn p ->
-      PairingService.sample_pairs(p, 0, 1)
+      PairingService.candidates(p)
     end)
     |> Stream.run()
     t1 = System.system_time(:microsecond)

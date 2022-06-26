@@ -1,14 +1,11 @@
 defmodule App.Entities.PairingService do
   import App.Utils
   import Ecto.Query
-  # import App.Utils
   import App.Entities.Card, only: [column_map: 0]
 
+  alias App.MathExtensions
   alias App.Repo
   alias App.Entities.Card
-  # alias App.Entities.CardStatDef
-  alias App.Entities.Deck
-  # alias App.Entities.Pairing
   alias App.Entities.PairingInstance
 
   defp validate_aggs(_deck, []), do: :ok
@@ -27,106 +24,32 @@ defmodule App.Entities.PairingService do
     end
   end
 
-  defp parse_float!(str) do
-    {num, _} = Float.parse(str)
-    num
-  end
-
-  defp haversin(num) do
-    x = :math.sin(num / 2.0)
-    x * x
-  end
-
-  defp sin2(num) do
-    x = :math.sin(num)
-    x * x
-  end
-
-  defp cos2(num) do
-    x = :math.cos(num)
-    x * x
-  end
-
   def calc_agg(_stat_def, "geodist", v1, v2) do
     [lat1, lon1] = String.split(v1, ",")
     |> Enum.map(&(parse_float!(&1) * :math.pi / 180.0))
     [lat2, lon2] = String.split(v2, ",")
     |> Enum.map(&(parse_float!(&1) * :math.pi / 180.0))
 
-    flattening = 1.0 / 298.257223563
-    radius_km = 6378.137
-
-    # lambert's formula
-    b1 = :math.atan((1.0 - flattening) * :math.tan(lat1))
-    b2 = :math.atan((1.0 - flattening) * :math.tan(lat2))
-    dlambda = abs(lon1 - lon2)
-    dphi = abs(b1 - b2)
-    central2 = haversin(dphi) + haversin(dlambda) * (1.0 - haversin(dphi) - haversin(lat1 + lat2))
-    halfcentral = :math.asin(:math.sqrt(central2))
-    central = 2 * halfcentral
-    p = 0.5 * (b1 + b2)
-    q = 0.5 * (b2 - b1)
-    x = (central - :math.sin(central)) * sin2(p) * cos2(q) / cos2(halfcentral)
-    y = (central + :math.sin(central)) * sin2(q) * cos2(p) / sin2(halfcentral)
-    radius_km * (central - 0.5 * flattening * (x + y))
+    MathExtensions.geodist(lat1, lon1, lat2, lon2)
   end
 
   def get_pairs(pairing, difficulty, limit, ans_type, ans_info, opts \\ []) do
     %{"agg" => aggs} = pairing.criteria
 
-    deck = Repo.get!(Deck, pairing.deck_id)
-    |> Repo.preload([:card_stat_defs])
+    pairing = pairing
+    |> Repo.preload([deck: [:card_stat_defs]])
 
-    with :ok <- validate_aggs(deck, aggs |> Map.to_list()) do
-      result = case Keyword.get(opts, :intersect) do
-        nil ->
-          ids = case Keyword.get(opts, :subtract) do
-            nil -> sample_pairs(pairing, difficulty, 4 * limit)
-            subset ->
-              possible_ids = sample_pairs(pairing, difficulty, 4 * limit)
-              combined_ids = Enum.map(possible_ids, fn {id1, id2} -> id1 <> id2 end)
-              subtractquery = from p in PairingInstance,
-                join: c1 in assoc(p, :card1),
-                join: c2 in assoc(p, :card2),
-                select: {c1.id, c2.id},
-                where: p.pairing_id == ^pairing.id,
-                where: p.subset == ^subset,
-                where: (fragment("concat(?,?)", c1.id, c2.id) in ^combined_ids)
-                       or (fragment("concat(?,?)", c2.id, c1.id) in ^combined_ids)
-              subtract_ids = subtractquery |> Repo.all() |> MapSet.new()
-              MapSet.new(possible_ids) |> MapSet.difference(subtract_ids)
-          end
-          id_filter = Enum.reduce(ids, dynamic([], false), fn {id1, id2}, acc ->
-            dynamic([c1, c2], ^acc or (c1.id == ^id1 and c2.id == ^id2))
-          end)
-          query = from c1 in Card,
-            cross_join: c2 in Card,
-            select: {c1, c2, %{}},
-            where: ^id_filter,
-            limit: ^limit
-          query |> Repo.all()
-        subset ->
-          query = from p in PairingInstance,
-            join: c1 in assoc(p, :card1),
-            join: c2 in assoc(p, :card2),
-            select: {c1, c2, p},
-            where: p.pairing_id == ^pairing.id,
-            where: p.subset == ^subset,
-            where: c1.is_disabled == false,
-            where: c2.is_disabled == false,
-            order_by: fragment("exp(?) / -log(random())", ^difficulty * c1.popularity * c2.popularity),
-            limit: ^limit
-          query |> Repo.all()
-      end
+    with :ok <- validate_aggs(pairing.deck, aggs |> Map.to_list()) do
+      result = sample_pairs(pairing, difficulty, limit, opts)
       title_sep = Keyword.get(opts, :title_sep) || " + "
 
       result
-      |> Enum.map(fn {c1, c2, p} ->
+      |> Enum.map(fn {c1, c2, extra} ->
         case {ans_type, ans_info} do
           {:card_options, {_, "title"}} ->
             %{
               answer: Enum.join([c1.title, c2.title], title_sep),
-              question_value: Map.get(p, :info)
+              question_value: extra
             }
           {:stat_options, card_stat_def} ->
             sa = String.to_atom(card_stat_def.key)
@@ -142,70 +65,118 @@ defmodule App.Entities.PairingService do
     end
   end
 
-  defp cascade_error([]), do: {:ok, []}
-  defp cascade_error([:error | _]), do: :error
-  defp cascade_error([{:ok, v} | rest]) do
-    case cascade_error(rest) do
-      {:ok, lst} -> {:ok, [v | lst]}
-      _ -> :error
+  def to_exp_dist(w) do
+    -1.0 * :math.exp(w) / :math.log(:rand.uniform())
+  end
+
+  def card_exp_dist(c, d, penalty \\ 0) do
+    to_exp_dist(c.popularity * d + penalty)
+  end
+
+  def update_card_items(map, cards) do
+    Enum.reduce(cards, map, fn c, acc ->
+      Map.update!(acc, c.id, fn {_, t} -> {c, t + 1} end)
+    end)
+  end
+
+  def candidates_impl(pairing) do
+    %{"filter" => cond_lst} = pairing.criteria
+    indep_conds = Enum.reduce(
+      cond_lst,
+      dynamic([], true),
+      fn cnd, ic ->
+        case cnd do
+          ["exists", stat_key = ("stat" <> _)] ->
+            # stat_key = Card.key_for_stat(which_stat)
+            dynamic([c], ^ic and c.stat_box[^stat_key] != fragment("'null'::jsonb"))
+          _ -> ic
+        end
+      end
+    )
+
+    query = from c1 in Card,
+      where: c1.deck_id == ^pairing.deck_id,
+      where: c1.is_disabled == false,
+      where: ^indep_conds,
+      order_by: c1.id
+    query |> Repo.all()
+  end
+
+  def candidates(pairing) do
+    cache_key = "PairingService.candidates.#{pairing.id}.#{pairing.updated_at}"
+    case App.Cache.lookup(cache_key) do
+      nil ->
+        result = candidates_impl(pairing)
+        :ok = App.Cache.insert(cache_key, result)
+        result
+      cached -> cached
     end
   end
 
-  def sample_pairs(pairing, difficulty, limit) do
-    cache_ns = "PairingService.sample_pairs.#{pairing.id}.#{pairing.updated_at}"
-    subkeys = sample_without_replacement(0..99, 10)
-    tasks = Enum.map(subkeys, fn sk ->
-      Task.async(fn ->
-        cache_key = "#{cache_ns}.#{sk}"
-        case App.Cache.lookup(cache_key) do
-          nil -> :error
-          lst ->
-            items = Enum.map(lst, fn {id1, pop1, id2, pop2} ->
-              w = :math.exp(difficulty * pop1 * pop2)
-              prio = -w / :math.log(:rand.uniform())
-              {prio, id1, pop1, id2, pop2}
-            end)
-            |> sample_without_replacement(limit, &(elem(&1, 0)))
-            {:ok, items}
-        end
-      end)
-    end)
-    results = Task.await_many(tasks)
+  def subset_impl(pairing, name) do
+    query = from p in PairingInstance,
+      select: {p.card_id1, p.card_id2, p.info},
+      where: p.pairing_id == ^pairing.id,
+      where: p.subset == ^name
+    query
+    |> Repo.all()
+    |> Enum.reduce(
+      {MapSet.new(), MapSet.new(), %{}},
+      fn {cid1, cid2, extra}, {indiv, pairs, emap} ->
+        {indiv |> MapSet.put(cid1) |> MapSet.put(cid2),
+         MapSet.put(pairs, {cid1, cid2}),
+         maybe_put(emap, not is_nil(extra), {cid1, cid2}, extra)}
+      end
+    )
+  end
 
-    lists = case cascade_error(results) do
-      {:ok, r} -> r
-      :error ->
-        edges = generate_all_pairs(pairing)
-        Stream.chunk_every(edges, ceil(length(edges) / 100))
-        |> Stream.with_index()
-        |> Enum.reduce([], fn {lst, sk}, acc ->
-          :ok = App.Cache.insert("#{cache_ns}.#{sk}", lst)
-
-          if sk in subkeys do
-            items = Enum.map(lst, fn {id1, pop1, id2, pop2} ->
-              w = :math.exp(difficulty * pop1 * pop2)
-              prio = -w / :math.log(:rand.uniform())
-              {prio, id1, pop1, id2, pop2}
-            end)
-            |> sample_without_replacement(limit, &(elem(&1, 0)))
-            [items | acc]
-          else
-            acc
-          end
-        end)
+  def subset(pairing, name) do
+    cache_key = "PairingService.subset.#{pairing.id}.#{pairing.updated_at}.#{name}"
+    case App.Cache.lookup(cache_key) do
+      nil ->
+        result = subset_impl(pairing, name)
+        :ok = App.Cache.insert(cache_key, result)
+        result
+      cached -> cached
     end
-    Enum.concat(lists)
-    |> Enum.sort_by(&(elem(&1, 0)))
-    |> Enum.reduce({[], %{}}, fn {sort, id1, pop1, id2, pop2}, {pairs, counter} ->
-      occurs = Map.get(counter, id1, 0) + Map.get(counter, id2, 0)
-      discounted = {sort * :math.pow(1.3, occurs), id1, pop1, id2, pop2}
-      {pairs ++ [discounted],
-        counter |> Map.update(id1, 1, &(&1 + 1)) |> Map.update(id2, 1, &(&1 + 1))}
+  end
+
+  def pair_id(c1, c2), do: {min(c1.id, c2.id), max(c1.id, c2.id)}
+
+  def sample_pairs(pairing, difficulty, limit, opts \\ []) do
+    %{"filter" => cond_lst} = pairing.criteria
+    boost_lst = Map.get(pairing.criteria, "boost", [])
+    {_, subtract_pairs, _} = case Keyword.get(opts, :subtract) do
+      nil -> {nil, MapSet.new(), nil}
+      name -> subset(pairing, name)
+    end
+    {intersect_ids, intersect_pairs, info_map} = case Keyword.get(opts, :intersect) do
+      nil -> {nil, nil, %{}}
+      name -> subset(pairing, name)
+    end
+
+    halfdif = difficulty * 0.5
+    cards = candidates(pairing)
+    |> maybe_filter(not is_nil(intersect_ids), fn c -> c.id in intersect_ids end)
+    stage1 = cards
+    |> sample_without_replacement(limit, &(card_exp_dist(&1, halfdif)))
+    stage2 = Map.new(cards, &{&1.id, {&1, 0}})
+    |> update_card_items(stage1)
+
+    {result, _} = Enum.reduce(stage1, {[], stage2}, fn c1, {acc, remaining} ->
+      choices = Map.values(remaining)
+      |> Enum.filter(fn {c2, _} -> eval_join_conditions(cond_lst, c1, c2) end)
+      |> maybe_filter(not is_nil(subtract_pairs), fn {c2, _} -> pair_id(c1, c2) not in subtract_pairs end)
+      |> maybe_filter(not is_nil(intersect_pairs), fn {c2, _} -> pair_id(c1, c2) in intersect_pairs end)
+      |> sample_without_replacement(1, fn {c2, repeats} ->
+        to_exp_dist(eval_popularity(boost_lst, c1, c2, pairing.deck) * halfdif + 0.5 * repeats)
+      end)
+      |> Enum.map(&elem(&1, 0))
+
+      records = Enum.map(choices, fn c2 -> {c1, c2, Map.get(info_map, pair_id(c1, c2))} end)
+      {records ++ acc, remaining |> update_card_items(choices)}
     end)
-    |> elem(0)
-    |> Enum.sort_by(&(elem(&1, 0)))
-    |> Enum.map(fn {_, id1, _, id2, _} -> {id1, id2} end)
-    |> Enum.take(limit)
+    result
   end
 
   defp card_fetch(card, col_name) do
@@ -232,37 +203,31 @@ defmodule App.Entities.PairingService do
     curr and eval_join_conditions(rest, card1, card2)
   end
 
-  def generate_all_pairs(pairing) do
-    %{"filter" => cond_lst} = pairing.criteria
-
-    indep_conds = Enum.reduce(
-      cond_lst,
-      dynamic([], true),
-      fn cnd, ic ->
-        case cnd do
-          ["exists", stat_key = ("stat" <> _)] ->
-            # stat_key = Card.key_for_stat(which_stat)
-            dynamic([c], ^ic and c.stat_box[^stat_key] != fragment("'null'::jsonb"))
-          _ -> ic
+  def eval_popularity([], _card1, card2, _deck), do: card2.popularity
+  def eval_popularity([cnd | rest], card1, card2, deck) do
+    curr = case cnd do
+      ["abs_difference", boost_when, thresh, strength, col] ->
+        v1 = card_fetch(card1, col)
+        v2 = card_fetch(card2, col)
+        {valid, diff} = case Enum.find(deck.card_stat_defs, &(&1.key == col)) do
+          nil -> {false, 0}
+          %{stat_type: "date"} ->
+            with true <- is_binary(v1), true <- is_binary(v2),
+                 {:ok, d1} <- Date.from_iso8601(v1), {:ok, d2} <- Date.from_iso8601(v2) do
+              {true, abs(Date.diff(d1, d2) / 365.2425)}
+            else
+              _ -> {false, 0}
+            end
+          _ -> {false, 0}
         end
-      end
-    )
-
-    stage1_query = from c1 in Card,
-      where: c1.deck_id == ^pairing.deck_id,
-      where: c1.is_disabled == false,
-      where: ^indep_conds,
-      order_by: c1.id
-
-    candidates = stage1_query |> Repo.all()
-
-    candidates
-    |> Enum.flat_map(fn c1 ->
-      Enum.take_while(candidates, fn c2 -> c2.id <= c1.id end)
-      |> Enum.filter(fn c2 -> eval_join_conditions(cond_lst, c1, c2) end)
-      |> Enum.map(fn c2 ->
-        {c1.id, c1.popularity, c2.id, c2.popularity}
-      end)
-    end)
+        should_apply = case {valid, boost_when} do
+          {false, _} -> false
+          {true, "<"} -> diff < thresh
+          {true, ">"} -> diff > thresh
+        end
+        if should_apply, do: strength, else: 0.0
+      _ -> 0.0
+    end
+    curr + eval_popularity(rest, card1, card2, deck)
   end
 end
