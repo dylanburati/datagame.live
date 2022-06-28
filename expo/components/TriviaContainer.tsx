@@ -9,13 +9,32 @@ export type TriviaContainerProps = {
   style: ViewProps['style'];
 };
 
+const BoxedDisplay: React.FC<{ boxed: boolean }> = ({ boxed, children }) => {
+  return boxed ? (
+    <View
+      style={[
+        styles.m4,
+        styles.pt2,
+        styles.pb8,
+        styles.zMinusTwo,
+        styles.bgPaperDarker,
+        styles.roundedLg,
+      ]}
+    >
+      {children}
+    </View>
+  ) : (
+    <>{children}</>
+  );
+};
+
 export function TriviaContainer({
   state,
   disabled,
   style,
   children,
 }: React.PropsWithChildren<TriviaContainerProps>) {
-  if (disabled || !state.trivia) {
+  if (disabled) {
     return null;
   }
 
@@ -31,30 +50,13 @@ export function TriviaContainer({
     whoseTurn += ` + ${p2}`;
   }
 
-  const LargeDisplay: React.FC = ({ children: content }) => <>{content}</>;
-  const BoxedDisplay: React.FC = ({ children: content }) => (
-    <View
-      style={[
-        styles.m4,
-        styles.pt2,
-        styles.pb8,
-        styles.zMinusTwo,
-        styles.bgPaperDarker,
-        styles.roundedLg,
-      ]}
-    >
-      {content}
-    </View>
-  );
-  const Display = showLarge ? LargeDisplay : BoxedDisplay;
-
   return (
     <View style={style}>
       <View style={[styles.row, styles.itemsBaseline, styles.justifyCenter]}>
         <Text>(P{state.players.startedPlayerIndex + 1})</Text>
         <Text style={[styles.ml2, styles.textLg]}>{whoseTurn}</Text>
       </View>
-      <Display>{children}</Display>
+      <BoxedDisplay boxed={!showLarge}>{children}</BoxedDisplay>
     </View>
   );
 }

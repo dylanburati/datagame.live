@@ -1,9 +1,9 @@
 import { Presence } from 'phoenix';
-import { TextProps, ViewProps } from 'react-native';
+import { ViewProps } from 'react-native';
 import { RoomScoreEntry, Trivia } from './api';
 import { OrderedSet } from './data';
 import { styles } from '../styles';
-import { acceptableOrders, argsort, relativeDeltaToNow } from './math';
+import { argsort, relativeDeltaToNow } from './math';
 
 export enum RoomStage {
   LOBBY,
@@ -154,6 +154,10 @@ export type RoomState = {
   receivedAnswers: Map<number, number[]>;
 };
 
+export type RoomStateWithTrivia = RoomState & {
+  trivia: NonNullable<RoomState['trivia']>;
+};
+
 export function shouldShowLobby(stage: RoomStage) {
   return stage === RoomStage.LOBBY || stage === RoomStage.WAITING_ROOM;
 }
@@ -183,6 +187,12 @@ export function shouldShowAdvanceButton(state: RoomState) {
   );
 }
 
+export function triviaIsPresent(
+  state: RoomState
+): state is RoomStateWithTrivia {
+  return !!state.trivia;
+}
+
 export function shouldShowTrivia(stage: RoomStage) {
   return (
     stage === RoomStage.SELF_TURN ||
@@ -192,11 +202,24 @@ export function shouldShowTrivia(stage: RoomStage) {
   );
 }
 
+export function shouldShowBottomPanel(stage: RoomStage) {
+  return (
+    stage !== RoomStage.LOBBY &&
+    stage !== RoomStage.WAITING_ROOM &&
+    stage !== RoomStage.RESULTS
+  );
+}
+
 export function triviaRequiredAnswers(state: RoomState) {
   if (state.trivia && state.trivia.answerType === 'matchrank') {
     return 2;
   }
   return 1;
+}
+
+export function hasNumericSelectionOrder(trivia: Trivia) {
+  const { answerType } = trivia;
+  return answerType === 'stat.asc' || answerType === 'stat.desc';
 }
 
 function hasSelectionOrder(trivia: Trivia) {
@@ -252,13 +275,36 @@ export function statToNumber(
 
 export type TriviaOptionStyle = {
   chip: ViewProps['style'];
-  selectionOrderDisp?: TextProps['style'];
   barGraph?: ViewProps['style'];
+  directionIndicator?: string;
 };
 
 export type RightWrongUnmarked = boolean | undefined;
 
-function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
+export function getChangeInRanking(
+  rankIndices: OrderedSet<number>,
+  values: number[],
+  ascending: boolean
+) {
+  const mult = ascending ? 1 : -1;
+  const getRank = (index: number) => rankIndices.getIndex(index) as number;
+  const valuesWithIndex = values.map((value, index) => ({ index, value }));
+  const bestCorrectOrder = argsort(valuesWithIndex, (a, b) => {
+    const diff = mult * (a.value - b.value);
+    if (diff !== 0) {
+      return diff;
+    }
+    return getRank(a.index) - getRank(b.index);
+  });
+  const correctIndexToOrder = new Map(
+    bestCorrectOrder.map((index, pos) => [index, pos])
+  );
+  return values.map(
+    (_, index) => (correctIndexToOrder.get(index) ?? -1) - getRank(index)
+  );
+}
+
+export function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
   const { trivia } = state;
   if (!trivia) {
     return [];
@@ -303,13 +349,8 @@ function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
     );
   }
   if (hasSelectionOrder(trivia)) {
-    const order = acceptableOrders(
-      numeric,
-      (a, b) => (a - b) * (answerType === 'stat.desc' ? -1 : 1)
-    );
-    // true if the answered ranking matches a possible position for the option
-    return numeric.map((num, whichOption) =>
-      order[whichOption].has(answers.getIndex(whichOption) ?? -1)
+    return getChangeInRanking(answers, numeric, answerType === 'stat.asc').map(
+      (change) => change === 0
     );
   }
   return [];
@@ -321,7 +362,8 @@ export function allCorrect(state: RoomState, answers: OrderedSet<number>) {
 
 export function getOptionStyles(
   state: RoomState,
-  answers: OrderedSet<number>
+  answers: OrderedSet<number>,
+  splitView: boolean
 ): TriviaOptionStyle[] {
   const { stage, trivia } = state;
   if (!trivia) {
@@ -336,10 +378,10 @@ export function getOptionStyles(
   const { statDef, options } = trivia;
   if (!isFeedbackStage(stage)) {
     return trivia.options.map((_, index) => ({
-      chip: answers.has(index)
-        ? [styles.bgPurple300, styles.borderPurpleAccent]
-        : [defaultBg],
-      selectionOrderDisp: hasSelectionOrder(trivia) ? [] : undefined,
+      chip:
+        !splitView && answers.has(index)
+          ? [styles.bgPurple300, styles.borderPurpleAccent]
+          : [defaultBg],
     }));
   }
   if (trivia.answerType === 'matchrank') {
@@ -387,15 +429,16 @@ export function getOptionStyles(
     if (max !== statDef.axisMax) {
       max += padding;
     }
+    const changeInRanking = hasNumericSelectionOrder(trivia)
+      ? getChangeInRanking(answers, numeric, trivia.answerType === 'stat.asc')
+      : undefined;
+    const changeSignToIndicator = new Map([
+      [-1, '▲'],
+      [1, '▼'],
+    ]);
     return numeric.map((num, i) => {
       const frac = (num - min) / (max - min);
       const isCorrect = correctArr[i];
-      let selectionOrderDisp = null;
-      if (hasSelectionOrder(trivia)) {
-        selectionOrderDisp = isCorrect
-          ? [styles.textEmerald]
-          : [styles.textRed];
-      }
       return {
         chip: [
           styles.bgPaperDarker,
@@ -415,7 +458,9 @@ export function getOptionStyles(
             width: `${Math.round(100 * frac)}%`,
           },
         ],
-        selectionOrderDisp,
+        directionIndicator:
+          changeInRanking &&
+          changeSignToIndicator.get(Math.sign(changeInRanking[i])),
       };
     });
   }

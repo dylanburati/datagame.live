@@ -35,7 +35,6 @@ export function ChipPicker<T>({
           <TouchableOpacity
             style={[
               styles.roundedFull,
-              styles.mr2,
               styles.border,
               styles.borderGray300,
               styles.p1,

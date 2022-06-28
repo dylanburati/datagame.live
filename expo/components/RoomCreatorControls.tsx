@@ -22,7 +22,7 @@ export function RoomCreatorControls({
   doCancel,
   doBegin,
 }: RoomCreatorControlsProps) {
-  const [draftOrder, setDraftOrder] = useStateNoCmp(new OrderedSet<number>());
+  const [draftOrder, setDraftOrder] = useStateNoCmp(OrderedSet.empty<number>());
   const canBegin =
     roomState.selfId !== undefined &&
     draftOrder.has(roomState.selfId) &&
@@ -60,6 +60,7 @@ export function RoomCreatorControls({
         onPress={({ item }) => setDraftOrder(draftOrder.toggle(item.id))}
         chipStyle={({ item }) => [
           styles.mb1,
+          styles.mr2,
           draftOrder.has(item.id)
             ? [styles.bgPurple300, styles.borderPurpleAccent]
             : [styles.bgPaperDarker],

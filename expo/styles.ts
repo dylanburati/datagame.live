@@ -60,6 +60,9 @@ export const styles = StyleSheet.create({
   justifyCenter: {
     justifyContent: 'center',
   },
+  selfStart: {
+    alignSelf: 'flex-start',
+  },
   flexCol: {
     flexDirection: 'column',
   },
@@ -130,6 +133,9 @@ export const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
+  },
+  top0: {
+    top: 0,
   },
   bottom0: {
     bottom: 0,
@@ -206,6 +212,9 @@ export const styles = StyleSheet.create({
   mr2: {
     marginRight: 8,
   },
+  mr4: {
+    marginRight: 16,
+  },
   mb1: {
     marginBottom: 4,
   },
@@ -239,6 +248,10 @@ export const styles = StyleSheet.create({
     marginLeft: 24,
     marginRight: 24,
   },
+  my2_5: {
+    marginTop: 10,
+    marginBottom: 10,
+  },
   my4: {
     marginTop: 16,
     marginBottom: 16,
@@ -246,6 +259,9 @@ export const styles = StyleSheet.create({
   my8: {
     marginTop: 32,
     marginBottom: 32,
+  },
+  opacity50: {
+    opacity: 0.5,
   },
   textCenter: {
     textAlign: 'center',
@@ -274,6 +290,9 @@ export const styles = StyleSheet.create({
   textWhite: {
     color: '#fff',
   },
+  textBlueAccent: {
+    color: '#1D4ED8',
+  },
   textBlue: {
     color: '#1D4ED8',
   },
@@ -284,7 +303,10 @@ export const styles = StyleSheet.create({
     color: '#059669',
   },
   textPenFaint: {
-    color: '#71717A',
+    color: '#717176',
+  },
+  textPenFainter: {
+    color: '#8E8E93',
   },
   italic: {
     fontStyle: 'italic',
@@ -300,6 +322,9 @@ export const styles = StyleSheet.create({
   },
   hFull: {
     height: '100%',
+  },
+  w50: {
+    width: 40,
   },
   roundedMd: {
     borderRadius: 4,
@@ -329,11 +354,24 @@ export const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
   },
+  borderBottom: {
+    borderBottomWidth: 1,
+  },
+  borderBottom8: {
+    borderBottomWidth: 8,
+  },
+  borderDotted: {
+    borderStyle: 'solid',
+    borderRadius: 1,
+  },
   borderGray300: {
     borderColor: '#D1D5DB',
   },
   borderGray400: {
     borderColor: '#9CA3AF',
+  },
+  borderBlueAccent: {
+    borderColor: '#007AFF',
   },
   borderPurpleAccent: {
     borderColor: '#7707FF',
@@ -390,6 +428,9 @@ export const styles = StyleSheet.create({
   allowFab: {
     paddingBottom: 48,
   },
+  space10Px: {
+    height: 10,
+  },
   space4: {
     height: 16,
     width: 16,
@@ -411,6 +452,6 @@ export const styles = StyleSheet.create({
     lineHeight: 20,
   },
   raiseMinusOne: {
-    transform: [{ translateY: 4 }],
+    transform: [{ translateY: 0 }],
   },
 });

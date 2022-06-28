@@ -15,7 +15,7 @@ export function LogViewer() {
   ];
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [included, setIncluded] = useStateNoCmp(
-    new OrderedSet<string>().extend(['INFO', 'WARNING', 'ERROR'])
+    OrderedSet.from(['INFO', 'WARNING', 'ERROR'])
   );
   const { logger } = useContext(RestClientContext);
 
@@ -45,6 +45,7 @@ export function LogViewer() {
         onPress={({ item }) => setIncluded(included.toggle(item.name))}
         chipStyle={({ item }) => [
           styles.mb1,
+          styles.mr2,
           included.has(item.name)
             ? [styles.bgPurple300, styles.borderPurpleAccent]
             : [styles.bgPaperDarker],
