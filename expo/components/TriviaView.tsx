@@ -157,7 +157,9 @@ function TriviaAnswerBox({
   const triviaOptionStyles = getOptionStyles(state, triviaAnswers, splitView);
 
   if (splitView) {
-    const splitViewSortable = canAnswerTrivia(state.stage)
+    const selfTurn =
+      state.selfId !== undefined && state.selfId === state.players.activeId;
+    const splitViewSortable = selfTurn
       ? triviaAnswers
       : OrderedSet.from(trivia.options.map((_, i) => i));
     const splitViewBank = trivia.options

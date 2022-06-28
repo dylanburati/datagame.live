@@ -483,7 +483,6 @@ export function AnimatedChipPicker<T>({
         keyToSortedIndex,
         sorted.map((d, i) => [keySelector(d), i])
       );
-      console.log('454:', changed);
       if (changed) {
         onSortOrderChanged();
       }
@@ -527,16 +526,13 @@ export function AnimatedChipPicker<T>({
     }
     const offsets = computeSortOffsets();
     if (!offsets) {
-      console.log('496');
       return new Map();
     }
     const nonZeroOffsets = offsets.filter((e) => e.translateY !== 0);
     if (!nonZeroOffsets.length) {
       setSortIdReflected(sortIdInData);
-      console.log('503');
       return new Map();
     }
-    console.log('506:', offsets);
     const acc: [Animated.CompositeAnimation[], [string, Animated.Value][]] = [
       [],
       [],

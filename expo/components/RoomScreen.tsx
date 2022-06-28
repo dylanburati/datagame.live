@@ -346,7 +346,7 @@ export function RoomScreen() {
               styles.roundedTopLeftXl,
               styles.roundedTopRightXl,
             ]}
-            activeOpacity={1}
+            activeOpacity={0.5}
             onLongPress={() => setPanelActive(true)}
           >
             <Text style={styles.p4}>▲ leaderboard ▲</Text>

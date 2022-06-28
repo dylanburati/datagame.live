@@ -1,11 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useMemo,
-  useContext,
-  useCallback,
-} from 'react';
+import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   lockAsync as lockOrientationAsync,
@@ -49,10 +42,7 @@ import {
   RestClientContext,
   RestClientProvider,
 } from './components/RestClientProvider';
-import { AnimatedChipPicker } from './components/AnimatedChipPicker';
 import { isAndroid, isMobile } from './constants';
-import { ChipPicker } from './components/ChipPicker';
-import { OrderedSet } from './helpers/data';
 
 function randomColor(x: number, l2: number) {
   let h = (511 * (x + 31) * (x + 31) + 3 * (x - 31)) % 360;
@@ -343,105 +333,10 @@ export function HomeScreen() {
           <View style={[styles.mx6, styles.my8]}>
             <Text style={styles.textSm}>Copyright (c) 2021 Dylan Burati</Text>
           </View>
-
-          {/* <Tmp /> */}
         </ScrollView>
       </AvoidKeyboardView>
       <StatusBar style="auto" />
     </View>
-  );
-}
-
-const theTitles = [
-  'Ghostbusters (1984)',
-  'Die Hard (1988)\n???',
-  'The Godfather: Part II (1974)',
-  'Dead Poets Society (1989)',
-];
-function Tmp() {
-  const [titles, setTitles] = useState({
-    sortable: OrderedSet.empty<string>(),
-    bank: OrderedSet.from(theTitles),
-  });
-  const [sorted, setSorted] = useState(false);
-  const sorter = useCallback(
-    (a: string, b: string) => theTitles.indexOf(a) - theTitles.indexOf(b),
-    []
-  );
-  return (
-    <>
-      <AnimatedChipPicker
-        data={titles.sortable.toList()}
-        sorter={sorter}
-        showSorted={sorted}
-        onDragEnd={(from, to) => {
-          if (from !== to) {
-            setTitles((prev) => {
-              return {
-                ...prev,
-                sortable: prev.sortable.reinsertAt(from, to),
-              };
-            });
-          }
-        }}
-        style={[
-          styles.borderBlueAccent,
-          styles.mx6,
-          styles.mb4,
-          { height: 180 },
-        ]}
-        keySelector={(s) => s}
-        chipStyle={() => [
-          sorted ? styles.bgSeaGreen300 : styles.bgPaperDarker,
-          styles.mb2,
-        ]}
-      >
-        {({ item }) => <Text>{item}</Text>}
-      </AnimatedChipPicker>
-      <View style={[styles.row, styles.mx6, styles.mb8]}>
-        <TouchableOpacity
-          style={[
-            styles.bgBlack,
-            styles.roundedLg,
-            styles.px4,
-            styles.py2,
-            styles.mr4,
-          ]}
-          onPress={() => {
-            if (!sorted) {
-              setSorted(!sorted);
-            } else {
-              setTitles({
-                sortable: OrderedSet.empty<string>(),
-                bank: OrderedSet.from(theTitles),
-              });
-              setSorted(false);
-            }
-          }}
-        >
-          <Text style={[styles.textWhite, styles.textCenter]}>
-            {sorted ? 'RESET' : 'SORT'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <ChipPicker
-        data={titles.bank.toList()}
-        disabled={sorted}
-        style={[styles.mx6, styles.mb4, { height: 180 }]}
-        keySelector={(s) => s}
-        onPress={({ item }) =>
-          setTitles((prev) => {
-            return {
-              sortable: prev.sortable.append(item),
-              bank: prev.bank.remove(item),
-            };
-          })
-        }
-        chipStyle={() => [styles.bgPaperDarker, styles.mb2]}
-      >
-        {({ item }) => <Text>{item}</Text>}
-      </ChipPicker>
-    </>
   );
 }
 
