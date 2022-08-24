@@ -6,6 +6,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "test": "jest",
     "eject": "expo eject"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "@formatjs/intl-numberformat": "^7.2.5",
     "@formatjs/intl-pluralrules": "^4.1.5",
     "@formatjs/intl-relativetimeformat": "^9.3.2",
+    "@jest/globals": "^28.1.1",
     "@react-native-async-storage/async-storage": "~1.15.0",
     "@react-native-community/eslint-config": "^3.0.1",
     "@react-native-community/slider": "4.1.12",
@@ -33,6 +35,8 @@
     "expo-splash-screen": "~0.14.1",
     "expo-status-bar": "~1.2.0",
     "expo-system-ui": "~1.1.0",
+    "jest": "^26.6.3",
+    "jest-expo": "^45.0.1",
     "object-inspect": "^1.11.0",
     "phoenix": "^1.6.2",
     "react": "17.0.1",
@@ -67,6 +71,9 @@
   "prettier": {
     "singleQuote": true
   },
+  "jest": {
+    "preset": "jest-expo"
+  },  
   "homepage": "https://datagame.live/expo",
   "private": true,
   "name": "datagame-live-native",

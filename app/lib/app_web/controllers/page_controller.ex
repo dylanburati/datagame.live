@@ -8,4 +8,8 @@ defmodule AppWeb.PageController do
   def sheet(conn, _params) do
     render(conn, "sheet.html")
   end
+
+  def sheet_advanced(conn, _params) do
+    render(conn, "sheet-advanced.html")
+  end
 end

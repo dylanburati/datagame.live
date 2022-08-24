@@ -42,6 +42,7 @@ import {
   RestClientContext,
   RestClientProvider,
 } from './components/RestClientProvider';
+import { isAndroid, isMobile } from './constants';
 
 function randomColor(x: number, l2: number) {
   let h = (511 * (x + 31) * (x + 31) + 3 * (x - 31)) % 360;
@@ -345,9 +346,8 @@ export default function App() {
       playsInSilentModeIOS: true,
     });
   }, []);
-  const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   // TODO: switch to jsc-intl variant so that react-intl works on all locales
-  const locale = Platform.OS === 'android' ? 'en-US' : locales[0];
+  const locale = isAndroid ? 'en-US' : locales[0];
 
   return (
     <IntlProvider locale={locale}>

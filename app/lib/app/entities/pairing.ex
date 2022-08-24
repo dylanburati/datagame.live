@@ -18,4 +18,16 @@ defmodule App.Entities.Pairing do
     |> cast(attrs, [:name, :criteria])
     |> validate_required([:name, :criteria])
   end
+
+  def aggregated_stat_def(pairing, stat_def) do
+    with %{"agg" => aggs} <- pairing.criteria,
+         {:ok, funcname} <- Map.fetch(aggs, stat_def.key) do
+      case funcname do
+        "geodist" -> Map.merge(stat_def, %{label: "Distance", stat_type: "km_distance"})
+        _ -> pairing
+      end
+    else
+      _ -> pairing
+    end
+  end
 end

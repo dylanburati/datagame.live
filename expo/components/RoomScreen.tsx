@@ -22,8 +22,10 @@ import {
   RoomPlayerList,
   RoomStage,
   RoomState,
+  shouldShowBottomPanel,
   shouldShowLobby,
   shouldShowTrivia,
+  triviaIsPresent,
   triviaRequiredAnswers,
 } from '../helpers/nplayerLogic';
 import { useChannel, useStateNoCmp } from '../helpers/hooks';
@@ -155,7 +157,7 @@ export function RoomScreen() {
   const [nameOnJoin, setNameOnJoin] = useState('');
   const [renameError, setRenameError] = useState<[string, string]>();
   const [triviaAnswers, setTriviaAnswers] = useStateNoCmp(
-    new OrderedSet<number>()
+    OrderedSet.empty<number>()
   );
   const [isPanelActive, setPanelActive] = useState(false);
 
@@ -318,7 +320,7 @@ export function RoomScreen() {
             Waiting for another player to start their turn.
           </Text>
         )}
-        {shouldShowTrivia(room.state.stage) && (
+        {shouldShowTrivia(room.state.stage) && triviaIsPresent(room.state) && (
           <TriviaContainer
             state={room.state}
             disabled={isModifyingRoom}
@@ -327,20 +329,14 @@ export function RoomScreen() {
             <TriviaView
               state={room.state}
               triviaAnswers={triviaAnswers}
-              onOptionPress={(index) =>
-                setTriviaAnswers(
-                  triviaAnswers
-                    .toggle(index)
-                    .takeRight(room.state.trivia?.maxAnswers ?? 0)
-                )
-              }
+              setTriviaAnswers={setTriviaAnswers}
               doneAnswering={doneAnswering}
               doAdvance={doAdvance}
             />
           </TriviaContainer>
         )}
       </ScrollView>
-      {!isPanelActive && shouldShowTrivia(room.state.stage) && (
+      {!isPanelActive && shouldShowBottomPanel(room.state.stage) && (
         <SwipeUpHandle onSwipe={() => setPanelActive(true)}>
           <TouchableOpacity
             style={[
@@ -350,14 +346,14 @@ export function RoomScreen() {
               styles.roundedTopLeftXl,
               styles.roundedTopRightXl,
             ]}
-            activeOpacity={1}
+            activeOpacity={0.5}
             onLongPress={() => setPanelActive(true)}
           >
             <Text style={styles.p4}>▲ leaderboard ▲</Text>
           </TouchableOpacity>
         </SwipeUpHandle>
       )}
-      {shouldShowTrivia(room.state.stage) && (
+      {shouldShowBottomPanel(room.state.stage) && (
         <SwipeablePanel
           fullWidth={true}
           onlySmall={true}

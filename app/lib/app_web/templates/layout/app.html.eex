@@ -17,10 +17,13 @@
     window.pageRoutes = {
       index: "<%= Routes.page_path(@conn, :index) %>",
       sheet: "<%= Routes.page_path(@conn, :sheet) %>",
+      sheetAdvanced: "<%= Routes.page_path(@conn, :sheet_advanced) %>",
     };
     window.apiRoutes = {
       show: "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :show, "") %>",
       create: "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :create) %>",
+      deckList: "<%= Routes.url(@conn) <> Routes.deck_path(@conn, :index) %>",
+      deckUpdate: "<%= Routes.url(@conn) <> Routes.deck_path(@conn, :update, "") %>",
     };
     </script>
     <script defer type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>

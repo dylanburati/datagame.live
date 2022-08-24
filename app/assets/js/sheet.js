@@ -1,71 +1,4 @@
-import { prettyPrint } from "./utils";
-
-const effects = [];
-
-const checkEffects = () => {
-  effects.forEach(effect => {
-    const { func, depFunc, last } = effect;
-    const deps = depFunc();
-    let mismatch = !last || deps.length !== last.length;
-    for (let i = 0; !mismatch && i < deps.length; i++) {
-      mismatch = mismatch || deps[i] !== last[i];
-    }
-    if (mismatch) {
-      effect.last = deps;
-      func();
-    }
-  })
-};
-
-const useEffect = (func, depFunc) => {
-  effects.push({ func, depFunc, last: undefined });
-  checkEffects();
-}
-
-const setter = (setState) => {
-  return x => {
-    setState(x);
-    checkEffects();
-  };
-}
-
-function modify(el, removeChildren, attrs, children) {
-  if (removeChildren) {
-    Array.from(el.children).forEach(c => c.remove());
-  }
-  if (attrs.style) {
-    Object.assign(el.style, attrs.style);
-  }
-  for (const k in attrs) {
-    if (k.startsWith('on')) {
-      el.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
-    } else if (k !== 'style') {
-      if (attrs[k] === true) el.setAttribute(k, '');
-      else if (attrs[k] !== false) el.setAttribute(k, attrs[k]);
-    }
-  }
-  for (let child of children) {
-    if (typeof child === 'string' || typeof child === 'number') {
-      el.insertAdjacentText('beforeend', String(child));
-    } else {
-      el.appendChild(child);
-    }
-  }
-  return el;
-}
-
-function h(tagName, attrs, ...children) {
-  const el = document.createElement(tagName);
-  const childArr = [];
-  children.forEach(item => {
-    if (Array.isArray(item)) {
-      childArr.push(...item);
-    } else {
-      childArr.push(item);
-    }
-  });
-  return modify(el, false, attrs, childArr);
-}
+import { EffectList, h, modify, prettyPrint } from "./utils";
 
 export class SheetPage {
   constructor() {
@@ -96,23 +29,24 @@ export class SheetPage {
       pageSize: 50,
     }
 
-    this.setSheetData = setter(val => { this.s.sheetData = val; });
-    this.setTableData = setter(val => { this.s.tableData = val; });
-    this.setCurrentPage = setter(val => { this.s.currentPage = val; });
-    this.setDeckName = setter(val => { this.s.deckName = val; });
-    this.setQuery = setter(val => {
+    const effects = new EffectList();
+    this.setSheetData = effects.setter(val => { this.s.sheetData = val; });
+    this.setTableData = effects.setter(val => { this.s.tableData = val; });
+    this.setCurrentPage = effects.setter(val => { this.s.currentPage = val; });
+    this.setDeckName = effects.setter(val => { this.s.deckName = val; });
+    this.setQuery = effects.setter(val => {
       this.s.query = val;
       this.r.searchInput.value = val;
     });
 
-    useEffect(this.repaginate.bind(this), () => [this.s.tableData, this.s.currentPage]);
-    useEffect(this.populateTable.bind(this), () => [this.s.tableData, this.s.currentPage]);
-    useEffect(
+    effects.register(this.repaginate.bind(this), () => [this.s.tableData, this.s.currentPage]);
+    effects.register(this.populateTable.bind(this), () => [this.s.tableData, this.s.currentPage]);
+    effects.register(
       this.calculateTableData.bind(this),
       () => [this.s.deckName, this.s.sheetData, this.s.query]
     );
     
-    useEffect(() => {
+    effects.register(() => {
       const { sheetData } = this.s;
       if (sheetData == null) {
         return;

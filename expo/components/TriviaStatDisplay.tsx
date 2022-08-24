@@ -1,70 +1,25 @@
 import React from 'react';
-import { Image } from 'react-native';
 import { FormattedDate, FormattedNumber } from 'react-intl';
 import { TriviaOption } from '../helpers/api';
-import { OrderedSet } from '../helpers/data';
-import { kissMarryShoot, medals } from '../helpers/iconography';
-import { argsort, relativeDeltaToNow } from '../helpers/math';
-import { RoomState, statToNumber, RoomStage } from '../helpers/nplayerLogic';
-import { styles } from '../styles';
+import { relativeDeltaToNow } from '../helpers/math';
+import { RoomState, statToNumber } from '../helpers/nplayerLogic';
 
 export type TriviaStatDisplayProps = {
   roomState: RoomState;
   option: TriviaOption;
-  answers: OrderedSet<number>;
-  index: number;
 };
 
 export function TriviaStatDisplay({
   roomState,
   option,
-  answers,
-  index,
 }: TriviaStatDisplayProps) {
   const { trivia } = roomState;
   if (!trivia) {
     return null;
   }
-  const { statDef, answerType } = trivia;
+  const { statDef } = trivia;
   const numValue = statToNumber(statDef, option.questionValue);
-  if (answerType === 'matchrank') {
-    const otherId =
-      roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
-        ? roomState.players.activeId
-        : roomState.participantId;
-    const recvArray = roomState.receivedAnswers.get(otherId ?? -1);
-    if (!recvArray) {
-      return null;
-    }
-    const order = argsort(recvArray, (a, b) => a - b);
-    const emojiArr = /\bkill\b/i.test(trivia.question)
-      ? kissMarryShoot()
-      : medals();
-    const selfSource = answers.getIndex(index) ?? -1;
-    const otherSource = order[index] ?? -1;
-    const isMatch = order[index] === (answers.getIndex(index) ?? -1);
-    return (
-      <>
-        {selfSource >= 0 && selfSource < emojiArr.length && (
-          <Image
-            style={[styles.square20Px, styles.raiseMinusOne]}
-            source={emojiArr[selfSource]}
-          />
-        )}
-        {!isMatch && (
-          <>
-            {' // '}
-            {otherSource >= 0 && otherSource < emojiArr.length && (
-              <Image
-                style={[styles.square20Px, styles.raiseMinusOne]}
-                source={emojiArr[otherSource]}
-              />
-            )}
-          </>
-        )}
-      </>
-    );
-  } else if (statDef && !Number.isNaN(numValue)) {
+  if (statDef && !Number.isNaN(numValue)) {
     switch (statDef.type) {
       case 'km_distance':
         return (

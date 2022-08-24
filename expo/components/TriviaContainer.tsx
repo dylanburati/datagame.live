@@ -9,30 +9,8 @@ export type TriviaContainerProps = {
   style: ViewProps['style'];
 };
 
-export function TriviaContainer({
-  state,
-  disabled,
-  style,
-  children,
-}: React.PropsWithChildren<TriviaContainerProps>) {
-  if (disabled || !state.trivia) {
-    return null;
-  }
-
-  const selfTurn = state.players.activeId === state.selfId;
-  let whoseTurn = selfTurn ? 'You' : `${state.players.activeName ?? '???'}`;
-  const showLarge = selfTurn || state.participantId === state.selfId;
-  if (state.participantId !== undefined) {
-    const participant = state.players.array.find(
-      (item) => item.id === state.participantId
-    );
-    const p2 =
-      state.participantId === state.selfId ? 'you' : participant?.name ?? '???';
-    whoseTurn += ` + ${p2}`;
-  }
-
-  const LargeDisplay: React.FC = ({ children: content }) => <>{content}</>;
-  const BoxedDisplay: React.FC = ({ children: content }) => (
+const BoxedDisplay: React.FC<{ boxed: boolean }> = ({ boxed, children }) => {
+  return boxed ? (
     <View
       style={[
         styles.m4,
@@ -43,10 +21,33 @@ export function TriviaContainer({
         styles.roundedLg,
       ]}
     >
-      {content}
+      {children}
     </View>
+  ) : (
+    <>{children}</>
   );
-  const Display = showLarge ? LargeDisplay : BoxedDisplay;
+};
+
+export function TriviaContainer({
+  state,
+  disabled,
+  style,
+  children,
+}: React.PropsWithChildren<TriviaContainerProps>) {
+  if (disabled) {
+    return null;
+  }
+
+  const selfTurn = state.players.activeId === state.selfId;
+  let whoseTurn = selfTurn ? 'You' : `${state.players.activeName ?? '???'}`;
+  const showLarge = selfTurn || state.participantId === state.selfId;
+  if (state.participantId !== undefined) {
+    const p2 =
+      state.participantId === state.selfId
+        ? 'You'
+        : state.players.getPlayerName(state.participantId) ?? '???';
+    whoseTurn += ` + ${p2}`;
+  }
 
   return (
     <View style={style}>
@@ -54,7 +55,7 @@ export function TriviaContainer({
         <Text>(P{state.players.startedPlayerIndex + 1})</Text>
         <Text style={[styles.ml2, styles.textLg]}>{whoseTurn}</Text>
       </View>
-      <Display>{children}</Display>
+      <BoxedDisplay boxed={!showLarge}>{children}</BoxedDisplay>
     </View>
   );
 }

@@ -5,39 +5,6 @@ export function argsort<T>(array: T[], sorter: (e1: T, e2: T) => number) {
     .map(([i]) => i);
 }
 
-const ACCEPTABLE_ORDERS_SENTINEL = Symbol('ACCEPTABLE_ORDERS_SENTINEL');
-export function acceptableOrders<T>(
-  array: T[],
-  sorter: (e1: T, e2: T) => number
-) {
-  if (array.length === 0) {
-    return [];
-  }
-  const order = argsort(array, sorter);
-  const positionsForIndex = new Array(array.length)
-    .fill(0)
-    .map(() => new Set<number>());
-  const indices = [order[0]];
-  let position = 0;
-  let val = array[order[0]];
-  for (let j = 1; j <= order.length; j++) {
-    const val2 =
-      j === order.length ? ACCEPTABLE_ORDERS_SENTINEL : array[order[j]];
-    if (val2 !== ACCEPTABLE_ORDERS_SENTINEL && sorter(val, val2) === 0) {
-      indices.push(order[j]);
-    } else {
-      const nextPos = position + indices.length;
-      while (position < nextPos) {
-        indices.forEach((index) => positionsForIndex[index].add(position));
-        position += 1;
-      }
-      indices.splice(0, indices.length, order[j]);
-      val = val2 as T;
-    }
-  }
-  return positionsForIndex;
-}
-
 export function intRange(start: number, end: number, step: number) {
   const result = [];
   for (let num = start; step * (num - end) < 0; num += step) {

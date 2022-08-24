@@ -156,7 +156,7 @@ defmodule AppWeb.RoomChannel do
           "matchrank" -> Map.put(turn_info, "participantId", other_user_id)
           _ -> turn_info
         end
-        :ok = RoomData.init_turn(room_data, trivia_def.id, turn_info)
+        :ok = RoomData.init_turn(room_data, next_turn, turn_info, trivia_def, trivia)
         broadcast(socket, "turn:start", turn_info)
         {:reply, {:ok, %{}}, socket}
       else
@@ -181,8 +181,19 @@ defmodule AppWeb.RoomChannel do
   @impl true
   def handle_in("turn:feedback", payload, socket) do
     room_data = RoomData.current_room(socket)
-    ans_info = RoomData.update_answers(room_data, payload)
+    %{user_id: user_id} = socket.assigns
+    ans_info = Map.put(payload, "userId", user_id)
+    all_answered = RoomData.update_answers(room_data, payload)
     broadcast(socket, "turn:feedback", ans_info)
+    with {trivia_def, trivia} <- RoomData.get_current_trivia(room_data) do
+      if trivia_def.answer_type != "matchrank" or length(all_answered) == 2 do
+        TriviaService.get_feedback(trivia_def, trivia.options, all_answered)
+        |> Enum.zip(all_answered)
+        |> Enum.each(&IO.inspect/1)
+      end
+    else
+      _ -> IO.puts("get_current_trivia failed")
+    end
     {:reply, {:ok, %{}}, socket}
   end
 

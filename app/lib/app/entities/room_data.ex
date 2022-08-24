@@ -5,7 +5,7 @@ defmodule App.Entities.RoomData do
   defstruct [:room_code, :user_id]
 
   defmodule RoomCacheKeys do
-    defstruct [:round_messages, :scores, :turn_counter, :asked_def_ids]
+    defstruct [:round_messages, :trivia, :scores, :turn_counter, :asked_def_ids]
   end
 
   # cache_keys(room_code,
@@ -25,6 +25,7 @@ defmodule App.Entities.RoomData do
     %{room_code: room_code, user_id: user_id} = room_data
     %RoomCacheKeys{
       round_messages: "RoomChannel.#{room_code}.round_messages",
+      trivia: "RoomChannel.#{room_code}.trivia",
       scores: "RoomChannel.#{room_code}.scores",
       turn_counter: "RoomChannel.#{room_code}.turn_counter",
       asked_def_ids: "RoomChannel.#{room_code}.#{user_id}.asked_def_ids"
@@ -126,12 +127,13 @@ defmodule App.Entities.RoomData do
   @doc """
   Caches the content for the turn, and resets the answers to previous turns.
   """
-  @spec init_turn(RoomData, integer, map) :: :ok
-  def init_turn(room_data, def_id, turn_info) do
+  @spec init_turn(RoomData, integer, map, map, map) :: :ok
+  def init_turn(room_data, turn_id, turn_info, trivia_def, trivia) do
     k = cache_keys(room_data)
     record = [{"turn:start", turn_info}]
 
-    App.Cache.update(k.asked_def_ids, [def_id], fn prev -> Enum.take([def_id | prev], 7) end)
+    App.Cache.update(k.asked_def_ids, [trivia_def.id], fn prev -> Enum.take([trivia_def.id | prev], 7) end)
+    App.Cache.insert(k.trivia, %{turn_id => {trivia_def, trivia}})
     # Keep the round:start and only 1 turn:end
     App.Cache.update(k.round_messages, record, fn msgs ->
       [find_last(msgs, &(elem(&1, 0) == "round:start")),
@@ -143,14 +145,26 @@ defmodule App.Entities.RoomData do
   end
 
   @doc """
+  Retreives the trivia for the current turn
+  """
+  @spec get_current_trivia(RoomData) :: {map, map} | nil
+  def get_current_trivia(room_data) do
+    trv_id = turn_id(room_data)
+    k = cache_keys(room_data)
+    case App.Cache.lookup(k.trivia) do
+      %{^trv_id => pair} -> pair
+      _ -> nil
+    end
+  end
+
+  @doc """
   Sets the user's answer to the current turn question.
   """
-  @spec update_answers(RoomData, map) :: map
+  @spec update_answers(RoomData, map) :: Enumerable
   def update_answers(room_data, answered) do
     k = cache_keys(room_data)
     %{user_id: user_id} = room_data
-    ans_info = Map.merge(answered, %{"userId" => user_id})
-    record = [{"turn:feedback", ans_info}]
+    record = [{"turn:feedback", answered}]
 
     # replace previous answer in log, if any
     App.Cache.update(k.round_messages, record, fn msgs ->
@@ -163,7 +177,8 @@ defmodule App.Entities.RoomData do
       end)
       |> Enum.concat(record)
     end)
-    ans_info
+    |> Enum.filter(fn {evt, _} -> evt == "turn:feedback" end)
+    |> Enum.map(&(elem(&1, 1)))
   end
 
   @doc """

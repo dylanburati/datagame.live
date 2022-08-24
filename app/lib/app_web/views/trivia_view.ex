@@ -16,8 +16,12 @@ defmodule AppWeb.TriviaView do
   end
 
   defp option_stat_def_json(_pairing_or_nil, nil), do: nil
-  defp option_stat_def_json(pairing_or_nil, stat_def) do
-    converted = %{
+  defp option_stat_def_json(pairing_or_nil, orig_stat_def) do
+    stat_def = case pairing_or_nil do
+      %Pairing{} -> Pairing.aggregated_stat_def(pairing_or_nil, orig_stat_def)
+      _ -> orig_stat_def
+    end
+    %{
       key: stat_def.key,
       label: stat_def.label,
       type: stat_def.stat_type,
@@ -25,16 +29,6 @@ defmodule AppWeb.TriviaView do
       axisMin: stat_def.axis_min,
       axisMax: stat_def.axis_max
     }
-    override = with (pairing = %Pairing{}) <- pairing_or_nil,
-        %{"agg" => aggs} <- pairing.criteria,
-        {:ok, funcname} <- Map.fetch(aggs, stat_def.key) do
-      case funcname do
-        "geodist" -> %{label: "Distance", type: "km_distance"}
-      end
-    else
-      _ -> %{}
-    end
-    Map.merge(converted, override)
   end
 
   def trivia_json(trivia_def, trivia) do
@@ -50,6 +44,7 @@ defmodule AppWeb.TriviaView do
       _ -> min_answers
     end
     %{
+      "definitionId" => trivia_def.id,
       "question" => trivia.question,
       "options" => Enum.map(trivia.options, &option_json/1),
       "answerType" => trivia_def.answer_type,

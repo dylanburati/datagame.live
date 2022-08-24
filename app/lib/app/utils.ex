@@ -67,6 +67,15 @@ defmodule App.Utils do
   def non_empty_or_nil(""), do: nil
   def non_empty_or_nil(str), do: str
 
+  def cascade_error([]), do: {:ok, []}
+  def cascade_error([:error | _]), do: :error
+  def cascade_error([{:ok, v} | rest]) do
+    case cascade_error(rest) do
+      {:ok, lst} -> {:ok, [v | lst]}
+      _ -> :error
+    end
+  end
+
   def changeset_error_strings(kw_lst) do
     Enum.map(kw_lst, fn {k, {msg, _}} -> "#{k}: #{msg}" end)
   end
