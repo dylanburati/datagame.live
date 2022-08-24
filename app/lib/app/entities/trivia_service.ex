@@ -391,7 +391,7 @@ defmodule App.Entities.TriviaService do
 
     tdef = Enum.max_by(
       tdef_lst,
-      fn %{id: id} -> :math.log(:random.uniform()) / Map.get(boost_map, id, 1) end,
+      fn %{id: id} -> :math.log(:rand.uniform()) / Map.get(boost_map, id, 1) end,
       fn -> nil end
     )
     case tdef do
