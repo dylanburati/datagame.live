@@ -29,6 +29,18 @@ export function TriviaMatchRankDisplay({
   if (!recvArray) {
     return null;
   }
+  const selfTurn = roomState.players.activeId === roomState.selfId;
+  const whoseTurn =
+    selfTurn || roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
+      ? 'You'
+      : roomState.players.activeName ?? '';
+  const whoseTurn2 =
+    selfTurn || roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
+      ? 'Them'
+      : roomState.participantId !== undefined
+      ? roomState.players.getPlayerName(roomState.participantId) ?? ''
+      : '';
+
   const order = argsort(recvArray, (a, b) => a - b);
   const emojiArr = /\bkill\b/i.test(trivia.question)
     ? kissMarryShoot()
@@ -50,7 +62,7 @@ export function TriviaMatchRankDisplay({
         ]}
       >
         {index === 0 && (
-          <Text style={[styles.fontBold, styles.opacity50]}>You</Text>
+          <Text style={[styles.fontBold, styles.opacity50]}>{whoseTurn}</Text>
         )}
         <Image
           style={[styles.square20Px, styles.raiseMinusOne]}
@@ -67,7 +79,7 @@ export function TriviaMatchRankDisplay({
         ]}
       >
         {index === 0 && (
-          <Text style={[styles.fontBold, styles.opacity50]}>Them</Text>
+          <Text style={[styles.fontBold, styles.opacity50]}>{whoseTurn2}</Text>
         )}
         <Image
           style={[styles.square20Px, styles.raiseMinusOne]}

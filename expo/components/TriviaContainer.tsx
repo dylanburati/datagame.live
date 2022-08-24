@@ -42,11 +42,10 @@ export function TriviaContainer({
   let whoseTurn = selfTurn ? 'You' : `${state.players.activeName ?? '???'}`;
   const showLarge = selfTurn || state.participantId === state.selfId;
   if (state.participantId !== undefined) {
-    const participant = state.players.array.find(
-      (item) => item.id === state.participantId
-    );
     const p2 =
-      state.participantId === state.selfId ? 'you' : participant?.name ?? '???';
+      state.participantId === state.selfId
+        ? 'You'
+        : state.players.getPlayerName(state.participantId) ?? '???';
     whoseTurn += ` + ${p2}`;
   }
 

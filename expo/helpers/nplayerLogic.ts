@@ -100,6 +100,10 @@ export class RoomPlayerList {
     return this;
   }
 
+  getPlayerName(id: number) {
+    return this.array.find((item) => item.id === id)?.name;
+  }
+
   get activeId() {
     return this.startedPlayerIndex >= 0
       ? this.playerOrder[this.startedPlayerIndex]
@@ -108,9 +112,7 @@ export class RoomPlayerList {
 
   get activeName() {
     const activeId = this.activeId;
-    return activeId !== undefined
-      ? this.array.find((item) => item.id === activeId)?.name
-      : undefined;
+    return activeId !== undefined ? this.getPlayerName(activeId) : undefined;
   }
 
   othersPresent(selfId: number): RoomPlayer[] {

@@ -19,6 +19,7 @@ defmodule AppWeb.Router do
 
     get "/", PageController, :index
     get "/sheet", PageController, :sheet
+    get "/sheet-advanced", PageController, :sheet_advanced
   end
 
   scope "/api", AppWeb do
@@ -26,6 +27,7 @@ defmodule AppWeb.Router do
 
     resources "/sheets", SheetController, only: [:show, :create]
     resources "/decks", DeckController, only: [:index, :show]
+    post "/deck/enhance/:id", DeckController, :update
     get "/game/new/:id", GameController, :new_game
     resources "/room", RoomController, only: [:create]
   end
