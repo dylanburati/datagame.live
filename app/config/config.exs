@@ -36,6 +36,10 @@ if Mix.env() != :test do
       signer_alg: "RS256",
       key_pem: System.get_env("GOOGLEAUTH_PRIVATE_KEY")
     ]
+
+  config :app, :admin,
+    hashed_pw_salt: "xNAZFMjH",
+    hashed_pw: System.get_env("DATAGAME_ADMIN_PW") || raise "DATAGAME_ADMIN_PW is missing"
 end
 
 # Import environment specific config. This must remain at the bottom

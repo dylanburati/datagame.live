@@ -113,6 +113,11 @@ defmodule App.Entities.PairingService do
     end
   end
 
+  def pair_id(id1, id2) when is_binary(id1) and is_binary(id2) do
+    if id1 < id2, do: {id1, id2}, else: {id2, id1}
+  end
+  def pair_id(c1, c2), do: pair_id(c1.id, c2.id)
+
   def subset_impl(pairing, name) do
     query = from p in PairingInstance,
       select: {p.card_id1, p.card_id2, p.info},
@@ -125,7 +130,7 @@ defmodule App.Entities.PairingService do
       fn {cid1, cid2, extra}, {indiv, pairs, emap} ->
         {indiv |> MapSet.put(cid1) |> MapSet.put(cid2),
          MapSet.put(pairs, {cid1, cid2}),
-         maybe_put(emap, not is_nil(extra), {cid1, cid2}, extra)}
+         maybe_put(emap, not is_nil(extra), pair_id(cid1, cid2), extra)}
       end
     )
   end
@@ -140,8 +145,6 @@ defmodule App.Entities.PairingService do
       cached -> cached
     end
   end
-
-  def pair_id(c1, c2), do: {min(c1.id, c2.id), max(c1.id, c2.id)}
 
   def sample_pairs(pairing, difficulty, limit, opts \\ []) do
     %{"filter" => cond_lst} = pairing.criteria

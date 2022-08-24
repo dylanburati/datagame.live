@@ -326,7 +326,7 @@ export function TriviaView({
 
   return (
     <>
-      <Text style={[styles.mt4, styles.textCenter]}>
+      <Text style={[styles.mt4, styles.mx2, styles.textCenter]}>
         {state.trivia.question}
       </Text>
       <TriviaAnswerBox

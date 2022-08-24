@@ -62,19 +62,19 @@ defmodule App.Entities.TriviaDef do
     changeset = case join_type do
       {"card." <> _, "card." <> _} -> changeset
       {"card." <> _, "tag"} ->
-        changeset |> assoc_constraint(:option_tag_def)
+        changeset |> cast_assoc(:option_tag_def, required: true)
       {"card." <> _, "stat"} ->
-        changeset |> assoc_constraint(:option_stat_def)
+        changeset |> cast_assoc(:option_stat_def, required: true)
       {"tag", "card." <> _} ->
-        changeset |> assoc_constraint(:question_tag_def)
+        changeset |> cast_assoc(:question_tag_def, required: true)
       {"tag", "tag"} ->
         changeset |> add_error(:question_source, wrong_join_type_msg)
       {"tag", "stat"} ->
         changeset |> add_error(:question_source, wrong_join_type_msg)
       {"pairing", "card.title"} ->
-        changeset |> assoc_constraint(:pairing)
+        changeset |> cast_assoc(:pairing, required: true)
       {"pairing", "stat"} ->
-        changeset |> assoc_constraint(:pairing) |> assoc_constraint(:option_stat_def)
+        changeset |> cast_assoc(:pairing, required: true) |> cast_assoc(:option_stat_def, required: true)
       {"pairing", _} ->
         changeset |> add_error(:question_source, "Pairing questions must have title or stat answers")
       _ ->
