@@ -461,10 +461,10 @@ button {
     &.interactable:hover {
       background-color: var(--color-surface);
     }
-  
+
     &[active] {
       background-color: #2563EB;
-  
+
       &.interactable:hover {
         background-color: #2563EB;
       }

@@ -20,11 +20,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.dylanburati.datagame",
-      "buildNumber": "9"
+      "buildNumber": "10"
     },
     "android": {
       "package": "com.dylanburati.datagame",
-      "versionCode": 9,
+      "versionCode": 10,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#242527"
@@ -32,6 +32,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3f617985-775e-4740-a862-c478dad6797c"
+      }
     }
   }
 }

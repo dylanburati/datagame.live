@@ -8,8 +8,8 @@ defmodule App.Entities.PairingService do
   alias App.Entities.Card
   alias App.Entities.PairingInstance
 
-  defp validate_aggs(_deck, []), do: :ok
-  defp validate_aggs(deck, [{stat_key, funcname} | rest]) do
+  def validate_aggs(_deck, []), do: :ok
+  def validate_aggs(deck, [{stat_key, funcname} | rest]) do
     case validate_aggs(deck, rest) do
       :ok ->
         case Enum.find(deck.card_stat_defs, &(&1.key == stat_key)) do
@@ -31,38 +31,6 @@ defmodule App.Entities.PairingService do
     |> Enum.map(&(parse_float!(&1) * :math.pi / 180.0))
 
     MathExtensions.geodist(lat1, lon1, lat2, lon2)
-  end
-
-  def get_pairs(pairing, difficulty, limit, ans_type, ans_info, opts \\ []) do
-    %{"agg" => aggs} = pairing.criteria
-
-    pairing = pairing
-    |> Repo.preload([deck: [:card_stat_defs]])
-
-    with :ok <- validate_aggs(pairing.deck, aggs |> Map.to_list()) do
-      result = sample_pairs(pairing, difficulty, limit, opts)
-      title_sep = Keyword.get(opts, :title_sep) || " + "
-
-      result
-      |> Enum.map(fn {c1, c2, extra} ->
-        case {ans_type, ans_info} do
-          {:card_options, {_, "title"}} ->
-            %{
-              answer: Enum.join([c1.title, c2.title], title_sep),
-              question_value: extra
-            }
-          {:stat_options, card_stat_def} ->
-            sa = String.to_atom(card_stat_def.key)
-            {_, funcname} = Enum.find(aggs, &(elem(&1, 0) == card_stat_def.key))
-            v1 = Map.get(c1.stat_box, sa)
-            v2 = Map.get(c2.stat_box, sa)
-            %{
-              answer: Enum.join([c1.title, c2.title], title_sep),
-              question_value: to_string(calc_agg(card_stat_def, funcname, v1, v2))
-            }
-        end
-      end)
-    end
   end
 
   def to_exp_dist(w) do

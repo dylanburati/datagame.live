@@ -13,12 +13,7 @@ defmodule App.Entities.UserService do
       |> validate_format(:username, ~r/[a-zA-Z0-9._]{2,}/)
       |> validate_format(:password, ~r/.{8,}/)
       |> change(%{kind: "login"})
-
-    user_changeset =
-      case user_changeset.valid? do
-        true -> change(user_changeset, Bcrypt.add_hash(params.password, hash_key: :hashed_pw))
-        false -> user_changeset
-      end
+    raise "hashed_pw not implemented"
     Repo.insert(user_changeset)
   end
 

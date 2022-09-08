@@ -45,7 +45,7 @@ export class SheetPage {
       this.calculateTableData.bind(this),
       () => [this.s.deckName, this.s.sheetData, this.s.query]
     );
-    
+
     effects.register(() => {
       const { sheetData } = this.s;
       if (sheetData == null) {
@@ -297,7 +297,7 @@ export class SheetPage {
         return 'dollar_amount';
       else if (str.includes(' ') || Number.isNaN(parseFloat(str, 10)))
         return 'string';
-      
+
       return 'number';
     }
     const countTypes = (acc, cur, i) => {

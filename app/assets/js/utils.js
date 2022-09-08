@@ -33,7 +33,7 @@ function pretty(obj) {
     }
     breakLines = breakLines || (strings.length > 3);
   }
-  
+
   return { breakLines, isArray: false, strings };
 }
 
@@ -80,12 +80,12 @@ export class EffectList {
       }
     })
   }
-  
+
   register(func, depFunc) {
     this.effects.push({ func, depFunc, last: undefined });
     this.checkEffects();
   }
-  
+
   setter(setState) {
     const _this = this;
     return x => {
