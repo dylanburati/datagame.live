@@ -97,7 +97,7 @@ defmodule App.Entities.PairingService do
       {MapSet.new(), MapSet.new(), %{}},
       fn {cid1, cid2, extra}, {indiv, pairs, emap} ->
         {indiv |> MapSet.put(cid1) |> MapSet.put(cid2),
-         MapSet.put(pairs, {cid1, cid2}),
+         MapSet.put(pairs, pair_id(cid1, cid2)),
          maybe_put(emap, not is_nil(extra), pair_id(cid1, cid2), extra)}
       end
     )
