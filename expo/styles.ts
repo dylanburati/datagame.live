@@ -320,11 +320,14 @@ export const styles = StyleSheet.create({
   wHalf: {
     width: '50%',
   },
+  w40Px: {
+    width: 40,
+  },
   hFull: {
     height: '100%',
   },
-  w50: {
-    width: 40,
+  minH200Px: {
+    minHeight: 200,
   },
   roundedMd: {
     borderRadius: 4,
@@ -438,6 +441,12 @@ export const styles = StyleSheet.create({
   square20Px: {
     height: 20,
     width: 20,
+  },
+  z999: {
+    zIndex: 999,
+  },
+  elevation1: {
+    elevation: 1,
   },
   zMinusOne: {
     zIndex: -1,

@@ -1,64 +1,87 @@
-function pretty(obj) {
-  if (Array.isArray(obj)) {
-    const arr = obj.map(pretty);
-    return {
-      breakLines: arr.length > 1 || !arr.every(e => e.breakLines),
-      isArray: true,
-      strings: arr,
-    };
-  }
-  const strings = [];
-  let breakLines = false;
-  for (const k of Object.keys(obj)) {
-    const v = obj[k];
-    let sk;
-    if (typeof v !== 'object') {
-      sk = typeof v === 'string' ? JSON.stringify(v) : v.toString();
-    } else if (v === null) {
-      sk = 'null';
-    } else {
-      sk = pretty(v);
-      breakLines = breakLines || sk.breakLines;
-      if (!breakLines) {
-        if (Array.isArray(v))
-          breakLines = breakLines || v.length > 2;
-        else
-          breakLines = breakLines || (Object.keys(v).length > 1);
-      }
-    }
-    if (typeof sk === 'string') {
-      strings.push(JSON.stringify(k) + ': ' + sk);
-    } else {
-      strings.push({ ...sk, key: k })
-    }
-    breakLines = breakLines || (strings.length > 3);
-  }
-
-  return { breakLines, isArray: false, strings };
+function sum(arr) {
+  return arr.reduce((a, b) => a + b, 0);
 }
 
-export function prettyPrint(obj, info = null, currentIndent = 0) {
-  if (info == null) {
-    info = pretty(obj);
+function alignLeftVectorSum(arr) {
+  if (arr.length === 0) return [];
+  const result = new Array(Math.max(...arr.map(a => a.length))).fill(0);
+  for (const v of arr) {
+    for (let i = 0; i < v.length; i++) result[i] += v[i];
   }
-  if (typeof info !== 'object') return ' '.repeat(currentIndent) + info;
-  const { breakLines, isArray, strings } = info;
-  const nextIndent = breakLines ? currentIndent + 2 : 0;
-  const joiner = breakLines ? ',\n' : ', ';
-  const content = strings.map(child => prettyPrint(null, child, nextIndent)).join(joiner);
-  const cs = isArray ? '[' : '{';
-  const ce = isArray ? ']' : '}';
-  let start = cs;
-  let end = ce;
-  if (info.key !== undefined) {
-    start = `${JSON.stringify(info.key)}: ${cs}`;
+  return result;
+}
+
+function prettyAST(obj) {
+  if (typeof obj !== 'object' || obj === null) {
+    const json = JSON.stringify(obj)
+    return {
+      kind: 'lit',
+      string: json,
+      columns: json.length,
+      depth: [1],
+    };
   }
-  start = ' '.repeat(currentIndent) + `${start}`;
-  if (breakLines) {
-    start += '\n';
-    end = '\n' + ' '.repeat(currentIndent) + `${end}`;
+  if (Array.isArray(obj)) {
+    const arr = obj.map(prettyAST);
+    return {
+      kind: 'array',
+      children: arr,
+      columns: sum(arr.map(e => e.columns)) + 2 * arr.length - 2,
+      depth: alignLeftVectorSum(arr.map(e => e.depth)),
+    };
   }
-  return start + content + end;
+  const pairs = Object.entries(obj)
+    .map(([k, v]) => {
+      const key = JSON.stringify(k);
+      const value = prettyAST(v);
+      return {
+        kind: 'pair',
+        key,
+        value,
+        columns: key.length + 2 + value.columns,
+        depth: [1, ...value.depth],
+      }
+    });
+  return {
+    kind: 'object',
+    children: pairs,
+    columns: sum(pairs.map(e => e.columns)) + 2 * pairs.length - 2,
+    depth: alignLeftVectorSum(pairs.map(e => e.depth)),
+  };
+}
+
+function prettyRecur(node, indent) {
+  const strings = [];
+  if (node.kind === 'object' || node.kind === 'array') {
+    strings.push(node.kind === 'object' ? '{' : '[');
+    const last = node.children.length - 1;
+    const complexity = Math.max(...node.depth.map((n, i) => (n + i) * (i + 1)));
+    const cIndent = (node.columns > (80 - indent) || complexity > 8) ? indent + 2 : 0;
+    const inner = node.children.flatMap((c, i) => {
+      const childStrings = [];
+      if (cIndent) childStrings.push('\n' + ' '.repeat(cIndent));
+      childStrings.push(...prettyRecur(c, cIndent));
+      if (i !== last) childStrings.push(cIndent ? ',' : ', ');
+      else if (cIndent) childStrings.push('\n' + ' '.repeat(indent));
+      return childStrings;
+    });
+    strings.push(...inner);
+    strings.push(node.kind === 'object' ? '}' : ']');
+  }
+  if (node.kind === 'pair') {
+    strings.push(node.key);
+    strings.push(': ');
+    strings.push(...prettyRecur(node.value, indent));
+  }
+  if (node.kind === 'lit') {
+    strings.push(node.string);
+  }
+  return strings;
+}
+
+export function prettyPrint(obj) {
+  const ast = prettyAST(obj);
+  return prettyRecur(ast, 0).join('');
 }
 
 export class EffectList {
@@ -108,7 +131,7 @@ export function modify(el, removeChildren, attrs, children) {
   for (const k in attrs) {
     if (k.startsWith('on')) {
       el.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
-    } else if (k !== 'style' && k !== 'class') {
+    } else if (k !== 'style' && k !== 'className') {
       if (attrs[k] === true) el.setAttribute(k, '');
       else if (attrs[k] !== false) el.setAttribute(k, attrs[k]);
     }

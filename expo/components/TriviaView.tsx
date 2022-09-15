@@ -4,12 +4,12 @@ import { OrderedSet } from '../helpers/data';
 import {
   RoomStage,
   RoomStateWithTrivia,
-  getOptionStyles,
+  getStyledOptions,
   canAnswerTrivia,
   isFeedbackStage,
   shouldShowAdvanceButton,
   hasNumericSelectionOrder,
-  statToNumber,
+  StyledTriviaOption,
 } from '../helpers/nplayerLogic';
 import { ChipPicker } from './ChipPicker';
 import { TriviaStatDisplay } from './TriviaStatDisplay';
@@ -86,7 +86,11 @@ function OptionView({
           </Text>
           {!isMatchRank && (
             <Text style={[styles.textMd, styles.italic]}>
-              <TriviaStatDisplay roomState={state} option={item} />
+              <TriviaStatDisplay
+                statDef={state.triviaStats?.definition}
+                numValue={state.triviaStats?.values.get(item.id) ?? NaN}
+                option={item}
+              />
             </Text>
           )}
           {}
@@ -94,6 +98,7 @@ function OptionView({
         {isMatchRank && (
           <TriviaMatchRankDisplay
             roomState={state}
+            option={item}
             answers={answers}
             index={index}
           />
@@ -153,18 +158,21 @@ function TriviaAnswerBox({
   setTriviaAnswers,
   splitView,
 }: TriviaAnswerBoxProps) {
-  const { trivia } = state;
-  const triviaOptionStyles = getOptionStyles(state, triviaAnswers, splitView);
+  const { trivia, triviaStats } = state;
+  const styledOptions = getStyledOptions(state, triviaAnswers, splitView);
 
   if (splitView) {
     const selfTurn =
       state.selfId !== undefined && state.selfId === state.players.activeId;
     const splitViewSortable = selfTurn
       ? triviaAnswers
-      : OrderedSet.from(trivia.options.map((_, i) => i));
-    const splitViewBank = trivia.options
-      .map((_, i) => i)
-      .filter((i) => !splitViewSortable.has(i));
+          .toList()
+          .map((id) => styledOptions.find(({ option }) => option.id === id))
+          .filter((opt): opt is StyledTriviaOption => opt !== undefined)
+      : styledOptions;
+    const splitViewBank = selfTurn
+      ? styledOptions.filter(({ option }) => !triviaAnswers.has(option.id))
+      : [];
 
     return (
       <>
@@ -175,26 +183,23 @@ function TriviaAnswerBox({
             styles.startAll,
             styles.flexCol,
             styles.itemsStretch,
-            { minHeight: 200 },
+            styles.minH200Px,
           ]}
-          data={splitViewSortable.toList()}
-          keySelector={(optionIndex) => String(optionIndex)}
-          chipStyle={({ item: optionIndex }) => [
+          data={splitViewSortable}
+          keySelector={({ option }) => String(option.id)}
+          chipStyle={({ item: { chipStyle } }) => [
             styles.p0,
             styles.roundedLg,
             styles.mt2,
-            triviaOptionStyles[optionIndex].chip,
+            chipStyle,
           ]}
           disabled={!canAnswerTrivia(state.stage)}
-          sorter={(ai, bi) => {
-            const av = trivia.options[ai].questionValue;
-            const bv = trivia.options[bi].questionValue;
+          sorter={({ option: a }, { option: b }) => {
             const mult = trivia.answerType === 'stat.desc' ? -1 : 1;
-            const diff =
-              mult *
-              (statToNumber(trivia.statDef, av, 0) -
-                statToNumber(trivia.statDef, bv, 0));
-            return diff !== 0 ? diff : ai - bi;
+            const av = triviaStats?.values.get(a.id) ?? 0;
+            const bv = triviaStats?.values.get(b.id) ?? 0;
+            const diff = mult * (av - bv);
+            return diff !== 0 ? diff : a.id - b.id;
           }}
           showSorted={isFeedbackStage(state.stage)}
           onDragEnd={(fromPos, toPos) => {
@@ -203,17 +208,15 @@ function TriviaAnswerBox({
             }
           }}
         >
-          {({ item: optionIndex }) => (
+          {({ item: { option, barGraph, directionIndicator }, index }) => (
             <OptionView
-              item={trivia.options[optionIndex]}
-              index={optionIndex}
+              item={option}
+              index={index}
               state={state}
               answers={triviaAnswers}
-              showUnderlay={!!triviaOptionStyles[optionIndex].barGraph}
-              underlayStyle={triviaOptionStyles[optionIndex].barGraph}
-              directionIndicator={
-                triviaOptionStyles[optionIndex].directionIndicator
-              }
+              showUnderlay={!!barGraph}
+              underlayStyle={barGraph}
+              directionIndicator={directionIndicator}
             />
           )}
         </AnimatedChipPicker>
@@ -234,22 +237,22 @@ function TriviaAnswerBox({
               styles.itemsStretch,
             ]}
             data={splitViewBank}
-            keySelector={(optionIndex) => String(optionIndex)}
+            keySelector={({ option }) => String(option.id)}
             disabled={!canAnswerTrivia(state.stage)}
-            chipStyle={({ index }) => [
+            chipStyle={({ item: { chipStyle } }) => [
               styles.p0,
               styles.roundedLg,
               styles.mt2,
-              triviaOptionStyles[index].chip,
+              chipStyle,
             ]}
-            onPress={({ item: optionIndex }) => {
-              setTriviaAnswers(triviaAnswers.append(optionIndex));
+            onPress={({ item: { option } }) => {
+              setTriviaAnswers(triviaAnswers.append(option.id));
             }}
           >
-            {({ item: optionIndex }) => (
+            {({ item: { option }, index }) => (
               <OptionView
-                item={trivia.options[optionIndex]}
-                index={optionIndex}
+                item={option}
+                index={index}
                 state={state}
                 answers={triviaAnswers}
               />
@@ -269,28 +272,28 @@ function TriviaAnswerBox({
         styles.flexCol,
         styles.itemsStretch,
       ]}
-      data={state.trivia.options}
+      data={styledOptions}
       disabled={!canAnswerTrivia(state.stage)}
-      chipStyle={({ index }) => [
+      chipStyle={({ item: { chipStyle } }) => [
         styles.p0,
         styles.roundedLg,
         styles.mt2,
-        triviaOptionStyles[index].chip,
+        chipStyle,
       ]}
-      onPress={({ index }) =>
+      onPress={({ item: { option } }) =>
         setTriviaAnswers(
-          triviaAnswers.toggle(index).takeRight(trivia.maxAnswers)
+          triviaAnswers.toggle(option.id).takeRight(trivia.maxAnswers)
         )
       }
     >
-      {({ item, index }) => (
+      {({ item: { option, barGraph }, index }) => (
         <OptionView
-          item={item}
+          item={option}
           index={index}
           state={state}
           answers={triviaAnswers}
-          showUnderlay={!!triviaOptionStyles[index].barGraph}
-          underlayStyle={triviaOptionStyles[index].barGraph}
+          showUnderlay={!!barGraph}
+          underlayStyle={barGraph}
         />
       )}
     </ChipPicker>

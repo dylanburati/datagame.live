@@ -19,6 +19,7 @@ import {
   PanGestureHandlerStateChangeEvent,
   PanGestureHandlerGestureEvent,
   State as GestureState,
+  GestureHandlerRootView,
 } from 'react-native-gesture-handler';
 import { isAndroid, isIOS, isWeb } from '../constants';
 import { DataStatus, overwriteMap } from '../helpers/data';
@@ -291,8 +292,8 @@ function Cell({
       ref={viewRef}
       onLayout={updateCellMeasurements}
       style={[
-        isAndroid && { elevation: cellKey === activeKey ? 1 : 0 },
-        (isWeb || isIOS) && { zIndex: cellKey === activeKey ? 999 : 0 },
+        isAndroid && cellKey === activeKey && styles.elevation1,
+        (isWeb || isIOS) && cellKey === activeKey && styles.z999,
       ]}
       pointerEvents={activeKey ? 'none' : 'auto'}
     >
@@ -365,7 +366,7 @@ export function AnimatedChipPicker<T>({
   const dataRef = useRef(data);
   dataRef.current = data;
   const containerRef = useRef<View>(null);
-  const [sortIdReflected, setSortIdReflected] = useState(0);
+  const [sortIdReflected, setSortIdReflected] = useState(-1);
   const [sortIdInData, onSortOrderChanged] = useReducer((n) => n + 1, 1);
   const [cellLayoutMapSize, setCellLayoutMapSize] = useState(0);
   const sortStatus =
@@ -474,7 +475,10 @@ export function AnimatedChipPicker<T>({
     );
   }, [data, indexToKey, keySelector, keyToIndex]);
   useEffect(() => {
-    if (sorter) {
+    if (!showSorted) {
+      keyToSortedIndex.clear();
+    }
+    if (showSorted && sorter) {
       const sorted = data.slice().sort(sorter);
       const changed =
         keyToSortedIndex.size !== data.length ||
@@ -575,62 +579,64 @@ export function AnimatedChipPicker<T>({
   //   [currentDragging]
   // );
   let visibleData =
-    sorter && sortStatus === DataStatus.COMPLETED
+    showSorted && sorter && sortStatus === DataStatus.COMPLETED
       ? data.slice().sort(sorter)
       : data;
   return (
-    <PanGestureHandler
-      onHandlerStateChange={onHandlerStateChange}
-      onGestureEvent={onGestureEvent}
-    >
-      <View ref={containerRef} style={style}>
-        {visibleData.map((item, index) => {
-          const styleModifier = chipStyle ? chipStyle({ item, index }) : [];
-          const key = keySelector(item);
-          return (
-            <Cell
-              cellKey={key}
-              containerRef={containerRef}
-              index={index}
-              activeKey={activeKey}
-              sortTranslation={sortTranslations.get(key)}
-              context={context}
-              key={key}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.roundedFull,
-                  styles.border,
-                  styles.borderGray300,
-                  styles.p1,
-                  styles.px2,
-                  styles.flexInitial,
-                  styles.row,
-                  styleModifier,
-                ]}
-                activeOpacity={0.5}
-                disabled={disabled || showSorted}
-                onLongPress={() => setActiveKey(key)}
-                onPressOut={() => {
-                  const gState = panGestureState.get();
-                  if (
-                    gState !== GestureState.BEGAN &&
-                    gState !== GestureState.ACTIVE
-                  ) {
-                    setActiveKey(undefined);
-                  }
-                }}
+    <GestureHandlerRootView>
+      <PanGestureHandler
+        onHandlerStateChange={onHandlerStateChange}
+        onGestureEvent={onGestureEvent}
+      >
+        <View ref={containerRef} style={style}>
+          {visibleData.map((item, index) => {
+            const styleModifier = chipStyle ? chipStyle({ item, index }) : [];
+            const key = keySelector(item);
+            return (
+              <Cell
+                cellKey={key}
+                containerRef={containerRef}
+                index={index}
+                activeKey={activeKey}
+                sortTranslation={sortTranslations.get(key)}
+                context={context}
                 key={key}
               >
-                {children({
-                  item,
-                  index,
-                })}
-              </TouchableOpacity>
-            </Cell>
-          );
-        })}
-      </View>
-    </PanGestureHandler>
+                <TouchableOpacity
+                  style={[
+                    styles.roundedFull,
+                    styles.border,
+                    styles.borderGray300,
+                    styles.p1,
+                    styles.px2,
+                    styles.flexInitial,
+                    styles.row,
+                    styleModifier,
+                  ]}
+                  activeOpacity={0.5}
+                  disabled={disabled || showSorted}
+                  onLongPress={() => setActiveKey(key)}
+                  onPressOut={() => {
+                    const gState = panGestureState.get();
+                    if (
+                      gState !== GestureState.BEGAN &&
+                      gState !== GestureState.ACTIVE
+                    ) {
+                      setActiveKey(undefined);
+                    }
+                  }}
+                  key={key}
+                >
+                  {children({
+                    item,
+                    index,
+                  })}
+                </TouchableOpacity>
+              </Cell>
+            );
+          })}
+        </View>
+      </PanGestureHandler>
+    </GestureHandlerRootView>
   );
 }

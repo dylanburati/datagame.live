@@ -52,7 +52,7 @@ export function TriviaContainer({
   return (
     <View style={style}>
       <View style={[styles.row, styles.itemsBaseline, styles.justifyCenter]}>
-        <Text>(P{state.players.startedPlayerIndex + 1})</Text>
+        <Text>(P{state.players.playerIndex + 1})</Text>
         <Text style={[styles.ml2, styles.textLg]}>{whoseTurn}</Text>
       </View>
       <BoxedDisplay boxed={!showLarge}>{children}</BoxedDisplay>

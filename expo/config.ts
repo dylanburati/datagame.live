@@ -1,4 +1,4 @@
 export default {
   baseUrl: 'https://datagame.live/app',
-  ROOM_API_VERSION: 2,
+  ROOM_API_VERSION: 3,
 };

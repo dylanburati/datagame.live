@@ -55,9 +55,8 @@ export type RoomUser = {
 };
 
 export type TriviaOption = {
+  id: number;
   answer: string;
-  popularity?: number;
-  inSelection: boolean;
   questionValue: string | string[];
 };
 
@@ -75,19 +74,35 @@ export type Trivia = {
   answerType: string;
   minAnswers: number;
   maxAnswers: number;
-  statDef?: {
-    label: string;
-    type: TriviaStatType;
-    axisMod?: string;
-    axisMin?: number;
-    axisMax?: number;
-  };
+};
+
+export type TriviaStatDef = {
+  label: string;
+  type: TriviaStatType;
+  axisMod?: string;
+  axisMin?: number;
+  axisMax?: number;
 };
 
 export type RoomScoreEntry = {
   userId: number;
   score: number;
 };
+
+export type RoomAnswersEntry = {
+  userId: number;
+  answered: number[];
+};
+
+export type TriviaExpectation =
+  | {
+      kind: 'all';
+      group: number[];
+      minPos?: number;
+    }
+  | { kind: 'any'; group: number[] };
+
+export type LazyTriviaExpectation = TriviaExpectation | { kind: 'matchrank' };
 
 export type RoomIncomingMessage =
   | {
@@ -116,7 +131,6 @@ export type RoomIncomingMessage =
   | {
       event: 'round:start';
       playerOrder: number[];
-      pointTarget: number;
     }
   | {
       event: 'turn:start';
@@ -131,15 +145,19 @@ export type RoomIncomingMessage =
       turnId: number;
     }
   | {
-      event: 'turn:end';
+      event: 'turn:feedback';
       turnId: number;
-      userId: number;
       scores: RoomScoreEntry[];
+      answers: RoomAnswersEntry[];
+      expectedAnswers: LazyTriviaExpectation[];
+      stats?: {
+        values: [number, number][];
+        definition: TriviaStatDef;
+      };
     }
   | {
-      event: 'turn:feedback';
-      userId: number;
-      answered: number[];
+      event: 'round:scores';
+      scores: RoomScoreEntry[];
     }
   | {
       event: 'presence';
@@ -154,11 +172,6 @@ export type RoomOutgoingMessage =
   | {
       event: 'round:start';
       playerOrder: number[];
-      pointTarget: number;
-    }
-  | {
-      event: 'turn:start';
-      fromTurnId: number;
     }
   | {
       event: 'turn:feedback';
@@ -166,7 +179,7 @@ export type RoomOutgoingMessage =
     }
   | {
       event: 'turn:end';
-      scoreChanges: RoomScoreEntry[];
+      fromTurnId: number;
     };
 
 export class RestClient {

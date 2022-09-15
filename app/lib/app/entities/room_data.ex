@@ -1,12 +1,8 @@
 defmodule App.Entities.RoomData do
   import App.Utils
   alias App.Entities.RoomData
-
-  defstruct [:room_code, :user_id]
-
-  defmodule RoomCacheKeys do
-    defstruct [:round_messages, :trivia, :scores, :turn_counter, :asked_def_ids]
-  end
+  alias App.Entities.TriviaService
+  alias App.Entities.Party.PartyState
 
   # cache_keys(room_code,
   # ["round_start", "turn_counter", "last_player", "scores"])
@@ -14,191 +10,169 @@ defmodule App.Entities.RoomData do
   # cache_keys(room_code,
   # ["turn_counter", "curr_player", "turn_start", "turn_answers"])
 
-  def current_room(socket) do
-    with %{room_code: room_code, user_id: user_id} <- socket.assigns do
-      %RoomData{room_code: room_code, user_id: user_id}
-    end
-  end
-
-  @spec cache_keys(RoomData) :: RoomCacheKeys
-  defp cache_keys(room_data) do
-    %{room_code: room_code, user_id: user_id} = room_data
-    %RoomCacheKeys{
-      round_messages: "RoomChannel.#{room_code}.round_messages",
-      trivia: "RoomChannel.#{room_code}.trivia",
-      scores: "RoomChannel.#{room_code}.scores",
-      turn_counter: "RoomChannel.#{room_code}.turn_counter",
-      asked_def_ids: "RoomChannel.#{room_code}.#{user_id}.asked_def_ids"
-    }
-  end
 
   @doc """
   Begins a multiplayer game with the given participants.
   """
-  @spec init_round(RoomData, map) :: :ok
-  def init_round(room_data, payload) do
-    k = cache_keys(room_data)
-    :ok = App.Cache.new_atomic(k.turn_counter)
-    :ok = App.Cache.set_atomic(k.turn_counter, 0)
-    :ok = App.Cache.insert(k.round_messages, [{"round:start", payload}])
-    participants = Map.get(payload, "playerOrder", [])
-    start_scores = Map.new(participants, fn id -> {id, 0} end)
-    App.Cache.update(k.scores, start_scores, fn prev ->
-      rng = Map.values(prev) |> Enum.min_max(fn -> :empty end)
-      case rng do
-        :empty -> start_scores
-        {smin, smax} ->
-          new_player_scores = Map.new(participants, fn id ->
-            score = smin + floor(:rand.uniform() * (smax - smin))
-            {id, score}
-          end)
-          Map.merge(new_player_scores, prev)
-      end
-    end)
-    :ok
-  end
-
-  @doc """
-  Gets the list of round messages required to reconstruct the game state.
-
-  1. round:start (player order, etc)
-  2. turn:end (scores, turnId)
-  3. turn:start (trivia, turnId if no turn:end)
-  4. turn:feedback (one per answer submitted)
-  """
-  @spec get_round(RoomData) :: [map]
-  def get_round(room_data) do
-    k = cache_keys(room_data)
-    case App.Cache.lookup(k.round_messages) do
-      nil -> []
-      msgs -> Enum.map(msgs, fn {evt, payload} -> Map.put(payload, "event", evt) end)
-    end
-  end
-
-  @doc """
-  Gets the player order of the active round.
-  """
-  @spec get_player_order(RoomData) :: [number]
-  def get_player_order(room_data) do
-    k = cache_keys(room_data)
-    case App.Cache.lookup(k.round_messages) do
-      nil -> []
-      msgs -> case Enum.find(msgs, fn {evt, _} -> evt == "round:start" end) do
-        {_, %{"playerOrder" => arr}} -> arr
-        _ -> []
-      end
-    end
+  @spec init_round(binary, list) :: PartyState
+  def init_round(room_code, participants) do
+    state = %PartyState{
+      player_list: Enum.map(participants, &(%{id: &1, score: 0, trivia_def_ids: []})),
+      turn_history: [],
+      answers: %{}
+    }
+    :ok = App.Cache.new_atomic({room_code, :counter})
+    App.Cache.insert({room_code, :state}, state)
+    state
   end
 
   @doc """
   Gets the current turn ID.
   """
-  @spec turn_id(RoomData) :: integer
-  def turn_id(room_data) do
-    k = cache_keys(room_data)
-    App.Cache.get_atomic(k.turn_counter, 0)
+  @spec turn_id(binary) :: integer
+  def turn_id(room_code) do
+    App.Cache.get_atomic({room_code, :counter}, -1)
+  end
+
+  @doc """
+  Gets the list of round messages required to reconstruct the game state.
+
+  1. turn:end (scores, turnId)
+  2. turn:start (trivia, turnId if no turn:end)
+  """
+  @spec get_room(binary) :: PartyState | nil
+  def get_room(room_code) do
+    App.Cache.lookup({room_code, :state})
+  end
+
+  @doc """
+  Gets the player ID of the all players in the round-robin order.
+  """
+  @spec get_player_order(binary) :: [integer]
+  def get_player_order(room_code) do
+    with %{player_list: lst} <- get_room(room_code) do
+      Enum.map(lst, &Map.fetch!(&1, :id))
+    else
+      _ -> []
+    end
+  end
+
+  @doc """
+  Gets the player ID of the next player in the round-robin order.
+  """
+  @spec get_current_player_id(binary) :: {integer, integer} | nil
+  def get_current_player_id(room_code) do
+    with %{player_list: lst, turn_history: history} <- get_room(room_code) do
+      case find_last(history, {nil, nil}, fn {evt, _} -> evt in ["turn:start", "turn:end"] end) do
+        {"turn:start", %{user_id: uid}} ->
+          uid
+        {"turn:end", %{user_id: uid}} ->
+          index = Enum.find_index(lst, fn %{id: id} -> id == uid end) || -1
+          Enum.at(lst, rem(index + 1, length(lst))) |> Map.get(:id)
+        _ ->
+          Enum.at(lst, 0) |> Map.get(:id)
+      end
+    else
+      _ -> nil
+    end
   end
 
   @doc """
   Starts the turn following `from_turn_id`, if it hasn't already been started.
   """
-  @spec request_turn(RoomData, integer) :: {:ok, integer} | :error
-  def request_turn(room_data, from_turn_id) do
-    k = cache_keys(room_data)
-    with {:ok, next_turn} <- App.Cache.try_incr_atomic(k.turn_counter, from_turn_id) do
-      {:ok, next_turn}
-    else
-      e -> e
-    end
+  @spec request_turn(RoomData, integer) :: {:ok, integer} | {:noop, integer} | :error
+  def request_turn(room_code, from_turn_id) do
+    App.Cache.try_incr_atomic({room_code, :counter}, from_turn_id)
   end
 
   @doc """
   Lists the most recent trivia def IDs encountered by the player.
   """
-  @spec player_trivia_def_ids(RoomData) :: list(integer)
-  def player_trivia_def_ids(room_data) do
-    k = cache_keys(room_data)
-    case App.Cache.lookup(k.asked_def_ids) do
-      nil -> []
-      lst -> lst
+  @spec player_trivia_def_ids(binary, integer) :: [integer]
+  def player_trivia_def_ids(room_code, user_id) do
+    with %{player_list: lst} <- get_room(room_code),
+         %{trivia_def_ids: def_ids} <- Enum.find(lst, fn %{id: id} -> id == user_id end) do
+      def_ids
+    else
+      _ -> []
     end
   end
 
   @doc """
   Caches the content for the turn, and resets the answers to previous turns.
   """
-  @spec init_turn(RoomData, integer, map, map, map) :: :ok
-  def init_turn(room_data, turn_id, turn_info, trivia_def, trivia) do
-    k = cache_keys(room_data)
-    record = [{"turn:start", turn_info}]
+  @spec init_turn(binary, {integer, integer | nil}, map, integer) :: PartyState
+  def init_turn(room_code, {user_id, participant_id}, trivia, trivia_def_id) do
+    turn_start_msg = %{
+      user_id: user_id,
+      turn_id: turn_id(room_code),
+      trivia: trivia
+    }
+    |> maybe_put(not is_nil(participant_id), :participant_id, participant_id)
 
-    App.Cache.update(k.asked_def_ids, [trivia_def.id], fn prev -> Enum.take([trivia_def.id | prev], 7) end)
-    App.Cache.insert(k.trivia, %{turn_id => {trivia_def, trivia}})
-    # Keep the round:start and only 1 turn:end
-    App.Cache.update(k.round_messages, record, fn msgs ->
-      [find_last(msgs, &(elem(&1, 0) == "round:start")),
-       find_last(msgs, &(elem(&1, 0) == "turn:end"))]
-      |> Enum.filter(&(not is_nil(&1)))
-      |> Enum.concat(record)
-    end)
-    :ok
-  end
+    # Keep only 1 turn:end
+    App.Cache.update(
+      {room_code, :state},
+      nil,
+      fn %PartyState{player_list: lst, turn_history: history} ->
+        keep_msgs = Enum.filter(history, &(elem(&1, 0) == "turn:end"))
+        |> take_right(1)
+        |> Enum.concat([{"turn:start", turn_start_msg}])
 
-  @doc """
-  Retreives the trivia for the current turn
-  """
-  @spec get_current_trivia(RoomData) :: {map, map} | nil
-  def get_current_trivia(room_data) do
-    trv_id = turn_id(room_data)
-    k = cache_keys(room_data)
-    case App.Cache.lookup(k.trivia) do
-      %{^trv_id => pair} -> pair
-      _ -> nil
-    end
+        player_list = Enum.map(lst, fn user = %{id: uid, trivia_def_ids: prev} ->
+          if uid in [user_id, participant_id] do
+            Map.put(user, :trivia_def_ids, Enum.take([trivia_def_id | prev], 7))
+          else
+            user
+          end
+        end)
+        %PartyState{
+          player_list: player_list,
+          turn_history: keep_msgs,
+          answers: %{}
+        }
+      end
+    )
   end
 
   @doc """
   Sets the user's answer to the current turn question.
   """
-  @spec update_answers(RoomData, map) :: Enumerable
-  def update_answers(room_data, answered) do
-    k = cache_keys(room_data)
-    %{user_id: user_id} = room_data
-    record = [{"turn:feedback", answered}]
-
+  @spec update_answers(binary, integer, map) :: PartyState
+  def update_answers(room_code, user_id, answered) do
     # replace previous answer in log, if any
-    App.Cache.update(k.round_messages, record, fn msgs ->
-      Enum.filter(msgs, fn {evt, payload} ->
-        cond do
-          evt in ["round:start", "turn:start", "turn:end"] -> true
-          evt == "turn:feedback" -> Map.get(payload, "userId") != user_id
-          true -> false
-        end
-      end)
-      |> Enum.concat(record)
+    App.Cache.replace!({room_code, :state}, fn state ->
+      Map.put(state, :answers, Map.put(state.answers, user_id, answered))
     end)
-    |> Enum.filter(fn {evt, _} -> evt == "turn:feedback" end)
-    |> Enum.map(&(elem(&1, 1)))
   end
 
   @doc """
   Updates scores and logs that the player's turn is completed.
   """
-  @spec end_turn(RoomData, map) :: :ok
-  def end_turn(room_data, score_changes) do
-    k = cache_keys(room_data)
-    %{user_id: user_id} = room_data
-    score_map = App.Cache.update(k.scores, %{}, fn map ->
-      Map.merge(map, score_changes, fn _, prev, increment -> prev + increment end)
-    end)
-    score_lst = Enum.map(score_map, fn {k, v} -> %{"userId" => k, "score" => v} end)
-    turn_info = %{"userId" => user_id, "turnId" => turn_id(room_data), "scores" => score_lst}
-    record = [{"turn:end", turn_info}]
-
-    App.Cache.update(k.round_messages, record, fn msgs ->
-      Enum.filter(msgs, &(elem(&1, 0) == "round:start"))
-      |> Enum.concat(record)
-    end)
-    turn_info
+  @spec end_turn(binary) :: PartyState
+  def end_turn(room_code) do
+    # Keep only 1 turn:start
+    App.Cache.replace!(
+      {room_code, :state},
+      fn %PartyState{player_list: lst, turn_history: history, answers: answers} ->
+        keep_msg = Enum.filter(history, &(elem(&1, 0) == "turn:start")) |> List.last()
+        with {_, %{turn_id: turn_id, user_id: user_id, trivia: trivia}} <- keep_msg do
+          score_changes = TriviaService.grade_answers(trivia, answers)
+          |> Enum.filter(fn {_, correct?} -> correct? end)
+          |> Map.new(fn {id, _} -> {id, 1} end)
+          player_list = Enum.map(lst, fn user = %{id: uid} ->
+            delta = Map.get(score_changes, uid, 0)
+            Map.update(user, :score, delta, &(&1 + delta))
+          end)
+          %PartyState{
+            player_list: player_list,
+            turn_history: [keep_msg, {"turn:end", %{turn_id: turn_id, user_id: user_id}}],
+            answers: answers
+          }
+        else
+          _ -> raise "Turn history does not contain an ongoing turn"
+        end
+      end
+    )
   end
 end

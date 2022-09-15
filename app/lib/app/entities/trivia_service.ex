@@ -52,7 +52,7 @@ defmodule App.Entities.TriviaService do
   end
   def randomize(query, opts \\ []), do: maybe_randomize(query, true, opts)
 
-  def hydrate_trivia_def(trivia_def = %TriviaDef{question_source: qsrc, option_source: osrc, }) do
+  def hydrate_trivia_def(trivia_def = %TriviaDef{question_source: qsrc, option_source: osrc}) do
     trivia_def = trivia_def
     |> Repo.preload([:pairing, :question_tag_def, :option_stat_def, :option_tag_def])
     result = case {qsrc, osrc} do
@@ -102,27 +102,95 @@ defmodule App.Entities.TriviaService do
     })
   end
 
-  def get_trivia(trivia_def = %TriviaDef{question_format: qf, selection_length: sz}) do
+  defp get_options_numeric(loadable = %{option_stat_def: orig_stat_def}, options) do
+    stat_def = case Map.get(loadable, :question_pairing) do
+      nil -> orig_stat_def
+      pairing -> Pairing.aggregated_stat_def(pairing, orig_stat_def)
+    end
+    parsed = Enum.map(options, fn %{question_value: v} ->
+      CardStatDef.parse_stat(stat_def.stat_type, v)
+    end)
+    with {:ok, option_vals} <- cascade_error(parsed) do
+      options_numeric = case {stat_def.stat_type, stat_def.axis_mod} do
+        {"date", "age"} -> Enum.map(option_vals, fn dt -> DateTime.diff(DateTime.utc_now(), dt) end)
+        _ -> option_vals
+      end
+      {:ok, options_numeric, stat_def}
+    else
+      _ -> :error
+    end
+  end
+
+  def get_trivia(trivia_def = %TriviaDef{question_format: qf, selection_length: sz, answer_type: atyp}) do
     loadable = hydrate_trivia_def(trivia_def)
     qinst = TriviaLoader.get_question_instance(loadable)
-    options = [false, true]
+    options = [true, false]
     |> Enum.map(fn sel ->
-      {sel,
-       TriviaLoader.exec_answer_query(loadable,
-        TriviaLoader.get_answer_query(loadable, qinst, not sel))}
+      TriviaLoader.get_answer_query(loadable, qinst, not sel) |>
+      (fn query -> TriviaLoader.exec_answer_query(loadable, query) end).()
     end)
-    |> Enum.map(fn {sel, rows} -> Enum.map(rows, &Map.put(&1, :in_selection, sel)) end)
+    selection_bound = Enum.count(Enum.at(options, 0)) - 1
+    options = options
     |> Enum.concat()
+    |> Enum.with_index()
+    |> Enum.map(fn {o, idx} -> Map.put(o, :id, idx) end)
     |> Enum.shuffle()
     |> Enum.take(sz)
+    |> (fn options -> TriviaLoader.get_extra_info(loadable, options) end).()
 
-    options = TriviaLoader.get_extra_info(loadable, options)
+    {expected_ans, stats} = case atyp do
+      "selection" ->
+        {[%{kind: "all", group: Enum.to_list(0..selection_bound)}], nil}
+      "matchrank" ->
+        {[%{kind: "matchrank"}], nil}
+      "stat." <> order ->
+        multi = order in ["asc", "desc"]
+        ascending = order in ["asc", "min"]
+        {:ok, numeric, agg_stat_def} = get_options_numeric(loadable, options)
+        with_numeric = Enum.zip(options, numeric)
+        stats_obj = %{
+          values: Enum.map(with_numeric, fn {%{id: id}, x} -> [id, x] end),
+          definition: Map.take(agg_stat_def,
+            [:label, :stat_type, :axis_mod, :axis_min, :axis_max]
+          )
+        }
+        ties = with_numeric
+        |> Enum.sort(fn {_, x}, {_, y} -> ascending == (x <= y) end)
+        |> Enum.chunk_by(&elem(&1, 1))
+        |> Enum.map(fn chunk -> Enum.map(chunk, fn {%{id: id}, _} -> id end) end)
+        if multi do
+          {graders, _} = Enum.reduce(ties, {[], 0}, fn id_lst, {acc, n} ->
+            {
+              [%{kind: "all", group: id_lst, min_pos: n} | acc],
+              n + Enum.count(id_lst)
+            }
+          end)
+          {graders, stats_obj}
+        else
+          {[%{kind: "any", group: List.first(ties)}], stats_obj}
+        end
+    end
     qtext = elem(qinst, 1) || ""
-    result = %{
+    min_answers = case atyp do
+      "selection" -> trivia_def.selection_min_true
+      "matchrank" -> trivia_def.selection_length
+      "stat." <> stat_sel ->
+        if stat_sel in ["asc", "desc"], do: trivia_def.selection_length, else: 1
+    end
+    max_answers = case atyp do
+      "selection" -> trivia_def.selection_max_true
+      _ -> min_answers
+    end
+    prompt = %{
       options: options,
       question: String.replace(qf, "{}", qtext),
+      answer_type: atyp,
+      min_answers: min_answers,
+      max_answers: max_answers,
+      expected_answers: expected_ans,
+      stats: stats
     }
-    {:ok, trivia_def, result}
+    {:ok, trivia_def, prompt}
   end
 
   def get_trivia_defs(opts \\ []) do
@@ -171,90 +239,56 @@ defmodule App.Entities.TriviaService do
     end
   end
 
-  defp grade_stat_rank(options_numeric, answer_lst, ascending) do
-    answer_order = Enum.with_index(answer_lst) |> Map.new()
-    best_order = Enum.with_index(options_numeric)
-    |> Enum.sort(fn {av, ai}, {bv, bi} ->
-      cond do
-        av < bv -> ascending
-        av > bv -> not ascending
-        true -> Map.get(answer_order, ai) < Map.get(answer_order, bi)
-      end
+  def grade_answers_single(expected_ans, answer_lst, options) do
+    any_checks = Enum.filter(expected_ans, &(Map.get(&1, :kind) == "any"))
+    checked_by_any = Enum.flat_map(any_checks, &(Map.get(&1, :group, []))) |> MapSet.new()
+    passed1 = Enum.all?(any_checks, fn %{group: group} ->
+      Enum.count(group, &(&1 in answer_lst)) == 1
     end)
 
-    best_order
-    |> Enum.with_index()
-    |> Enum.sort(fn {{_, ai}, _}, {{_, bi}, _} -> ai < bi end)
-    |> Enum.map(fn {{_, optidx}, orderidx} -> {Map.get(answer_order, optidx), orderidx} end)
-    |> List.foldr({true, []}, fn {ansidx, orderidx}, {full_marks, correct_lst} ->
-      opt_feedback = %{order: orderidx}
-      cond do
-        orderidx < length(answer_lst) or ansidx != nil ->
-          mark = if ansidx == orderidx, do: "correct", else: "incorrect"
-          {full_marks and ansidx == orderidx, [Map.put(opt_feedback, :mark, mark) | correct_lst]}
-        true -> {full_marks, [opt_feedback | correct_lst]}
+    passed2 = options
+    |> Enum.map(fn %{id: aid} -> aid end)
+    |> Enum.filter(&(&1 not in checked_by_any))
+    |> Enum.all?(fn aid ->
+      pos = Enum.find_index(answer_lst, &(&1 == aid)) || -1
+      chkr = Enum.find(expected_ans, fn %{kind: kind, group: group} ->
+        kind == "all" and (aid in group)
+      end)
+      {min_pos, max_pos} = case chkr do
+        %{min_pos: mp, group: group} ->
+          # require ordered selection (range accounts for ties)
+          {mp, mp + length(group) - 1}
+        %{} ->
+          # require option to be selected
+          {0, length(options) - 1}
+        nil ->
+          # require option to not be selected
+          {-1, -1}
       end
+      min_pos <= pos and pos <= max_pos
     end)
+
+    passed1 and passed2
   end
 
-  defp get_feedback_one_user(%{answer_type: "selection"}, options, answer_lst) do
-    answer_set = MapSet.new(answer_lst)
-    Enum.with_index(options)
-    |> List.foldr({true, []}, fn {el, idx}, {full_marks, correct_lst} ->
-      correct = case {idx in answer_set, Map.get(el, :in_selection)} do
-        {_, true} -> %{mark: "correct"}
-        {true, false} -> %{mark: "incorrect"}
-        {false, false} -> %{}
-      end
-      no_deduct = (idx in answer_set) == (Map.get(el, :in_selection))
-      {no_deduct and full_marks, [correct | correct_lst]}
-    end)
-  end
+  def grade_answers(trivia, answer_map) do
+    %{
+      expected_answers: expected_ans,
+      options: options
+    } = trivia
+    for {user_id, ans_lst} <- Map.to_list(answer_map), into: %{} do
+      exp_lst = Enum.flat_map(expected_ans, fn
+        %{kind: "matchrank"} ->
+          case Enum.find(answer_map, fn {uid, _} -> uid != user_id end) do
+            {_, ans2} ->
+              Enum.with_index(ans2)
+              |> Enum.map(fn {aid, idx} -> %{kind: "all", group: [aid], min_pos: idx} end)
+            _ -> []
+          end
+        simple -> [simple]
+      end)
 
-  defp get_feedback_one_user(%{answer_type: "stat." <> stat_sel, pairing: pairing, option_stat_def: orig_stat_def},
-                             options, answer_lst) do
-    stat_def = case pairing do
-      %Pairing{} -> Pairing.aggregated_stat_def(pairing, orig_stat_def)
-      _ -> orig_stat_def
-    end
-    parsed = Enum.map(options, fn %{question_value: v} ->
-      CardStatDef.parse_stat(stat_def.stat_type, v)
-    end)
-    with {:ok, option_vals} <- cascade_error(parsed) do
-      options_numeric = cond do
-        stat_def.stat_type == "date" and stat_def.axis_mod == "age" ->
-          Enum.map(option_vals, fn dt -> DateTime.diff(DateTime.utc_now(), dt) end)
-        true -> option_vals
-      end
-      grade_stat_rank(options_numeric, answer_lst, stat_sel in ["asc", "min"])
-    else
-      _ -> {false, Enum.map(options, fn _ -> nil end)}
-    end
-  end
-
-  defp get_feedback_match(options, answer_lists) do
-    answer_orders = Enum.map(answer_lists, &Map.new(Enum.with_index(&1)))
-    Enum.with_index(options)
-    |> List.foldr({true, []}, fn {_, idx}, {full_marks, correct_lst} ->
-      resp1 = Enum.at(answer_orders, 0) |> Map.fetch(idx)
-      no_deduct = Enum.drop(answer_orders, 1)
-      |> Enum.map(&(Map.fetch(&1, idx) == resp1))
-      |> Enum.all?()
-      mark = if no_deduct, do: "correct", else: "incorrect"
-      {no_deduct and full_marks, [%{mark: mark} | correct_lst]}
-    end)
-  end
-
-  def get_feedback(trivia_def, options, user_answers) do
-    %{answer_type: atype} = trivia_def
-    case atype do
-      "matchrank" ->
-        common_feedback = get_feedback_match(options, Enum.map(user_answers, &Map.get(&1, "answered")))
-        Enum.map(user_answers, fn _ -> common_feedback end)
-      _ ->
-        Enum.map(user_answers, fn %{"answered" => alst} ->
-          get_feedback_one_user(trivia_def, options, alst)
-        end)
+      {user_id, grade_answers_single(exp_lst, ans_lst, options)}
     end
   end
 end

@@ -15,7 +15,7 @@ export function LogViewer() {
   ];
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [included, setIncluded] = useStateNoCmp(
-    OrderedSet.from(['INFO', 'WARNING', 'ERROR'])
+    OrderedSet.from(['INFO', 'WARNING', 'ERROR', 'new→old'])
   );
   const { logger } = useContext(RestClientContext);
 

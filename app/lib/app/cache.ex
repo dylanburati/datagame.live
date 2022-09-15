@@ -47,10 +47,15 @@ defmodule App.Cache do
     GenServer.call(__MODULE__, {:insert, key, expires, value})
   end
 
-  @type t_cache_val :: any
-  @spec update(any, t_cache_val, ((t_cache_val) -> t_cache_val)) :: t_cache_val
+  @spec update(any, cache_val, (cache_val -> cache_val)) :: cache_val when cache_val: var
   def update(key, default_val, updater) do
-    GenServer.call(__MODULE__, {:update, key, default_val, updater})
+    GenServer.call(__MODULE__, {:update, key, fn -> default_val end, updater})
+  end
+
+  @spec replace!(any, (cache_val -> cache_val)) :: cache_val when cache_val: var
+  def replace!(key, updater) do
+    GenServer.call(__MODULE__,
+      {:update, key, fn -> raise "Cache doesn't contain key: #{inspect(key)}" end, updater})
   end
 
   @impl true
@@ -119,7 +124,7 @@ defmodule App.Cache do
   end
 
   @impl true
-  def handle_call({:update, key, default_val, updater}, _from, state) do
+  def handle_call({:update, key, default_supplier, updater}, _from, state) do
     now = System.system_time(:microsecond)
     result = case :ets.lookup(:app_cache, key) do
       [{^key, exp_time, value}] when now < exp_time ->
@@ -127,6 +132,7 @@ defmodule App.Cache do
         :ets.insert(:app_cache, {key, exp_time, next_val})
         next_val
       _ ->
+        default_val = default_supplier.()
         :ets.insert(:app_cache, {key, @never_expires, default_val})
         default_val
     end

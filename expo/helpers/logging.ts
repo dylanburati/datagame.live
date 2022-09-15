@@ -90,7 +90,6 @@ export class AsyncStorageLogger {
       return -a.subkey + b.subkey;
     });
     files = files.filter((f) => f.arrayLength > 0);
-    console.log('files', files);
     const lines = [];
     for (const file of files) {
       const content =

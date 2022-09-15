@@ -15,7 +15,6 @@ import { TriviaView } from './TriviaView';
 import { TriviaContainer } from './TriviaContainer';
 import { useRouteTyped } from '../helpers/navigation';
 import {
-  allCorrect,
   canAnswerTrivia,
   feedbackFor,
   isFeedbackStage,
@@ -26,7 +25,6 @@ import {
   shouldShowLobby,
   shouldShowTrivia,
   triviaIsPresent,
-  triviaRequiredAnswers,
 } from '../helpers/nplayerLogic';
 import { useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
@@ -121,28 +119,22 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       stage: RoomStage.UNKNOWN_TURN,
       trivia: undefined,
       turnId: message.turnId,
-      players: state.players.startTurn(message.userId).endTurn(message.userId),
+      players: state.players.endTurn(),
     };
   }
   if (message.event === 'turn:feedback') {
-    state.receivedAnswers.set(message.userId, message.answered);
-    if (state.receivedAnswers.size >= triviaRequiredAnswers(state)) {
-      return {
-        ...state,
-        stage: feedbackFor(state.stage),
-      };
-    } else {
-      return state;
-    }
-  }
-  if (message.event === 'turn:end') {
+    message.answers.forEach(({ userId, answered }) => {
+      state.receivedAnswers.set(userId, answered);
+    });
+    const triviaStats = message.stats
+      ? { ...message.stats, values: new Map(message.stats.values) }
+      : undefined;
     return {
       ...state,
-      stage: RoomStage.UNKNOWN_TURN,
-      players: state.players
-        .endTurn(message.userId)
-        .updateScores(message.scores),
-      turnId: message.turnId,
+      expectedAnswers: message.expectedAnswers,
+      triviaStats,
+      stage: feedbackFor(state.stage),
+      players: state.players.updateScores(message.scores),
     };
   }
 
@@ -181,30 +173,6 @@ export function RoomScreen() {
       receivedAnswers: new Map(),
     },
   });
-
-  useEffect(() => {
-    if (room.state.selfId === undefined) {
-      return;
-    }
-    if (room.state.stage !== RoomStage.UNKNOWN_TURN) {
-      return;
-    }
-    const turnsToWait = room.state.players.turnsUntil(room.state.selfId);
-    if (turnsToWait < 0) {
-      return;
-    }
-    const waitMs = turnsToWait * 10000;
-    const timeout = setTimeout(() => {
-      room.broadcast(
-        { event: 'turn:start', fromTurnId: room.state.turnId },
-        console.error
-      );
-    }, waitMs);
-
-    return () => {
-      clearTimeout(timeout);
-    };
-  }, [room, room.state]);
 
   const doNameChange = (name: string) => {
     if (!room.connected) {
@@ -254,7 +222,6 @@ export function RoomScreen() {
       {
         event: 'round:start',
         playerOrder,
-        pointTarget: 5,
       },
       console.error
     );
@@ -275,17 +242,9 @@ export function RoomScreen() {
         answered: triviaAnswers.toList(),
       });
     } else {
-      const score = allCorrect(room.state, triviaAnswers) ? 1 : 0;
-      const userIds = [room.state.selfId];
-      if (room.state.participantId !== undefined) {
-        userIds.push(room.state.participantId);
-      }
       room.broadcast({
         event: 'turn:end',
-        scoreChanges: userIds.map((userId) => ({
-          userId,
-          score,
-        })),
+        fromTurnId: room.state.turnId,
       });
     }
   };

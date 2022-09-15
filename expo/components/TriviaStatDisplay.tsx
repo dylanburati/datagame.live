@@ -1,24 +1,19 @@
 import React from 'react';
 import { FormattedDate, FormattedNumber } from 'react-intl';
-import { TriviaOption } from '../helpers/api';
+import { TriviaOption, TriviaStatDef } from '../helpers/api';
 import { relativeDeltaToNow } from '../helpers/math';
-import { RoomState, statToNumber } from '../helpers/nplayerLogic';
 
 export type TriviaStatDisplayProps = {
-  roomState: RoomState;
+  statDef?: TriviaStatDef;
+  numValue: number;
   option: TriviaOption;
 };
 
 export function TriviaStatDisplay({
-  roomState,
+  statDef,
+  numValue,
   option,
 }: TriviaStatDisplayProps) {
-  const { trivia } = roomState;
-  if (!trivia) {
-    return null;
-  }
-  const { statDef } = trivia;
-  const numValue = statToNumber(statDef, option.questionValue);
   if (statDef && !Number.isNaN(numValue)) {
     switch (statDef.type) {
       case 'km_distance':

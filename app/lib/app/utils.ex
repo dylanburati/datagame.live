@@ -162,6 +162,11 @@ defmodule App.Utils do
     result
   end
 
+  @spec take_right([elem], integer) :: [elem] when elem: var
+  def take_right(lst, count) do
+    Enum.drop(lst, max(0, length(lst) - count))
+  end
+
   defp sample_heap(heap, len) do
     Enum.reduce(1..len, {[], heap}, fn _, {acc, h} ->
       case Heap.root(h) do

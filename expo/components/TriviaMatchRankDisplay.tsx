@@ -1,19 +1,21 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
+import { TriviaOption } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { kissMarryShoot, medals } from '../helpers/iconography';
-import { argsort } from '../helpers/math';
 import { RoomState, RoomStage } from '../helpers/nplayerLogic';
 import { styles } from '../styles';
 
 export type TriviaMatchRankDisplayProps = {
   roomState: RoomState;
+  option: TriviaOption;
   answers: OrderedSet<number>;
   index: number;
 };
 
 export function TriviaMatchRankDisplay({
   roomState,
+  option,
   answers,
   index,
 }: TriviaMatchRankDisplayProps) {
@@ -41,12 +43,12 @@ export function TriviaMatchRankDisplay({
       ? roomState.players.getPlayerName(roomState.participantId) ?? ''
       : '';
 
-  const order = argsort(recvArray, (a, b) => a - b);
+  const otherAnswers = OrderedSet.from(recvArray);
   const emojiArr = /\bkill\b/i.test(trivia.question)
     ? kissMarryShoot()
     : medals();
-  const selfSource = answers.getIndex(index);
-  const otherSource = order[index];
+  const selfSource = answers.getIndex(option.id);
+  const otherSource = otherAnswers.getIndex(option.id);
   if (selfSource === undefined || otherSource === undefined) {
     return null;
   }
@@ -58,7 +60,7 @@ export function TriviaMatchRankDisplay({
           styles.justifySpaceAround,
           styles.flexCol,
           styles.mx2,
-          styles.w50,
+          styles.w40Px,
         ]}
       >
         {index === 0 && (
@@ -75,7 +77,7 @@ export function TriviaMatchRankDisplay({
           styles.justifySpaceAround,
           styles.flexCol,
           styles.mx2,
-          styles.w50,
+          styles.w40Px,
         ]}
       >
         {index === 0 && (

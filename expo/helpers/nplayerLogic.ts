@@ -1,9 +1,15 @@
 import { Presence } from 'phoenix';
 import { ViewProps } from 'react-native';
-import { RoomScoreEntry, Trivia } from './api';
+import {
+  LazyTriviaExpectation,
+  RoomScoreEntry,
+  Trivia,
+  TriviaExpectation,
+  TriviaOption,
+  TriviaStatDef,
+} from './api';
 import { OrderedSet } from './data';
 import { styles } from '../styles';
-import { argsort, relativeDeltaToNow } from './math';
 
 export enum RoomStage {
   LOBBY,
@@ -29,14 +35,12 @@ export class RoomPlayerList {
   presentIds = new Set<number>();
   playerOrder: number[];
   playerIndex: number;
-  startedPlayerIndex: number;
   scoreMap = new Map<number, number>();
 
   constructor(array: RoomPlayer[]) {
     this.array = array;
     this.playerOrder = [];
     this.playerIndex = -1;
-    this.startedPlayerIndex = -1;
   }
 
   upsert(id: number, name: string, isPresent: boolean | null): RoomPlayerList {
@@ -72,23 +76,19 @@ export class RoomPlayerList {
 
   setOrder(order: number[]): RoomPlayerList {
     this.playerOrder = order;
-    this.playerIndex = Math.min(0, order.length - 1);
-    this.startedPlayerIndex = -1;
+    this.playerIndex = -1;
     return this;
   }
 
-  endTurn(playerId: number): RoomPlayerList {
-    const indexWent = this.playerOrder.indexOf(playerId);
-    if (indexWent >= 0) {
-      this.playerIndex = (indexWent + 1) % this.playerOrder.length;
-    }
+  endTurn(): RoomPlayerList {
+    this.playerIndex = -1;
     return this;
   }
 
   startTurn(playerId: number): RoomPlayerList {
     const indexGoing = this.playerOrder.indexOf(playerId);
     if (indexGoing >= 0) {
-      this.startedPlayerIndex = indexGoing;
+      this.playerIndex = indexGoing;
     }
     return this;
   }
@@ -105,8 +105,8 @@ export class RoomPlayerList {
   }
 
   get activeId() {
-    return this.startedPlayerIndex >= 0
-      ? this.playerOrder[this.startedPlayerIndex]
+    return this.playerIndex >= 0
+      ? this.playerOrder[this.playerIndex]
       : undefined;
   }
 
@@ -117,17 +117,6 @@ export class RoomPlayerList {
 
   othersPresent(selfId: number): RoomPlayer[] {
     return this.array.filter((item) => item.id !== selfId && item.isPresent);
-  }
-
-  turnsUntil(playerId: number): number {
-    let index = this.playerOrder.indexOf(playerId);
-    if (index === -1) {
-      return -1;
-    }
-    if (index < this.playerIndex) {
-      index += this.playerOrder.length;
-    }
-    return index - this.playerIndex;
   }
 
   getScore(playerId: number) {
@@ -151,13 +140,25 @@ export type RoomState = {
   selfName?: string;
   players: RoomPlayerList;
   turnId: number;
-  trivia?: Trivia;
   participantId?: number;
+  trivia?: Trivia;
+  expectedAnswers?: LazyTriviaExpectation[];
+  triviaStats?: {
+    values: Map<number, number>;
+    definition: TriviaStatDef;
+  };
   receivedAnswers: Map<number, number[]>;
 };
 
 export type RoomStateWithTrivia = RoomState & {
   trivia: NonNullable<RoomState['trivia']>;
+};
+
+export type StyledTriviaOption = {
+  option: TriviaOption;
+  chipStyle: ViewProps['style'];
+  barGraph?: ViewProps['style'];
+  directionIndicator?: string;
 };
 
 export function shouldShowLobby(stage: RoomStage) {
@@ -212,13 +213,6 @@ export function shouldShowBottomPanel(stage: RoomStage) {
   );
 }
 
-export function triviaRequiredAnswers(state: RoomState) {
-  if (state.trivia && state.trivia.answerType === 'matchrank') {
-    return 2;
-  }
-  return 1;
-}
-
 export function hasNumericSelectionOrder(trivia: Trivia) {
   const { answerType } = trivia;
   return answerType === 'stat.asc' || answerType === 'stat.desc';
@@ -245,129 +239,125 @@ export function shouldShowSelectionOrder(state: RoomState) {
   );
 }
 
-export function statToNumber(
-  statDef: Trivia['statDef'],
-  value: string | string[],
-  _default = NaN
+function evaluateExpectations(
+  expectations: TriviaExpectation[],
+  answers: OrderedSet<number>,
+  optionIds: number[]
 ) {
-  if (
-    Array.isArray(value) ||
-    !statDef ||
-    statDef.type === 'string' ||
-    statDef.type === 'lat_lon'
-  ) {
-    return _default;
-  }
-  switch (statDef.type) {
-    case 'dollar_amount':
-      return parseFloat(value.slice(1).replace(/,/g, ''));
-    case 'number':
-    case 'km_distance':
-      return parseFloat(value.replace(/,/g, ''));
-    case 'date':
-      if (statDef.axisMod === 'age') {
-        const [years, ms] = relativeDeltaToNow(new Date(value));
-        return years + ms / 365 / 24 / 3600 / 1000;
-      }
-      return new Date(value).getTime();
-    default:
-      throw new Error('Unhandled stat type');
-  }
-}
-
-export type TriviaOptionStyle = {
-  chip: ViewProps['style'];
-  barGraph?: ViewProps['style'];
-  directionIndicator?: string;
-};
-
-export type RightWrongUnmarked = boolean | undefined;
-
-export function getChangeInRanking(
-  rankIndices: OrderedSet<number>,
-  values: number[],
-  ascending: boolean
-) {
-  const mult = ascending ? 1 : -1;
-  const getRank = (index: number) => rankIndices.getIndex(index) as number;
-  const valuesWithIndex = values.map((value, index) => ({ index, value }));
-  const bestCorrectOrder = argsort(valuesWithIndex, (a, b) => {
-    const diff = mult * (a.value - b.value);
-    if (diff !== 0) {
-      return diff;
+  const minimumPositions = new Map(optionIds.map((k) => [k, -1]));
+  const maximumPositions = new Map(optionIds.map((k) => [k, -1]));
+  for (const expObject of expectations) {
+    const { kind, group } = expObject;
+    if (kind === 'all') {
+      const minPos = expObject.minPos ?? 0;
+      const maxPos =
+        expObject.minPos !== undefined
+          ? minPos + group.length - 1
+          : optionIds.length - 1;
+      group.forEach((id) => {
+        minimumPositions.set(id, minPos);
+        maximumPositions.set(id, maxPos);
+      });
+    } else if (kind === 'any') {
+      group.forEach((id) => {
+        minimumPositions.set(id, -1);
+        maximumPositions.set(id, 0);
+      });
     }
-    return getRank(a.index) - getRank(b.index);
+  }
+
+  return optionIds.map((id) => {
+    const pos = answers.getIndex(id) ?? -1;
+    const minPos = minimumPositions.get(id) as number;
+    const maxPos = maximumPositions.get(id) as number;
+    if (minPos <= pos && pos <= maxPos) {
+      return maxPos >= 0 ? true : undefined;
+    }
+    if (minPos >= 0 && pos === -1) {
+      return true; // incorrect, but should be colored green to differentiate
+    }
+    return false;
   });
-  const correctIndexToOrder = new Map(
-    bestCorrectOrder.map((index, pos) => [index, pos])
-  );
-  return values.map(
-    (_, index) => (correctIndexToOrder.get(index) ?? -1) - getRank(index)
-  );
 }
 
-export function getCorrectArray(state: RoomState, answers: OrderedSet<number>) {
-  const { trivia } = state;
-  if (!trivia) {
-    return [];
+function getChangeInRanking(
+  expectations: TriviaExpectation[],
+  answers: OrderedSet<number>,
+  optionIds: number[]
+) {
+  const bestOrder = expectations
+    .flatMap((expObject) =>
+      expObject.kind === 'all' && expObject.minPos !== undefined
+        ? [{ group: expObject.group, minPos: expObject.minPos }]
+        : []
+    )
+    .sort((a, b) => a.minPos - b.minPos)
+    .flatMap(({ group }) =>
+      group.sort(
+        (idA, idB) => (answers.get(idA) ?? -1) - (answers.get(idB) ?? -1)
+      )
+    );
+  const bestOrderSet = OrderedSet.from(bestOrder);
+
+  return optionIds.map((id) => {
+    const pos = answers.getIndex(id) ?? -1;
+    return (bestOrderSet.getIndex(id) ?? -1) - pos;
+  });
+}
+
+export function getCorrectArray(state: RoomState) {
+  const { trivia, expectedAnswers, participantId } = state;
+  if (trivia === undefined || expectedAnswers === undefined) {
+    return { correctArray: [] };
   }
-  const { statDef, options, answerType } = trivia;
-  if (answerType === 'matchrank') {
-    const otherId =
-      state.stage === RoomStage.FEEDBACK_PARTICIPANT
-        ? state.players.activeId
-        : state.participantId;
-    const recvArray = state.receivedAnswers.get(otherId ?? -1);
-    if (!recvArray) {
-      return [];
+  const userId =
+    state.stage === RoomStage.FEEDBACK_SPECTATOR
+      ? state.players.activeId
+      : state.selfId;
+  if (userId === undefined) {
+    return { correctArray: [] };
+  }
+  const answerList = state.receivedAnswers.get(userId);
+  if (answerList === undefined) {
+    return { correctArray: [] };
+  }
+  const answers = OrderedSet.from(answerList);
+  const expectations: TriviaExpectation[] = expectedAnswers.flatMap(
+    (expObject) => {
+      if (expObject.kind === 'matchrank') {
+        if (participantId === undefined) {
+          return [];
+        }
+        const answers2 = state.receivedAnswers.get(participantId);
+        if (answers2 === undefined) {
+          return [];
+        }
+        return answers2.map((id, index) => ({
+          kind: 'all',
+          group: [id],
+          minPos: index,
+        }));
+      }
+      return [expObject];
     }
-    const order = argsort(recvArray, (a, b) => a - b);
-    return options.map(
-      (_, index) => order[index] === (answers.getIndex(index) ?? -1)
-    );
-  }
-  if (answerType === 'selection') {
-    // true for (correct, selected) and (incorrect, not selected).
-    return options.map(
-      ({ inSelection }, whichOption) => inSelection === answers.has(whichOption)
-    );
-  }
-  if (!statDef || statDef.type === 'string') {
-    return [];
-  }
-  const numeric = options.map((opt) =>
-    statToNumber(statDef, opt.questionValue, 0)
   );
-  if (answerType === 'stat.min') {
-    const idxOfMin = argsort(numeric, (a, b) => a - b)[0];
-    return numeric.map((x, whichOption) =>
-      answers.has(whichOption) ? whichOption === idxOfMin : undefined
-    );
+  const optionIds = trivia.options.map((o) => o.id);
+  const correctArray = evaluateExpectations(expectations, answers, optionIds);
+  if (hasNumericSelectionOrder(trivia)) {
+    return {
+      correctArray,
+      changeInRanking: getChangeInRanking(expectations, answers, optionIds),
+    };
   }
-  if (answerType === 'stat.max') {
-    const idxOfMax = argsort(numeric, (a, b) => -a + b)[0];
-    return numeric.map((x, whichOption) =>
-      answers.has(whichOption) ? whichOption === idxOfMax : undefined
-    );
-  }
-  if (hasSelectionOrder(trivia)) {
-    return getChangeInRanking(answers, numeric, answerType === 'stat.asc').map(
-      (change) => change === 0
-    );
-  }
-  return [];
+  return { correctArray };
 }
 
-export function allCorrect(state: RoomState, answers: OrderedSet<number>) {
-  return getCorrectArray(state, answers).every((e) => e !== false);
-}
-
-export function getOptionStyles(
+export function getStyledOptions(
   state: RoomState,
   answers: OrderedSet<number>,
   splitView: boolean
-): TriviaOptionStyle[] {
-  const { stage, trivia } = state;
+): StyledTriviaOption[] {
+  const { stage, trivia, triviaStats } = state;
   if (!trivia) {
     return [];
   }
@@ -377,42 +367,29 @@ export function getOptionStyles(
     canAnswerTrivia(stage) || selfTurn
       ? styles.bgPaperDarker
       : styles.bgGray350;
-  const { statDef, options } = trivia;
   if (!isFeedbackStage(stage)) {
-    return trivia.options.map((_, index) => ({
-      chip:
-        !splitView && answers.has(index)
+    return trivia.options.map((option) => ({
+      option,
+      chipStyle:
+        !splitView && answers.has(option.id)
           ? [styles.bgPurple300, styles.borderPurpleAccent]
           : [defaultBg],
     }));
   }
-  if (trivia.answerType === 'matchrank') {
-    const correctArr = getCorrectArray(state, answers);
-    return correctArr.map((isCorrect) => ({
-      chip:
+  const graded = getCorrectArray(state);
+  if (triviaStats == null) {
+    return graded.correctArray.map((isCorrect, index) => ({
+      option: trivia.options[index],
+      chipStyle:
         isCorrect === true
           ? [styles.borderGreenAccent, styles.bgSeaGreen300]
           : isCorrect === false
           ? [styles.borderRedAccent, styles.bgRed300]
           : [defaultBg],
     }));
-  } else if (trivia.answerType === 'selection') {
-    return options.map(({ inSelection }, whichOption) => ({
-      chip: inSelection
-        ? [styles.borderGreenAccent, styles.bgSeaGreen300]
-        : answers.has(whichOption)
-        ? [styles.borderRedAccent, styles.bgRed300]
-        : [defaultBg],
-    }));
   } else {
-    if (!statDef || statDef.type === 'string') {
-      return [];
-    }
-    const numeric = options.map((opt) =>
-      statToNumber(statDef, opt.questionValue, 0)
-    );
-    const correctArr = getCorrectArray(state, answers);
-
+    const { values, definition: statDef } = triviaStats;
+    const numeric = trivia.options.map(({ id }) => values.get(id) ?? 0);
     const axisConsideredVals = [
       ...numeric,
       ...(statDef.axisMin != null ? [statDef.axisMin] : []),
@@ -431,18 +408,16 @@ export function getOptionStyles(
     if (max !== statDef.axisMax) {
       max += padding;
     }
-    const changeInRanking = hasNumericSelectionOrder(trivia)
-      ? getChangeInRanking(answers, numeric, trivia.answerType === 'stat.asc')
-      : undefined;
     const changeSignToIndicator = new Map([
       [-1, '▲'],
       [1, '▼'],
     ]);
-    return numeric.map((num, i) => {
+    return numeric.map((num, index) => {
       const frac = (num - min) / (max - min);
-      const isCorrect = correctArr[i];
+      const isCorrect = graded.correctArray[index];
       return {
-        chip: [
+        option: trivia.options[index],
+        chipStyle: [
           styles.bgPaperDarker,
           isCorrect === true
             ? [styles.borderGreenAccent]
@@ -461,8 +436,8 @@ export function getOptionStyles(
           },
         ],
         directionIndicator:
-          changeInRanking &&
-          changeSignToIndicator.get(Math.sign(changeInRanking[i])),
+          graded.changeInRanking &&
+          changeSignToIndicator.get(Math.sign(graded.changeInRanking[index])),
       };
     });
   }

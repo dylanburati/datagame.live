@@ -1,8 +1,10 @@
 defmodule AppWeb.RoomChannel do
   use AppWeb, :channel
 
+  import App.Utils, only: [find_last: 2]
   alias AppWeb.Presence
   alias AppWeb.TriviaView
+  alias App.Entities.Party.PartyState
   alias App.Entities.RoomData
   alias App.Entities.RoomUser
   alias App.Entities.RoomService
@@ -11,7 +13,7 @@ defmodule AppWeb.RoomChannel do
   @doc """
   Gets the current version of the Room client-server protocol
   """
-  def version(), do: 2
+  def version(), do: 3
 
   @impl true
   def join("room:" <> room_code, params = %{"version" => cl_version}, socket) do
@@ -68,11 +70,9 @@ defmodule AppWeb.RoomChannel do
     with {:ok, room} <- RoomService.get_by_code(room_code),
          room_user <- Enum.find(room.users, fn %{id: id} -> id == user_id end),
          %RoomUser{} <- room_user do
-      room_data = RoomData.current_room(socket)
-
       just_joined = %{"userId" => user_id, "displayName" => room_user.name}
       room_extras = %{"creatorId" => room.creator.id, "createdAt" => room.inserted_at}
-      round_messages = RoomData.get_round(room_data)
+      round_messages = TriviaView.round_messages(RoomData.get_room(room_code))
       users = Enum.filter(room.users, fn %{id: id} -> id != user_id end)
       |> Enum.map(fn %{id: id, name: name} ->
         %{"userId" => id, "displayName" => name}
@@ -86,6 +86,45 @@ defmodule AppWeb.RoomChannel do
 
       push(socket, "presence_state", Presence.list(socket))
       {:noreply, socket}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:turn_start, socket) do
+    %{room_code: room_code} = socket.assigns
+    present_users = Presence.list(socket)
+    |> Enum.map(fn {str, _} -> String.to_integer(str, 10) end)
+    |> MapSet.new()
+
+    with turn_uid when is_integer(turn_uid) <- RoomData.get_current_player_id(room_code),
+         player_order when is_list(player_order) <- RoomData.get_player_order(room_code) do
+
+      next_turn = RoomData.turn_id(room_code)
+      other_user_id = player_order
+      |> Enum.filter(fn uid -> uid != turn_uid end)
+      |> Enum.filter(fn uid -> MapSet.member?(present_users, uid) end)
+      |> Enum.shuffle()
+      |> List.first()
+      exclude_types = if is_nil(other_user_id), do: ["matchrank"], else: []
+      past_def_ids = RoomData.player_trivia_def_ids(room_code, turn_uid)
+
+      with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia(past_def_ids, not: exclude_types) do
+        uid2 = case trivia_def.answer_type do
+          "matchrank" -> other_user_id
+          _ -> nil
+        end
+        msg = RoomData.init_turn(room_code, {turn_uid, uid2}, trivia, trivia_def.id)
+        |> TriviaView.round_message("turn:start")
+
+        broadcast(socket, "turn:start", msg)
+        {:noreply, socket}
+      else
+        _ ->
+          broadcast(socket, "turn:abort", %{"userId" => turn_uid, "turnId" => next_turn})
+          {:noreply, socket}
+      end
     else
       _ -> {:noreply, socket}
     end
@@ -123,51 +162,67 @@ defmodule AppWeb.RoomChannel do
   end
 
   @impl true
-  def handle_in("round:start", payload, socket) do
-    :ok = RoomData.current_room(socket) |> RoomData.init_round(payload)
-    broadcast(socket, "round:start", Map.put(payload, "turnId", 0))
-    {:reply, {:ok, %{}}, socket}
+  def handle_in("round:start", %{"playerOrder" => participants}, socket) when is_list(participants) do
+    %{room_code: room_code} = socket.assigns
+    with {:empty?, false} <- {:empty?, Enum.empty?(participants)},
+         {:ok, room} <- RoomService.get_by_code(room_code),
+         all_users = MapSet.new(room.users, &Map.fetch!(&1, :id)),
+         {:invalid_id, []} <- {:invalid_id, Enum.filter(participants, &(&1 not in all_users))} do
+      msg = RoomData.init_round(room_code, participants)
+      |> TriviaView.round_message("round:start")
+
+      broadcast(socket, "round:start", msg)
+      {:ok, _} = RoomData.request_turn(room_code, 0)
+      send(self(), :turn_start)
+      {:reply, {:ok, %{}}, socket}
+    else
+      {:empty?, _} -> {:reply, {:error, %{reason: "Player order can not be empty"}}, socket}
+      {:invalid_id, lst} -> {:reply, {:error, %{reason: "Player order contains invalid user ids: #{lst}"}}, socket}
+      _ -> {:reply, {:error, %{reason: "Room was deleted"}}, socket}
+    end
   end
 
   @impl true
-  def handle_in("turn:start", payload, socket) do
-    room_data = RoomData.current_room(socket)
-    with %{"fromTurnId" => from_turn} <- payload,
-         {:ok, next_turn} <- RoomData.request_turn(room_data, from_turn) do
-      present_users = Presence.list(socket)
-      |> Enum.map(fn {str, _} -> String.to_integer(str, 10) end)
-      |> MapSet.new()
-      other_user_id = RoomData.get_player_order(room_data)
-      |> Enum.filter(fn uid -> uid != room_data.user_id end)
-      |> Enum.filter(fn uid -> MapSet.member?(present_users, uid) end)
-      |> Enum.shuffle()
-      |> List.first()
-      exclude_types = if is_nil(other_user_id), do: ["matchrank"], else: []
-      past_def_ids = RoomData.player_trivia_def_ids(room_data)
+  def handle_in("round:start", _, socket) do
+    {:reply, {:error, %{reason: "Player order is required"}}, socket}
+  end
 
-      with {:ok, trivia_def, trivia} <- TriviaService.get_any_trivia(past_def_ids, not: exclude_types) do
-        trivia_out = TriviaView.trivia_json(trivia_def, trivia)
-        turn_info = %{
-          "userId" => room_data.user_id,
-          "turnId" => next_turn,
-          "trivia" => trivia_out,
-        }
-        turn_info = case trivia_def.answer_type do
-          "matchrank" -> Map.put(turn_info, "participantId", other_user_id)
-          _ -> turn_info
-        end
-        :ok = RoomData.init_turn(room_data, next_turn, turn_info, trivia_def, trivia)
-        broadcast(socket, "turn:start", turn_info)
-        {:reply, {:ok, %{}}, socket}
-      else
-        obj ->
-          reason = case obj do
-            {:error, x} -> x
-            _ -> "Unknown error"
-          end
-          broadcast(socket, "turn:abort", %{"userId" => room_data.user_id, "turnId" => next_turn})
-          {:reply, {:error, %{reason: reason}}, socket}
+  @impl true
+  def handle_in("turn:feedback", %{"answered" => answered}, socket) when is_list(answered) do
+    %{room_code: room_code, user_id: user_id} = socket.assigns
+    state = RoomData.update_answers(
+      room_code, user_id, answered
+    )
+    %PartyState{answers: answers, turn_history: turn_history} = state
+    {valid?, last_ans} = case find_last(turn_history, &(elem(&1, 0) in ["turn:start", "turn:end"])) do
+      {"turn:start", %{trivia: %{answer_type: "matchrank"}}} -> {true, map_size(answers) >= 2}
+      {"turn:start", _} -> {true, true}
+      _ -> {false, false}
+    end
+    if valid? do
+      if last_ans do
+        msg = RoomData.end_turn(room_code)
+        |> TriviaView.round_message("turn:feedback")
+        broadcast(socket, "turn:feedback", msg)
       end
+      {:reply, {:ok, %{}}, socket}
+    else
+      {:reply, {:error, %{reason: "Answers can not be submitted at this stage"}}, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("turn:feedback", _, socket) do
+    {:reply, {:error, %{reason: "Answer list is required"}}, socket}
+  end
+
+  @impl true
+  def handle_in("turn:end", payload, socket) do
+    %{room_code: room_code} = socket.assigns
+    with %{"fromTurnId" => from_turn} <- payload,
+         {:ok, _} <- RoomData.request_turn(room_code, from_turn) do
+      send(self(), :turn_start)
+      {:reply, {:ok, %{}}, socket}
     else
       ^payload -> {:reply, {:error, %{reason: "Previous turn number is required"}}, socket}
       {:noop, turn_id} ->
@@ -176,36 +231,5 @@ defmodule AppWeb.RoomChannel do
          socket}
       _ -> {:reply, {:error, %{reason: "Unknown error"}}, socket}
     end
-  end
-
-  @impl true
-  def handle_in("turn:feedback", payload, socket) do
-    room_data = RoomData.current_room(socket)
-    %{user_id: user_id} = socket.assigns
-    ans_info = Map.put(payload, "userId", user_id)
-    all_answered = RoomData.update_answers(room_data, payload)
-    broadcast(socket, "turn:feedback", ans_info)
-    with {trivia_def, trivia} <- RoomData.get_current_trivia(room_data) do
-      if trivia_def.answer_type != "matchrank" or length(all_answered) == 2 do
-        TriviaService.get_feedback(trivia_def, trivia.options, all_answered)
-        |> Enum.zip(all_answered)
-        |> Enum.each(&IO.inspect/1)
-      end
-    else
-      _ -> IO.puts("get_current_trivia failed")
-    end
-    {:reply, {:ok, %{}}, socket}
-  end
-
-  @impl true
-  def handle_in("turn:end", payload, socket) do
-    score_changes = Map.get(payload, "scoreChanges", [])
-    |> Enum.filter(&(Map.has_key?(&1, "userId") and Map.has_key?(&1, "score")))
-    |> Map.new(fn %{"userId" => k, "score" => v} -> {k, v} end)
-
-    room_data = RoomData.current_room(socket)
-    turn_info = RoomData.end_turn(room_data, score_changes)
-    broadcast(socket, "turn:end", turn_info)
-    {:reply, {:ok, %{}}, socket}
   end
 end
