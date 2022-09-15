@@ -41,7 +41,6 @@ type OptionViewProps = {
   item: TriviaOption;
   index: number;
   state: RoomStateWithTrivia;
-  answers: OrderedSet<number>;
   showUnderlay?: boolean;
   underlayStyle?: ViewProps['style'];
   directionIndicator?: string;
@@ -51,7 +50,6 @@ function OptionView({
   item,
   index,
   state,
-  answers,
   showUnderlay = false,
   underlayStyle,
   directionIndicator,
@@ -99,7 +97,6 @@ function OptionView({
           <TriviaMatchRankDisplay
             roomState={state}
             option={item}
-            answers={answers}
             index={index}
           />
         )}
@@ -213,7 +210,6 @@ function TriviaAnswerBox({
               item={option}
               index={index}
               state={state}
-              answers={triviaAnswers}
               showUnderlay={!!barGraph}
               underlayStyle={barGraph}
               directionIndicator={directionIndicator}
@@ -250,12 +246,7 @@ function TriviaAnswerBox({
             }}
           >
             {({ item: { option }, index }) => (
-              <OptionView
-                item={option}
-                index={index}
-                state={state}
-                answers={triviaAnswers}
-              />
+              <OptionView item={option} index={index} state={state} />
             )}
           </ChipPicker>
         )}
@@ -291,7 +282,6 @@ function TriviaAnswerBox({
           item={option}
           index={index}
           state={state}
-          answers={triviaAnswers}
           showUnderlay={!!barGraph}
           underlayStyle={barGraph}
         />

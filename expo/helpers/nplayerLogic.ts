@@ -310,14 +310,10 @@ export function getCorrectArray(state: RoomState) {
   if (trivia === undefined || expectedAnswers === undefined) {
     return { correctArray: [] };
   }
-  const userId =
-    state.stage === RoomStage.FEEDBACK_SPECTATOR
-      ? state.players.activeId
-      : state.selfId;
-  if (userId === undefined) {
+  if (state.players.activeId === undefined) {
     return { correctArray: [] };
   }
-  const answerList = state.receivedAnswers.get(userId);
+  const answerList = state.receivedAnswers.get(state.players.activeId);
   if (answerList === undefined) {
     return { correctArray: [] };
   }

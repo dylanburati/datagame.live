@@ -9,26 +9,27 @@ import { styles } from '../styles';
 export type TriviaMatchRankDisplayProps = {
   roomState: RoomState;
   option: TriviaOption;
-  answers: OrderedSet<number>;
   index: number;
 };
 
 export function TriviaMatchRankDisplay({
   roomState,
   option,
-  answers,
   index,
 }: TriviaMatchRankDisplayProps) {
   const { trivia } = roomState;
   if (!trivia) {
     return null;
   }
-  const otherId =
+  const firstId =
+    roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
+      ? roomState.participantId
+      : roomState.players.activeId;
+  const secondId =
     roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
       ? roomState.players.activeId
       : roomState.participantId;
-  const recvArray = roomState.receivedAnswers.get(otherId ?? -1);
-  if (!recvArray) {
+  if (firstId === undefined || secondId === undefined) {
     return null;
   }
   const selfTurn = roomState.players.activeId === roomState.selfId;
@@ -43,13 +44,19 @@ export function TriviaMatchRankDisplay({
       ? roomState.players.getPlayerName(roomState.participantId) ?? ''
       : '';
 
-  const otherAnswers = OrderedSet.from(recvArray);
+  const answerList1 = roomState.receivedAnswers.get(firstId);
+  const answerList2 = roomState.receivedAnswers.get(secondId);
+  if (answerList1 === undefined || answerList2 === undefined) {
+    return null;
+  }
+  const answers1 = OrderedSet.from(answerList1);
+  const answers2 = OrderedSet.from(answerList2);
   const emojiArr = /\bkill\b/i.test(trivia.question)
     ? kissMarryShoot()
     : medals();
-  const selfSource = answers.getIndex(option.id);
-  const otherSource = otherAnswers.getIndex(option.id);
-  if (selfSource === undefined || otherSource === undefined) {
+  const firstPos = answers1.getIndex(option.id);
+  const secondPos = answers2.getIndex(option.id);
+  if (firstPos === undefined || secondPos === undefined) {
     return null;
   }
   return (
@@ -68,7 +75,7 @@ export function TriviaMatchRankDisplay({
         )}
         <Image
           style={[styles.square20Px, styles.raiseMinusOne]}
-          source={emojiArr[selfSource]}
+          source={emojiArr[firstPos]}
         />
       </View>
       <View
@@ -85,7 +92,7 @@ export function TriviaMatchRankDisplay({
         )}
         <Image
           style={[styles.square20Px, styles.raiseMinusOne]}
-          source={emojiArr[otherSource]}
+          source={emojiArr[secondPos]}
         />
       </View>
     </>
