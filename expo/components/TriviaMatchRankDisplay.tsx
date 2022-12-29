@@ -73,10 +73,7 @@ export function TriviaMatchRankDisplay({
         {index === 0 && (
           <Text style={[styles.fontBold, styles.opacity50]}>{whoseTurn}</Text>
         )}
-        <Image
-          style={[styles.square20Px, styles.raiseMinusOne]}
-          source={emojiArr[firstPos]}
-        />
+        <Image style={[styles.square20Px]} source={emojiArr[firstPos]} />
       </View>
       <View
         style={[
@@ -90,10 +87,7 @@ export function TriviaMatchRankDisplay({
         {index === 0 && (
           <Text style={[styles.fontBold, styles.opacity50]}>{whoseTurn2}</Text>
         )}
-        <Image
-          style={[styles.square20Px, styles.raiseMinusOne]}
-          source={emojiArr[secondPos]}
-        />
+        <Image style={[styles.square20Px]} source={emojiArr[secondPos]} />
       </View>
     </>
   );

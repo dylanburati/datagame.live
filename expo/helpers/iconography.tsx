@@ -32,3 +32,7 @@ export function kissMarryShoot() {
     require('../assets/emoji/skull24.png'),
   ];
 }
+
+export function heart() {
+  return require('../assets/emoji/black_heart_suit24.png');
+}

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import React, { useState, useEffect, useReducer } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -26,11 +27,14 @@ import {
   shouldShowTrivia,
   triviaIsPresent,
 } from '../helpers/nplayerLogic';
-import { useChannel, useStateNoCmp } from '../helpers/hooks';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { ChannelHook, useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
 import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { styles } from '../styles';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { hangmanEvents } from '../tests/hangmanEvents';
 
 function roomReducer(state: RoomState, message: RoomIncomingMessage) {
   if (message.event === 'join') {
@@ -153,6 +157,15 @@ export function RoomScreen() {
   );
   const [isPanelActive, setPanelActive] = useState(false);
 
+  const initialState = {
+    roomId,
+    selfId: savedSession?.userId,
+    selfName: savedSession?.displayName,
+    stage: RoomStage.LOBBY,
+    players: new RoomPlayerList([]),
+    turnId: -1,
+    receivedAnswers: new Map(),
+  };
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
     joinParams: (state) => {
@@ -163,16 +176,29 @@ export function RoomScreen() {
     },
     disable: !nameOnJoin && !savedSession,
     reducer: roomReducer,
-    initialState: {
-      roomId,
-      selfId: savedSession?.userId,
-      selfName: savedSession?.displayName,
-      stage: RoomStage.LOBBY,
-      players: new RoomPlayerList([]),
-      turnId: -1,
-      receivedAnswers: new Map(),
-    },
+    initialState,
   });
+  // const [room, mockEvent] = useReducer(
+  //   (
+  //     { state, ...rest }: ChannelHook<any, RoomState>,
+  //     action: RoomIncomingMessage
+  //   ): ChannelHook<any, RoomState> => ({
+  //     state: roomReducer(state, action),
+  //     ...rest,
+  //   }),
+  //   {
+  //     connected: true,
+  //     loading: false,
+  //     broadcast: (evt) => {
+  //       console.log(evt);
+  //     },
+  //     error: undefined,
+  //     state: initialState,
+  //   }
+  // );
+  // useEffect(() => {
+  //   hangmanEvents.forEach((evt) => mockEvent(evt));
+  // }, [mockEvent]);
 
   const doNameChange = (name: string) => {
     if (!room.connected) {
@@ -229,13 +255,8 @@ export function RoomScreen() {
 
   const isCreator =
     room.state.selfId != null && room.state.selfId === room.state.creatorId;
-  const doneAnswering =
-    room.state.trivia && triviaAnswers.size >= room.state.trivia.minAnswers;
 
   const doAdvance = () => {
-    if (room.state.selfId === undefined || !doneAnswering) {
-      return;
-    }
     if (canAnswerTrivia(room.state.stage)) {
       room.broadcast({
         event: 'turn:feedback',
@@ -289,7 +310,6 @@ export function RoomScreen() {
               state={room.state}
               triviaAnswers={triviaAnswers}
               setTriviaAnswers={setTriviaAnswers}
-              doneAnswering={doneAnswering}
               doAdvance={doAdvance}
             />
           </TriviaContainer>

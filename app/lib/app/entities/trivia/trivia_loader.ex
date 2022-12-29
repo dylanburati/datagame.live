@@ -250,7 +250,7 @@ defimpl TriviaLoader, for: CardQuestionTagOptions do
     |> Map.new(fn %{answer: ans, question_value: qval} -> {ans, qval} end)
 
     Enum.map(options, fn opt = %{answer: ans} ->
-      Map.put(opt, :question_value, Map.get(back_qvals, ans, []))
+      Map.merge(opt, %{question_value_type: "string[]", question_value: Map.get(back_qvals, ans, [])})
     end)
   end
 end
@@ -329,7 +329,7 @@ defimpl TriviaLoader, for: TagQuestionCardOptions do
     |> Map.new(fn %{answer: ans, question_value: qval} -> {ans, qval} end)
 
     Enum.map(options, fn opt = %{answer: ans} ->
-      Map.put(opt, :question_value, Map.get(back_qvals, ans, []))
+      Map.merge(opt, %{question_value_type: "string[]", question_value: Map.get(back_qvals, ans, [])})
     end)
   end
 end
@@ -375,6 +375,7 @@ defimpl TriviaLoader, for: PairingQuestionCardOptions do
       Enum.map(result, fn {c1, c2, extra} ->
         %{
           answer: Enum.join([c1.title, c2.title], title_sep),
+          question_value_type: "string",
           question_value: extra
         }
       end)

@@ -14,6 +14,9 @@ export function TriviaStatDisplay({
   numValue,
   option,
 }: TriviaStatDisplayProps) {
+  if (!option.questionValueType) {
+    return null;
+  }
   if (statDef && !Number.isNaN(numValue)) {
     switch (statDef.type) {
       case 'km_distance':
@@ -31,7 +34,10 @@ export function TriviaStatDisplay({
           <FormattedNumber style="currency" currency="USD" value={numValue} />
         );
       case 'date':
-        if (statDef.axisMod === 'age' && !Array.isArray(option.questionValue)) {
+        if (
+          statDef.axisMod === 'age' &&
+          option.questionValueType === 'string'
+        ) {
           const birthday = new Date(option.questionValue);
           const [years] = relativeDeltaToNow(birthday);
           return (
@@ -44,10 +50,14 @@ export function TriviaStatDisplay({
         return <FormattedDate value={numValue} year="numeric" month="long" />;
     }
   }
-  const array = Array.isArray(option.questionValue)
-    ? option.questionValue
-    : [option.questionValue];
+  const array =
+    option.questionValueType === 'string'
+      ? [option.questionValue]
+      : option.questionValue;
   const commaList =
-    array.slice(0, 2).join(', ') + (array.length > 2 ? '...' : '');
+    array
+      .slice(0, 2)
+      .map((e) => e.toString())
+      .join(', ') + (array.length > 2 ? '...' : '');
   return <>{commaList}</>;
 }

@@ -1,10 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import {
-  lockAsync as lockOrientationAsync,
-  OrientationLock,
-} from 'expo-screen-orientation';
-import { locales } from 'expo-localization';
 import {
   ImageBackground,
   Keyboard,
@@ -16,33 +10,41 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Audio } from 'expo-av';
+import { useFonts } from 'expo-font';
+import { locales } from 'expo-localization';
+import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+import {
+  lockAsync as lockOrientationAsync,
+  OrientationLock,
+} from 'expo-screen-orientation';
+import { IntlProvider } from 'react-intl';
+import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { IntlProvider } from 'react-intl';
-import { Audio } from 'expo-av';
-import SegmentedControl from '@react-native-segmented-control/segmented-control';
+import { Deck, RoomUser } from './helpers/api';
+import { useSet } from './helpers/hooks';
+import { RootStackParamList, useNavigationTyped } from './helpers/navigation';
+import { loadJson, roomStorageKey } from './helpers/storage';
+import { SocketProvider } from './components/SocketProvider';
 import { GameScreen } from './components/GameScreen';
 import { Loader } from './components/Loader';
 import { GameCustomizationScreen } from './components/GameCustomizationScreen';
-import { RootStackParamList, useNavigationTyped } from './helpers/navigation';
-import { Deck, RoomUser } from './helpers/api';
-import { SocketProvider } from './components/SocketProvider';
 import {
   defaultInfoContainerStyle,
   ExpandingInfoHeader,
 } from './components/ExpandingInfoHeader';
 import { GridLayout } from './components/GridLayout';
-import { useSet } from './helpers/hooks';
-import { styleConfig, styles } from './styles';
-import config from './config';
 import { RoomScreen } from './components/RoomScreen';
-import { loadJson, roomStorageKey } from './helpers/storage';
 import { LogViewer } from './components/LogViewer';
 import {
   RestClientContext,
   RestClientProvider,
 } from './components/RestClientProvider';
 import { isAndroid, isMobile } from './constants';
+import { styleConfig, styles } from './styles';
+import config from './config';
 
 function randomColor(x: number, l2: number) {
   let h = (511 * (x + 31) * (x + 31) + 3 * (x - 31)) % 360;
@@ -341,6 +343,26 @@ export function HomeScreen() {
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    'RobotoMono-Light': require('./assets/fonts/RobotoMono-Light.ttf'),
+  });
+
+  useEffect(() => {
+    async function prepare() {
+      await SplashScreen.preventAutoHideAsync();
+    }
+    prepare();
+  }, []);
+
+  useEffect(() => {
+    async function hide() {
+      await SplashScreen.hideAsync();
+    }
+    if (fontsLoaded) {
+      hide();
+    }
+  }, [fontsLoaded]);
+
   useEffect(() => {
     Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,

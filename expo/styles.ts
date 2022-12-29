@@ -63,6 +63,12 @@ export const styles = StyleSheet.create({
   selfStart: {
     alignSelf: 'flex-start',
   },
+  selfCenter: {
+    alignSelf: 'center',
+  },
+  flexRow: {
+    flexDirection: 'row',
+  },
   flexCol: {
     flexDirection: 'column',
   },
@@ -209,6 +215,9 @@ export const styles = StyleSheet.create({
   mt8: {
     marginTop: 32,
   },
+  mr1: {
+    marginRight: 4,
+  },
   mr2: {
     marginRight: 8,
   },
@@ -230,11 +239,22 @@ export const styles = StyleSheet.create({
   mb16: {
     marginBottom: 64,
   },
+  ml1: {
+    marginLeft: 4,
+  },
   ml2: {
     marginLeft: 8,
   },
   ml4: {
     marginLeft: 16,
+  },
+  mx0_5: {
+    marginLeft: 2,
+    marginRight: 2,
+  },
+  mx1: {
+    marginLeft: 4,
+    marginRight: 4,
   },
   mx2: {
     marginLeft: 8,
@@ -287,6 +307,9 @@ export const styles = StyleSheet.create({
   text3Xl: {
     fontSize: 48,
   },
+  textTrackingExtraWide: {
+    letterSpacing: 7,
+  },
   textWhite: {
     color: '#fff',
   },
@@ -314,11 +337,20 @@ export const styles = StyleSheet.create({
   fontBold: {
     fontWeight: 'bold',
   },
+  fontMonospace: {
+    fontFamily: 'RobotoMono-Light',
+  },
   wFull: {
     width: '100%',
   },
   wHalf: {
     width: '50%',
+  },
+  wEleventh: {
+    width: '9.09%',
+  },
+  wFiveSixths: {
+    width: '90.9%',
   },
   w40Px: {
     width: 40,
@@ -438,6 +470,10 @@ export const styles = StyleSheet.create({
     height: 16,
     width: 16,
   },
+  square15Px: {
+    height: 15,
+    width: 15,
+  },
   square20Px: {
     height: 20,
     width: 20,
@@ -460,7 +496,13 @@ export const styles = StyleSheet.create({
   leadingLg: {
     lineHeight: 20,
   },
+  leadingXl: {
+    lineHeight: 40,
+  },
   raiseMinusOne: {
-    transform: [{ translateY: 0 }],
+    transform: [{ translateY: 1 }],
+  },
+  shiftOne: {
+    transform: [{ translateX: 4 }],
   },
 });

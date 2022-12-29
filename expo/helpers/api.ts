@@ -54,11 +54,27 @@ export type RoomUser = {
   displayName: string;
 };
 
+export type TriviaOptionQuestionValue =
+  | {
+      questionValueType?: undefined;
+    }
+  | {
+      questionValueType: 'string[]';
+      questionValue: string[];
+    }
+  | {
+      questionValueType: 'string';
+      questionValue: string;
+    }
+  | {
+      questionValueType: 'number[]';
+      questionValue: number[];
+    };
+
 export type TriviaOption = {
   id: number;
   answer: string;
-  questionValue: string | string[];
-};
+} & TriviaOptionQuestionValue;
 
 export type TriviaStatType =
   | 'number'

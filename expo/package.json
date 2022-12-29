@@ -77,7 +77,7 @@
   },
   "jest": {
     "preset": "jest-expo"
-  },  
+  },
   "homepage": "https://datagame.live/expo",
   "private": true,
   "name": "datagame-live-native",

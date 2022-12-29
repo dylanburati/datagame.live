@@ -69,11 +69,16 @@ defmodule AppWeb.TriviaView do
   def round_messages(_nil), do: []
 
   def option_json(option) do
-    maybe_put_lazy(
-      %{id: option.id, answer: option.answer},
+    %{id: option.id, answer: option.answer}
+    |> maybe_put_lazy(
       Map.has_key?(option, :question_value),
       :questionValue,
       fn -> option.question_value end
+    )
+    |> maybe_put_lazy(
+      Map.has_key?(option, :question_value_type),
+      :questionValueType,
+      fn -> option.question_value_type end
     )
   end
 
