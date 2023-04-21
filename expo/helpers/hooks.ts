@@ -7,10 +7,36 @@ import React, {
   useReducer,
   useState,
 } from 'react';
+import { Animated } from 'react-native';
 import { Presence } from 'phoenix';
 import { SocketContext } from '../components/SocketProvider';
 import { RestClientContext } from '../components/RestClientProvider';
 import config from '../config';
+
+export function useAnimatedValue(initialValue: number) {
+  return useRef(new Animated.Value(initialValue)).current;
+}
+
+export type FieldReference<T> = {
+  get: () => T;
+  equals: (other: unknown) => boolean;
+  set: (val: T) => void;
+};
+
+export function useReference<T>(initialValue: T): FieldReference<T> {
+  const ref = useRef(initialValue);
+  const value = useMemo(
+    () => ({
+      get: () => ref.current,
+      equals: (other: unknown) => ref.current === other,
+      set: (val: T) => {
+        ref.current = val;
+      },
+    }),
+    [ref]
+  );
+  return value;
+}
 
 export function useSet<T>(initialValue: Set<T>) {
   const set = useRef(initialValue).current;

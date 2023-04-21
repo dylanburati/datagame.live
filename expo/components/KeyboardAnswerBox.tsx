@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Image, Text, View, ViewStyle } from 'react-native';
 import {
-  canAnswerTrivia,
+  RoomPhase,
   RoomStateWithTrivia,
   StyledTriviaOption,
 } from '../helpers/nplayerLogic';
@@ -20,9 +20,12 @@ function getStyledOptions(
   defaultBg: ViewStyle
 ): StyledTriviaOption[] {
   const { trivia } = state;
+  if (trivia.questionValueType !== 'number[]') {
+    return [];
+  }
 
-  const isCorrect = (option: TriviaOption) =>
-    option.questionValueType === 'number[]' && option.questionValue.length;
+  const isCorrect = (option: TriviaOption<number[]>) =>
+    option.questionValue.length;
   return trivia.options.map((option) => ({
     option,
     chipStyle:
@@ -40,35 +43,25 @@ export function KeyboardAnswerBox({
   setTriviaAnswers,
   setDoneAnswering,
 }: AnswerBoxProps) {
-  const { stage, trivia } = state;
-  const selfTurn =
-    state.selfId !== undefined && state.selfId === state.players.activeId;
-  const defaultBg =
-    canAnswerTrivia(stage) || selfTurn
-      ? styles.bgPaperDarker
-      : styles.bgGray350;
+  const { phase, trivia } = state;
+  const defaultBg = styles.bgPaperDarker;
   const styledOptions = getStyledOptions(state, triviaAnswers, defaultBg);
   const keyboardRows = [
     styledOptions.slice(0, QWERTY[0].length),
     styledOptions.slice(QWERTY[0].length, QWERTY[0].length + QWERTY[1].length),
     styledOptions.slice(QWERTY[0].length + QWERTY[1].length),
   ];
+  if (trivia.questionValueType !== 'number[]') {
+    throw new Error();
+  }
 
   const answerLength =
-    1 +
-    Math.max(
-      ...trivia.options.flatMap((option) =>
-        option.questionValueType === 'number[]' ? option.questionValue : []
-      )
-    );
+    1 + Math.max(...trivia.options.flatMap((option) => option.questionValue));
   const partialAnswer = new Array(answerLength).fill(' ');
   const numLives = 2;
   let numWrong = 0;
   let numUnfilled = 0;
   for (const option of trivia.options) {
-    if (option.questionValueType !== 'number[]') {
-      continue;
-    }
     if (triviaAnswers.has(option.id) && option.questionValue.length === 0) {
       numWrong += 1;
     }
@@ -120,7 +113,7 @@ export function KeyboardAnswerBox({
           key={rowNum}
           style={[styles.mt2, styles.mx6, styles.row, styles.centerAll]}
           data={row}
-          disabled={!canAnswerTrivia(stage)}
+          disabled={phase !== RoomPhase.QUESTION}
           chipStyle={({ item: { chipStyle } }) => [
             styles.p0,
             styles.py2,

@@ -7,7 +7,7 @@ import React, {
   useContext,
 } from 'react';
 import { Audio } from 'expo-av';
-import { Accelerometer, ThreeAxisMeasurement } from 'expo-sensors';
+import { Accelerometer, AccelerometerMeasurement } from 'expo-sensors';
 import { Subscription } from 'expo-modules-core';
 import {
   Animated,
@@ -18,7 +18,7 @@ import {
   View,
 } from 'react-native';
 import {
-  GameStage,
+  GamePhase,
   shouldShowTimer,
   timerFormat,
   shouldRunTimer,
@@ -38,7 +38,7 @@ export type GameData = {
 }[];
 
 export type GameState = {
-  stage: GameStage;
+  phase: GamePhase;
   cards: Card[];
   history: GameData;
   gameLength: number;
@@ -55,7 +55,7 @@ type GameStateAction =
     }
   | {
       kind: 'accel';
-      data: ThreeAxisMeasurement;
+      data: AccelerometerMeasurement;
     }
   | {
       kind: 'timer';
@@ -71,13 +71,13 @@ function gameStateReducer(
   }
   if (action.kind === 'accel') {
     const accel = action.data;
-    switch (state.stage) {
-      case GameStage.NOT_LEVEL:
+    switch (state.phase) {
+      case GamePhase.NOT_LEVEL:
         if (isAngleNeutral(accel)) {
-          return { ...state, stage: GameStage.READY };
+          return { ...state, phase: GamePhase.READY };
         }
         return state;
-      case GameStage.QUESTION:
+      case GamePhase.QUESTION:
         const skipped = isAngleUp(accel);
         const confirmed = isAngleDown(accel);
         if (skipped || confirmed) {
@@ -91,18 +91,18 @@ function gameStateReducer(
           }
           return {
             ...state,
-            stage: GameStage.FEEDBACK,
+            phase: GamePhase.FEEDBACK,
             previousAnswered: confirmed,
             history,
           };
         }
         return state;
-      case GameStage.FEEDBACK_NOT_LEVEL:
+      case GamePhase.FEEDBACK_NOT_LEVEL:
         const isDone = state.cards.length === 1;
         if (isDone || isAngleNeutral(accel)) {
           return {
             ...state,
-            stage: isDone ? GameStage.FINISHED : GameStage.QUESTION,
+            phase: isDone ? GamePhase.FINISHED : GamePhase.QUESTION,
             cards: state.cards.slice(1),
           };
         }
@@ -113,25 +113,25 @@ function gameStateReducer(
   }
   if (action.kind === 'timer') {
     const elapsed = action.data - 3;
-    const timerDisplay = timerFormat(state.stage, state.gameLength, elapsed);
+    const timerDisplay = timerFormat(state.phase, state.gameLength, elapsed);
     if (state.timerDisplay !== timerDisplay) {
       return gameStateReducer({ ...state, timerDisplay }, action);
     }
     if (elapsed >= state.gameLength) {
       const question = state.cards.length ? state.cards[0] : null;
       let history = state.history;
-      if (question && state.stage === GameStage.QUESTION) {
+      if (question && state.phase === GamePhase.QUESTION) {
         history = [
           ...history,
           { id: question.id, title: question.title, answered: false },
         ];
       }
-      return { ...state, stage: GameStage.FINISHED, history };
+      return { ...state, phase: GamePhase.FINISHED, history };
     }
-    if (state.stage === GameStage.READY) {
+    if (state.phase === GamePhase.READY) {
       const seconds = Math.floor(elapsed);
       if (seconds === 0) {
-        return { ...state, stage: GameStage.QUESTION, readyCountdown: 0 };
+        return { ...state, phase: GamePhase.QUESTION, readyCountdown: 0 };
       } else if (seconds !== state.readyCountdown) {
         return { ...state, readyCountdown: seconds };
       }
@@ -154,7 +154,7 @@ function useGameState(
   isSoundReady: boolean
 ) {
   const [gameState, dispatch] = useReducer(gameStateReducer, {
-    stage: GameStage.NOT_LEVEL,
+    phase: GamePhase.NOT_LEVEL,
     history: [],
     cards,
     gameLength,
@@ -170,7 +170,7 @@ function useGameState(
     []
   );
   const timerRef = useRef<number>();
-  const willRunTimer = shouldRunTimer(gameState.stage);
+  const willRunTimer = shouldRunTimer(gameState.phase);
   useEffect(() => {
     if (!willRunTimer || !isSoundReady) {
       return;
@@ -188,7 +188,7 @@ function useGameState(
 
   useEffect(() => {
     setGameState(() => ({
-      stage: GameStage.NOT_LEVEL,
+      phase: GamePhase.NOT_LEVEL,
       history: [],
       cards,
       gameLength,
@@ -285,10 +285,10 @@ export function GameScreen() {
     isSoundReady
   );
   const switchStageChecked = useCallback(
-    (prev: GameStage, gs: GameStage) =>
+    (prev: GamePhase, gs: GamePhase) =>
       setGameState((val) => {
-        if (val.stage === prev) {
-          return { ...val, stage: gs };
+        if (val.phase === prev) {
+          return { ...val, phase: gs };
         }
         return val;
       }),
@@ -298,7 +298,7 @@ export function GameScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (gameState.stage === GameStage.FEEDBACK) {
+    if (gameState.phase === GamePhase.FEEDBACK) {
       const confirmed = gameState.previousAnswered;
       setBgColor(confirmed ? '#33ff99' : '#fcd34d');
       fadeAnim.setValue(1);
@@ -307,29 +307,43 @@ export function GameScreen() {
         duration: 800,
         useNativeDriver: false,
       }).start(() =>
-        switchStageChecked(GameStage.FEEDBACK, GameStage.FEEDBACK_NOT_LEVEL)
+        switchStageChecked(GamePhase.FEEDBACK, GamePhase.FEEDBACK_NOT_LEVEL)
       );
     }
   }, [
     fadeAnim,
-    gameState.stage,
+    gameState.phase,
     gameState.previousAnswered,
     switchStageChecked,
   ]);
-  const [qNotLevelText, setQNotLevelText] = useState('');
+  const [angleInstructions, setAngleInstructions] = useState({
+    counter: 0,
+    text: '',
+  });
   useEffect(() => {
-    if (gameState.stage === GameStage.FEEDBACK_NOT_LEVEL) {
-      // delay by one render so that this doesn't always show up
-      setQNotLevelText('HOLD PHONE LEVEL');
-    } else {
-      setQNotLevelText('');
+    if (gameState.phase === GamePhase.FEEDBACK_NOT_LEVEL) {
+      // delay so that this doesn't always show up
+      if (angleInstructions.text === '') {
+        const counterCopy = angleInstructions.counter;
+        setTimeout(
+          () =>
+            setAngleInstructions((val) =>
+              val.counter === counterCopy
+                ? { counter: counterCopy + 1, text: 'HOLD PHONE LEVEL' }
+                : val
+            ),
+          200
+        );
+      }
+    } else if (angleInstructions.text !== '') {
+      setAngleInstructions((val) => ({ counter: val.counter + 1, text: '' }));
     }
-  }, [gameState.stage]);
+  }, [angleInstructions, gameState.phase]);
 
   useEffect(() => {
     const soundEffect = async () => {
       try {
-        if (gameState.stage === GameStage.FEEDBACK) {
+        if (gameState.phase === GamePhase.FEEDBACK) {
           if (gameState.previousAnswered) {
             await sounds.confirm.replayAsync();
           } else {
@@ -343,10 +357,10 @@ export function GameScreen() {
     };
 
     soundEffect();
-  }, [gameState.stage, gameState.previousAnswered, logger, sounds]);
+  }, [gameState.phase, gameState.previousAnswered, logger, sounds]);
   useEffect(() => {
     const soundEffect = async () => {
-      if (gameState.stage === GameStage.FINISHED) {
+      if (gameState.phase === GamePhase.FINISHED) {
         try {
           await sounds.finish.replayAsync();
         } catch (err) {
@@ -357,7 +371,7 @@ export function GameScreen() {
     };
 
     soundEffect();
-  }, [gameState.stage, logger, sounds]);
+  }, [gameState.phase, logger, sounds]);
   useEffect(() => {
     if (gameState.readyCountdown < -3) {
       return;
@@ -394,19 +408,19 @@ export function GameScreen() {
   }, [gameState.inFinalSeconds, logger, sounds]);
 
   let mainText = 'HOLD UP TO YOUR FOREHEAD';
-  const { stage } = gameState;
-  switch (stage) {
-    case GameStage.READY:
+  const { phase } = gameState;
+  switch (phase) {
+    case GamePhase.READY:
       mainText = 'GET READY. . .';
       break;
-    case GameStage.QUESTION:
-    case GameStage.FEEDBACK:
+    case GamePhase.QUESTION:
+    case GamePhase.FEEDBACK:
       mainText = gameState.cards[0].title;
       break;
-    case GameStage.FEEDBACK_NOT_LEVEL:
-      mainText = qNotLevelText;
+    case GamePhase.FEEDBACK_NOT_LEVEL:
+      mainText = angleInstructions.text;
       break;
-    case GameStage.FINISHED:
+    case GamePhase.FINISHED:
       mainText = '';
       break;
     default:
@@ -430,7 +444,7 @@ export function GameScreen() {
           { backgroundColor: bgColor, opacity: fadeAnim },
         ]}
       />
-      {stage === GameStage.FINISHED ? (
+      {phase === GamePhase.FINISHED ? (
         <ScrollView contentContainerStyle={[styles.itemsCenter, styles.mt2]}>
           <Text style={[styles.textLg, styles.m4]}>{score}</Text>
           {gameState.history.map((item) => (
@@ -464,13 +478,7 @@ export function GameScreen() {
             </Text>
           </View>
           <View style={[styles.row, styles.p2]}>
-            <View
-              style={[
-                styles.row,
-                styles.flexBasisOneThird,
-                styles.justifyStart,
-              ]}
-            >
+            <View style={[styles.row, styles.flex1, styles.justifyStart]}>
               <TouchableOpacity
                 style={[styles.bgRed, styles.p2]}
                 onLongPress={() => navigation.goBack()}
@@ -478,18 +486,12 @@ export function GameScreen() {
                 <Text style={styles.textWhite}>HOLD TO QUIT</Text>
               </TouchableOpacity>
             </View>
-            <View
-              style={[
-                styles.row,
-                styles.flexBasisOneThird,
-                styles.justifyCenter,
-              ]}
-            >
-              {shouldShowTimer(stage) && (
+            <View style={[styles.row, styles.flex1, styles.justifyCenter]}>
+              {shouldShowTimer(phase) && (
                 <Text style={styles.textXl}>{gameState.timerDisplay}</Text>
               )}
             </View>
-            <View style={styles.flexBasisOneThird} />
+            <View style={styles.flex1} />
           </View>
         </>
       )}

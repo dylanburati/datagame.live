@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { Text, View, ViewStyle } from 'react-native';
 import {
-  canAnswerTrivia,
   isFeedbackStage,
   StyledTriviaOption,
   getCorrectArray,
   RoomStateWithTrivia,
+  RoomPhase,
+  expectedAnswersArePresent,
 } from '../helpers/nplayerLogic';
 import { AnimatedChipPicker } from './AnimatedChipPicker';
 import { AnswerBoxProps } from './AnswerBoxProps';
@@ -17,18 +18,17 @@ function getStyledOptions(
   state: RoomStateWithTrivia,
   defaultBg: ViewStyle
 ): StyledTriviaOption[] {
-  const { stage, trivia, triviaStats } = state;
-  if (triviaStats == null) {
-    return [];
-  }
-  if (!isFeedbackStage(stage)) {
+  const { phase, trivia, triviaStats } = state;
+  if (triviaStats == null || !isFeedbackStage(phase)) {
     return trivia.options.map((option) => ({
       option,
       chipStyle: [defaultBg],
     }));
   }
 
-  const graded = getCorrectArray(state);
+  const graded = expectedAnswersArePresent(state)
+    ? getCorrectArray(state)
+    : { correctArray: [] };
   const { values, definition: statDef } = triviaStats;
   const numeric = trivia.options.map(({ id }) => values.get(id) ?? 0);
   const axisConsideredVals = [
@@ -55,7 +55,7 @@ function getStyledOptions(
   ]);
   return numeric.map((num, index) => {
     const frac = (num - min) / (max - min);
-    const isCorrect = graded.correctArray[index];
+    const isCorrect: boolean | undefined = graded.correctArray[index];
     return {
       option: trivia.options[index],
       chipStyle: [
@@ -89,23 +89,16 @@ export function RankingAnswerBox({
   setTriviaAnswers,
   setDoneAnswering,
 }: AnswerBoxProps) {
-  const { stage, trivia, triviaStats } = state;
-  const selfTurn =
-    state.selfId !== undefined && state.selfId === state.players.activeId;
-  const defaultBg =
-    canAnswerTrivia(stage) || selfTurn
-      ? styles.bgPaperDarker
-      : styles.bgGray350;
+  const { trivia, triviaStats } = state;
+  const defaultBg = styles.bgPaperDarker;
   const styledOptions = getStyledOptions(state, defaultBg);
-  const splitViewSortable = selfTurn
-    ? triviaAnswers
-        .toList()
-        .map((id) => styledOptions.find(({ option }) => option.id === id))
-        .filter((opt): opt is StyledTriviaOption => opt !== undefined)
-    : styledOptions;
-  const splitViewBank = selfTurn
-    ? styledOptions.filter(({ option }) => !triviaAnswers.has(option.id))
-    : [];
+  const splitViewSortable = triviaAnswers
+    .toList()
+    .map((id) => styledOptions.find(({ option }) => option.id === id))
+    .filter((opt): opt is StyledTriviaOption => opt !== undefined);
+  const splitViewBank = styledOptions.filter(
+    ({ option }) => !triviaAnswers.has(option.id)
+  );
   useEffect(() => {
     setDoneAnswering(triviaAnswers.size >= trivia.minAnswers);
   }, [setDoneAnswering, trivia.minAnswers, triviaAnswers.size]);
@@ -129,7 +122,7 @@ export function RankingAnswerBox({
           styles.mt2,
           chipStyle,
         ]}
-        disabled={!canAnswerTrivia(state.stage)}
+        disabled={state.phase !== RoomPhase.QUESTION}
         sorter={({ option: a }, { option: b }) => {
           const mult = trivia.answerType === 'stat.desc' ? -1 : 1;
           const av = triviaStats?.values.get(a.id) ?? 0;
@@ -137,7 +130,7 @@ export function RankingAnswerBox({
           const diff = mult * (av - bv);
           return diff !== 0 ? diff : a.id - b.id;
         }}
-        showSorted={isFeedbackStage(state.stage)}
+        showSorted={isFeedbackStage(state.phase)}
         onDragEnd={(fromPos, toPos) => {
           if (fromPos !== toPos) {
             setTriviaAnswers(triviaAnswers.reinsertAt(fromPos, toPos));
@@ -162,7 +155,7 @@ export function RankingAnswerBox({
           </Text>
         </View>
       )}
-      {canAnswerTrivia(state.stage) && (
+      {state.phase === RoomPhase.QUESTION && (
         <ChipPicker
           style={[
             styles.mt4,
@@ -173,7 +166,6 @@ export function RankingAnswerBox({
           ]}
           data={splitViewBank}
           keySelector={({ option }) => String(option.id)}
-          disabled={!canAnswerTrivia(state.stage)}
           chipStyle={({ item: { chipStyle } }) => [
             styles.p0,
             styles.roundedLg,

@@ -1,4 +1,3 @@
-import { Presence } from 'phoenix';
 import { ViewProps } from 'react-native';
 import {
   LazyTriviaExpectation,
@@ -10,16 +9,11 @@ import {
 } from './api';
 import { OrderedSet } from './data';
 
-export enum RoomStage {
+export enum RoomPhase {
+  NOT_REGISTERED,
   LOBBY,
-  WAITING_ROOM,
-  UNKNOWN_TURN,
-  SELF_TURN,
-  PARTICIPANT,
-  SPECTATOR,
-  FEEDBACK_SELF_TURN,
-  FEEDBACK_PARTICIPANT,
-  FEEDBACK_SPECTATOR,
+  QUESTION,
+  FEEDBACK,
   RESULTS,
 }
 
@@ -32,14 +26,10 @@ export type RoomPlayer = {
 export class RoomPlayerList {
   array: RoomPlayer[];
   presentIds = new Set<number>();
-  playerOrder: number[];
-  playerIndex: number;
   scoreMap = new Map<number, number>();
 
   constructor(array: RoomPlayer[]) {
     this.array = array;
-    this.playerOrder = [];
-    this.playerIndex = -1;
   }
 
   upsert(id: number, name: string, isPresent: boolean | null): RoomPlayerList {
@@ -52,42 +42,7 @@ export class RoomPlayerList {
     if (index === -1) {
       this.array.push(newItem);
     } else {
-      this.array[index] = {
-        ...newItem,
-        isPresent: this.array[index].isPresent,
-      };
-    }
-    return this;
-  }
-
-  updatePresences(presence: Presence): RoomPlayerList {
-    this.presentIds.clear();
-    presence.list((userId, _metas) => {
-      const numId = Number(userId);
-      this.presentIds.add(numId);
-    });
-    this.array = this.array.map((item) => ({
-      ...item,
-      isPresent: this.presentIds.has(item.id),
-    }));
-    return this;
-  }
-
-  setOrder(order: number[]): RoomPlayerList {
-    this.playerOrder = order;
-    this.playerIndex = -1;
-    return this;
-  }
-
-  endTurn(): RoomPlayerList {
-    this.playerIndex = -1;
-    return this;
-  }
-
-  startTurn(playerId: number): RoomPlayerList {
-    const indexGoing = this.playerOrder.indexOf(playerId);
-    if (indexGoing >= 0) {
-      this.playerIndex = indexGoing;
+      this.array[index] = newItem;
     }
     return this;
   }
@@ -101,17 +56,6 @@ export class RoomPlayerList {
 
   getPlayerName(id: number) {
     return this.array.find((item) => item.id === id)?.name;
-  }
-
-  get activeId() {
-    return this.playerIndex >= 0
-      ? this.playerOrder[this.playerIndex]
-      : undefined;
-  }
-
-  get activeName() {
-    const activeId = this.activeId;
-    return activeId !== undefined ? this.getPlayerName(activeId) : undefined;
   }
 
   othersPresent(selfId: number): RoomPlayer[] {
@@ -130,28 +74,43 @@ export class RoomPlayerList {
   }
 }
 
-export type RoomState = {
-  stage: RoomStage;
+export type RoomZeroState = {
   roomId: string;
-  creatorId?: number;
-  createdAt?: string;
-  selfId?: number;
-  selfName?: string;
+};
+
+export type RoomLobbyState = RoomZeroState & {
+  creatorId: number;
+  createdAt: string;
+  selfId: number;
+  selfName: string;
   players: RoomPlayerList;
+};
+
+export type RoomQuestionState = RoomLobbyState & {
+  trivia: Trivia;
   turnId: number;
   participantId?: number;
-  trivia?: Trivia;
-  expectedAnswers?: LazyTriviaExpectation[];
   triviaStats?: {
     values: Map<number, number>;
     definition: TriviaStatDef;
   };
   receivedAnswers: Map<number, number[]>;
+  deadline: number;
+  durationMillis: number;
 };
 
-export type RoomStateWithTrivia = RoomState & {
-  trivia: NonNullable<RoomState['trivia']>;
+export type RoomFeedbackState = RoomQuestionState & {
+  expectedAnswers: LazyTriviaExpectation[];
 };
+
+export type RoomStateWithTrivia =
+  | ({ phase: RoomPhase.QUESTION } & RoomQuestionState)
+  | ({ phase: RoomPhase.FEEDBACK } & RoomFeedbackState);
+
+export type RoomState =
+  | RoomStateWithTrivia
+  | ({ phase: RoomPhase.NOT_REGISTERED } & RoomZeroState)
+  | ({ phase: RoomPhase.LOBBY } & RoomLobbyState);
 
 export type StyledTriviaOption = {
   option: TriviaOption;
@@ -160,82 +119,31 @@ export type StyledTriviaOption = {
   directionIndicator?: string;
 };
 
-export function shouldShowLobby(stage: RoomStage) {
-  return stage === RoomStage.LOBBY || stage === RoomStage.WAITING_ROOM;
-}
-
-export function feedbackFor(stage: RoomStage) {
-  const lut: Partial<Record<RoomStage, RoomStage>> = {
-    [RoomStage.SELF_TURN]: RoomStage.FEEDBACK_SELF_TURN,
-    [RoomStage.PARTICIPANT]: RoomStage.FEEDBACK_PARTICIPANT,
-    [RoomStage.SPECTATOR]: RoomStage.FEEDBACK_SPECTATOR,
-  };
-  return lut[stage] || stage;
-}
-
-export function isFeedbackStage(stage: RoomStage) {
-  return (
-    stage === RoomStage.FEEDBACK_SELF_TURN ||
-    stage === RoomStage.FEEDBACK_PARTICIPANT ||
-    stage === RoomStage.FEEDBACK_SPECTATOR
-  );
-}
-
-export function shouldShowAdvanceButton(state: RoomState) {
-  return (
-    state.stage === RoomStage.SELF_TURN ||
-    state.stage === RoomStage.PARTICIPANT ||
-    state.stage === RoomStage.FEEDBACK_SELF_TURN
-  );
+export function isFeedbackStage(phase: RoomPhase) {
+  return phase === RoomPhase.FEEDBACK;
 }
 
 export function triviaIsPresent(
   state: RoomState
 ): state is RoomStateWithTrivia {
-  return !!state.trivia;
-}
-
-export function shouldShowTrivia(stage: RoomStage) {
   return (
-    stage === RoomStage.SELF_TURN ||
-    stage === RoomStage.PARTICIPANT ||
-    isFeedbackStage(stage) ||
-    stage === RoomStage.SPECTATOR
+    state.phase === RoomPhase.QUESTION || state.phase === RoomPhase.FEEDBACK
   );
 }
 
-export function shouldShowBottomPanel(stage: RoomStage) {
-  return (
-    stage !== RoomStage.LOBBY &&
-    stage !== RoomStage.WAITING_ROOM &&
-    stage !== RoomStage.RESULTS
-  );
+export function expectedAnswersArePresent(
+  state: RoomState
+): state is { phase: RoomPhase.FEEDBACK } & RoomFeedbackState {
+  return state.phase === RoomPhase.FEEDBACK;
+}
+
+export function shouldShowBottomPanel(phase: RoomPhase) {
+  return phase !== RoomPhase.LOBBY && phase !== RoomPhase.RESULTS;
 }
 
 export function hasNumericSelectionOrder(trivia: Trivia) {
   const { answerType } = trivia;
   return answerType === 'stat.asc' || answerType === 'stat.desc';
-}
-
-function hasSelectionOrder(trivia: Trivia) {
-  const { answerType } = trivia;
-  return (
-    answerType === 'stat.asc' ||
-    answerType === 'stat.desc' ||
-    answerType === 'matchrank'
-  );
-}
-
-export function canAnswerTrivia(stage: RoomStage) {
-  return stage === RoomStage.SELF_TURN || stage === RoomStage.PARTICIPANT;
-}
-
-export function shouldShowSelectionOrder(state: RoomState) {
-  return (
-    canAnswerTrivia(state.stage) &&
-    state.trivia &&
-    hasSelectionOrder(state.trivia)
-  );
 }
 
 function evaluateExpectations(
@@ -304,15 +212,9 @@ function getChangeInRanking(
   });
 }
 
-export function getCorrectArray(state: RoomState) {
+export function getCorrectArray(state: RoomFeedbackState) {
   const { trivia, expectedAnswers, participantId } = state;
-  if (trivia === undefined || expectedAnswers === undefined) {
-    return { correctArray: [] };
-  }
-  if (state.players.activeId === undefined) {
-    return { correctArray: [] };
-  }
-  const answerList = state.receivedAnswers.get(state.players.activeId);
+  const answerList = state.receivedAnswers.get(state.selfId);
   if (answerList === undefined) {
     return { correctArray: [] };
   }

@@ -29,6 +29,8 @@ defmodule App.Entities.TriviaDef do
     timestamps()
   end
 
+  def stat_answer_types(), do: ~w(stat.asc stat.desc stat.min stat.max)
+
   def validations(trivia_def) do
     changeset = trivia_def
     |> validate_required([
@@ -39,7 +41,7 @@ defmodule App.Entities.TriviaDef do
     |> validate_inclusion(:question_source, ~w(card.title card.cat1 card.cat2 tag pairing))
     |> validate_inclusion(:option_source, ~w(card.title card.cat1 card.cat2 tag stat))
     |> validate_inclusion(:selection_compare_type, ~w(t eq neq))
-    |> validate_inclusion(:answer_type, ~w(selection stat.asc stat.desc stat.min stat.max matchrank))
+    |> validate_inclusion(:answer_type, stat_answer_types() ++ ~w(selection hangman matchrank))
     |> validate_number(:selection_length, greater_than: 0)
     |> validate_number(
       :selection_max_true,

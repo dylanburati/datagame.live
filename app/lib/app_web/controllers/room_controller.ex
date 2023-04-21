@@ -5,7 +5,7 @@ defmodule AppWeb.RoomController do
   alias AppWeb.RoomChannel
 
   def create(conn, body) do
-    vroom = RoomChannel.version()
+    vroom = RoomChannel.api_version()
     with %{"version" => ^vroom} <- body do
       with %{"hostNickname" => host_nickname} <- body do
         case RoomService.create(host_nickname) do

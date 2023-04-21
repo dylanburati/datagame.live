@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFonts } from 'expo-font';
-import { locales } from 'expo-localization';
+import { getLocales } from 'expo-localization';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -42,7 +42,7 @@ import {
   RestClientContext,
   RestClientProvider,
 } from './components/RestClientProvider';
-import { isAndroid, isMobile } from './constants';
+import { isMobile } from './constants';
 import { styleConfig, styles } from './styles';
 import config from './config';
 
@@ -202,12 +202,7 @@ export function HomeScreen() {
                       style={[styles.deckTile, styles.hFull]}
                     >
                       <ImageBackground
-                        style={[
-                          styles.centerAll,
-                          styles.wFull,
-                          styles.hFull,
-                          styles.p2,
-                        ]}
+                        style={[styles.centerAll, styles.wFull, styles.hFull]}
                         imageStyle={[
                           styles.roundedMd,
                           {
@@ -227,6 +222,7 @@ export function HomeScreen() {
                               styles.textCenter,
                               styles.textLg,
                               styles.textWhite,
+                              styles.p2,
                             ]}
                           >
                             {deck.title.toLocaleUpperCase()}
@@ -333,7 +329,9 @@ export function HomeScreen() {
             </TouchableOpacity>
           </View>
           <View style={[styles.mx6, styles.my8]}>
-            <Text style={styles.textSm}>Copyright (c) 2021 Dylan Burati</Text>
+            <Text style={styles.textSm}>
+              Copyright (c) 2021-2023 Dylan Burati
+            </Text>
           </View>
         </ScrollView>
       </AvoidKeyboardView>
@@ -368,8 +366,7 @@ export default function App() {
       playsInSilentModeIOS: true,
     });
   }, []);
-  // TODO: switch to jsc-intl variant so that react-intl works on all locales
-  const locale = isAndroid ? 'en-US' : locales[0];
+  const locale = getLocales()[0].languageTag;
 
   return (
     <IntlProvider locale={locale}>

@@ -1,4 +1,3 @@
-import { Presence } from 'phoenix';
 import { ColorValue } from 'react-native';
 import config from '../config';
 import { AsyncStorageLogger } from './logging';
@@ -54,27 +53,11 @@ export type RoomUser = {
   displayName: string;
 };
 
-export type TriviaOptionQuestionValue =
-  | {
-      questionValueType?: undefined;
-    }
-  | {
-      questionValueType: 'string[]';
-      questionValue: string[];
-    }
-  | {
-      questionValueType: 'string';
-      questionValue: string;
-    }
-  | {
-      questionValueType: 'number[]';
-      questionValue: number[];
-    };
-
-export type TriviaOption = {
+export type TriviaOption<T> = {
   id: number;
   answer: string;
-} & TriviaOptionQuestionValue;
+  questionValue: T;
+};
 
 export type TriviaStatType =
   | 'number'
@@ -84,13 +67,35 @@ export type TriviaStatType =
   | 'km_distance'
   | 'lat_lon';
 
+export type TriviaQuestionValueType = 'string' | 'string[]' | 'number';
+
 export type Trivia = {
   question: string;
-  options: TriviaOption[];
   answerType: string;
   minAnswers: number;
   maxAnswers: number;
-};
+} & (
+  | {
+      questionValueType: null;
+      options: TriviaOption<undefined>[];
+      prefilledAnswers: TriviaOption<undefined>[];
+    }
+  | {
+      questionValueType: 'string';
+      options: TriviaOption<string>[];
+      prefilledAnswers: TriviaOption<string>[];
+    }
+  | {
+      questionValueType: 'string[]';
+      options: TriviaOption<string[]>[];
+      prefilledAnswers: TriviaOption<string[]>[];
+    }
+  | {
+      questionValueType: 'number[]';
+      options: TriviaOption<number[]>[];
+      prefilledAnswers: TriviaOption<number[]>[];
+    }
+);
 
 export type TriviaStatDef = {
   label: string;
@@ -130,35 +135,23 @@ export type RoomIncomingMessage =
       users: {
         userId: number;
         displayName: string;
+        isPresent: boolean;
       }[];
       roundMessages: RoomIncomingMessage[];
-    }
-  | {
-      event: 'user:new';
-      userId: number;
-      displayName: string;
-      isNow: boolean;
     }
   | {
       event: 'user:change';
       userId: number;
       displayName: string;
-    }
-  | {
-      event: 'round:start';
-      playerOrder: number[];
+      isPresent: boolean;
     }
   | {
       event: 'turn:start';
-      userId: number;
       turnId: number;
       trivia: Trivia;
       participantId?: number;
-    }
-  | {
-      event: 'turn:abort';
-      userId: number;
-      turnId: number;
+      deadline: number;
+      durationMillis: number;
     }
   | {
       event: 'turn:feedback';
@@ -170,14 +163,12 @@ export type RoomIncomingMessage =
         values: [number, number][];
         definition: TriviaStatDef;
       };
+      deadline: number;
+      durationMillis: number;
     }
   | {
       event: 'round:scores';
       scores: RoomScoreEntry[];
-    }
-  | {
-      event: 'presence';
-      presence: Presence;
     };
 
 export type RoomOutgoingMessage =
@@ -187,10 +178,10 @@ export type RoomOutgoingMessage =
     }
   | {
       event: 'round:start';
-      playerOrder: number[];
     }
   | {
       event: 'turn:feedback';
+      turnId: number;
       answered: number[];
     }
   | {

@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
 import {
-  canAnswerTrivia,
+  expectedAnswersArePresent,
   getCorrectArray,
   isFeedbackStage,
+  RoomPhase,
   RoomStateWithTrivia,
   StyledTriviaOption,
 } from '../helpers/nplayerLogic';
@@ -18,9 +19,9 @@ function getStyledOptions(
   answers: OrderedSet<number>,
   defaultBg: ViewStyle
 ): StyledTriviaOption[] {
-  const { stage, trivia } = state;
+  const { phase, trivia } = state;
 
-  if (!isFeedbackStage(stage)) {
+  if (!isFeedbackStage(phase)) {
     return trivia.options.map((option) => ({
       option,
       chipStyle: answers.has(option.id)
@@ -28,7 +29,9 @@ function getStyledOptions(
         : [defaultBg],
     }));
   }
-  const graded = getCorrectArray(state);
+  const graded = expectedAnswersArePresent(state)
+    ? getCorrectArray(state)
+    : { correctArray: [] };
   return graded.correctArray.map((isCorrect, index) => ({
     option: trivia.options[index],
     chipStyle:
@@ -46,13 +49,8 @@ export function MultipleChoiceAnswerBox({
   setTriviaAnswers,
   setDoneAnswering,
 }: AnswerBoxProps) {
-  const { stage, trivia } = state;
-  const selfTurn =
-    state.selfId !== undefined && state.selfId === state.players.activeId;
-  const defaultBg =
-    canAnswerTrivia(stage) || selfTurn
-      ? styles.bgPaperDarker
-      : styles.bgGray350;
+  const { phase, trivia } = state;
+  const defaultBg = styles.bgPaperDarker;
   const styledOptions = getStyledOptions(state, triviaAnswers, defaultBg);
   useEffect(() => {
     setDoneAnswering(triviaAnswers.size >= trivia.minAnswers);
@@ -68,7 +66,7 @@ export function MultipleChoiceAnswerBox({
         styles.itemsStretch,
       ]}
       data={styledOptions}
-      disabled={!canAnswerTrivia(stage)}
+      disabled={phase !== RoomPhase.QUESTION}
       chipStyle={({ item: { chipStyle } }) => [
         styles.p0,
         styles.roundedLg,

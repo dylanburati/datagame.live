@@ -1,56 +1,49 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import React, { useState, useEffect, useReducer } from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SwipeablePanel } from 'rn-swipeable-panel';
-import { SwipeUpHandle } from './SwipeUpHandle';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import React, { useState, useEffect, useContext, useReducer } from 'react';
+import { SafeAreaView, ScrollView } from 'react-native';
 import { RoomCreatorControls } from './RoomCreatorControls';
 import { RoomLobbyControls } from './RoomLobbyControls';
-import { RoomLeaderboard } from './RoomLeaderboard';
 import { TriviaView } from './TriviaView';
 import { TriviaContainer } from './TriviaContainer';
 import { useRouteTyped } from '../helpers/navigation';
 import {
-  canAnswerTrivia,
-  feedbackFor,
-  isFeedbackStage,
   RoomPlayerList,
-  RoomStage,
+  RoomPhase,
   RoomState,
-  shouldShowBottomPanel,
-  shouldShowLobby,
-  shouldShowTrivia,
   triviaIsPresent,
 } from '../helpers/nplayerLogic';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { ChannelHook, useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
 import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { styles } from '../styles';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { hangmanEvents } from '../tests/hangmanEvents';
+import { RoomStatusBar } from './RoomStatusBar';
+import { RestClientContext } from './RestClientProvider';
 
-function roomReducer(state: RoomState, message: RoomIncomingMessage) {
+function roomReducer(
+  state: RoomState,
+  message: RoomIncomingMessage
+): RoomState {
   if (message.event === 'join') {
     const { roundMessages, users, ...room } = message;
     storeJson(roomStorageKey(state.roomId), room);
     const withRoom: RoomState = {
-      ...state,
+      roomId: state.roomId,
+      phase: RoomPhase.LOBBY,
       creatorId: message.creatorId,
       createdAt: message.createdAt,
       selfId: message.userId,
       selfName: message.displayName,
-      players: state.players.upsert(message.userId, message.displayName, true),
+      players: new RoomPlayerList([]).upsert(
+        message.userId,
+        message.displayName,
+        true
+      ),
     };
     const withUsers: RoomState = users.reduce(
-      (acc, user) =>
-        roomReducer(acc, { event: 'user:new', isNow: false, ...user }),
+      (acc: RoomState, user) =>
+        roomReducer(acc, { event: 'user:change', ...user }),
       withRoom
     );
     const withRound: RoomState = roundMessages.reduce(
@@ -59,15 +52,9 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
     );
     return withRound;
   }
-  if (message.event === 'user:new') {
-    return {
-      ...state,
-      players: state.players.upsert(
-        message.userId,
-        message.displayName,
-        message.isNow ? true : null
-      ),
-    };
+  if (state.phase === RoomPhase.NOT_REGISTERED) {
+    // TODO should error
+    return state;
   }
   if (message.event === 'user:change') {
     if (message.userId === state.selfId) {
@@ -77,56 +64,30 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       ...state,
       selfName:
         message.userId === state.selfId ? message.displayName : state.selfName,
-      players: state.players.upsert(message.userId, message.displayName, true),
+      players: state.players.upsert(
+        message.userId,
+        message.displayName,
+        message.isPresent
+      ),
     };
-  }
-  if (message.event === 'presence') {
-    return {
-      ...state,
-      players: state.players.updatePresences(message.presence),
-    };
-  }
-  if (message.event === 'round:start') {
-    return {
-      ...state,
-      stage:
-        state.selfId != null && message.playerOrder.includes(state.selfId)
-          ? RoomStage.UNKNOWN_TURN
-          : RoomStage.WAITING_ROOM,
-      players: state.players.setOrder(message.playerOrder),
-      turnId: 0,
-    };
-  }
-  if (state.stage === RoomStage.WAITING_ROOM) {
-    return state;
   }
   if (message.event === 'turn:start') {
-    state.receivedAnswers.clear();
     return {
       ...state,
-      stage:
-        message.userId === state.selfId
-          ? RoomStage.SELF_TURN
-          : message.participantId === state.selfId
-          ? RoomStage.PARTICIPANT
-          : RoomStage.SPECTATOR,
+      phase: RoomPhase.QUESTION,
       trivia: message.trivia,
       turnId: message.turnId,
+      deadline: message.deadline,
+      durationMillis: message.durationMillis,
       participantId: message.participantId,
-      players: state.players.startTurn(message.userId),
-    };
-  }
-  if (message.event === 'turn:abort') {
-    state.receivedAnswers.clear();
-    return {
-      ...state,
-      stage: RoomStage.UNKNOWN_TURN,
-      trivia: undefined,
-      turnId: message.turnId,
-      players: state.players.endTurn(),
+      receivedAnswers: new Map(),
     };
   }
   if (message.event === 'turn:feedback') {
+    if (state.phase !== RoomPhase.QUESTION) {
+      // TODO should error
+      return state;
+    }
     message.answers.forEach(({ userId, answered }) => {
       state.receivedAnswers.set(userId, answered);
     });
@@ -135,9 +96,11 @@ function roomReducer(state: RoomState, message: RoomIncomingMessage) {
       : undefined;
     return {
       ...state,
+      phase: RoomPhase.FEEDBACK,
       expectedAnswers: message.expectedAnswers,
       triviaStats,
-      stage: feedbackFor(state.stage),
+      deadline: message.deadline,
+      durationMillis: message.durationMillis,
       players: state.players.updateScores(message.scores),
     };
   }
@@ -149,33 +112,37 @@ export function RoomScreen() {
   const {
     params: { roomId, savedSession },
   } = useRouteTyped<'Room'>();
+  const { logger } = useContext(RestClientContext);
   const [isModifyingRoom, setModifyingRoom] = useState(false);
   const [nameOnJoin, setNameOnJoin] = useState('');
   const [renameError, setRenameError] = useState<[string, string]>();
   const [triviaAnswers, setTriviaAnswers] = useStateNoCmp(
     OrderedSet.empty<number>()
   );
-  const [isPanelActive, setPanelActive] = useState(false);
+  // const [isPanelActive, setPanelActive] = useState(false);
 
-  const initialState = {
+  const initialState: RoomState = {
     roomId,
-    selfId: savedSession?.userId,
-    selfName: savedSession?.displayName,
-    stage: RoomStage.LOBBY,
-    players: new RoomPlayerList([]),
-    turnId: -1,
-    receivedAnswers: new Map(),
+    phase: RoomPhase.NOT_REGISTERED,
   };
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({
     topic: `room:${roomId}`,
-    joinParams: (state) => {
-      if (state.selfId != null) {
-        return { userId: state.selfId, displayName: state.selfName };
+    joinParams: (_state) => {
+      if (savedSession != null) {
+        return {
+          userId: savedSession.userId,
+          displayName: savedSession.displayName,
+        };
       }
       return { displayName: nameOnJoin };
     },
     disable: !nameOnJoin && !savedSession,
-    reducer: roomReducer,
+    reducer: (s, a) => {
+      // TODO FIX!!!
+      const s2 = roomReducer(s, a);
+      logger.info([s, a, s2]);
+      return s2;
+    },
     initialState,
   });
   // const [room, mockEvent] = useReducer(
@@ -216,53 +183,33 @@ export function RoomScreen() {
     }
   }, [room.error]);
 
+  const turnId = triviaIsPresent(room.state) ? room.state.turnId : -1;
   useEffect(() => {
-    if (room.state.trivia) {
-      // answers could have been entered in another session
-      const answersLost =
-        room.state.stage === RoomStage.FEEDBACK_SELF_TURN &&
-        triviaAnswers.isEmpty();
-      if (room.state.stage === RoomStage.FEEDBACK_SPECTATOR || answersLost) {
-        const feedbackAns = room.state.receivedAnswers.get(
-          room.state.players.activeId ?? -1
-        );
-        if (feedbackAns) {
-          setTriviaAnswers(triviaAnswers.clear().extend(feedbackAns));
-        }
-      } else if (!isFeedbackStage(room.state.stage)) {
-        setTriviaAnswers(triviaAnswers.clear());
-      }
-    }
-  }, [
-    room.state.players,
-    room.state.receivedAnswers,
-    room.state.stage,
-    room.state.trivia,
-    setTriviaAnswers,
-    triviaAnswers,
-  ]);
+    setTriviaAnswers(triviaAnswers.clear());
+  }, [setTriviaAnswers, triviaAnswers, turnId]);
 
-  const doBegin = (playerOrder: number[]) => {
+  const doBegin = (_playerOrder: number[]) => {
     setModifyingRoom(false);
     room.broadcast(
       {
         event: 'round:start',
-        playerOrder,
       },
       console.error
     );
   };
 
   const isCreator =
-    room.state.selfId != null && room.state.selfId === room.state.creatorId;
+    room.state.phase !== RoomPhase.NOT_REGISTERED &&
+    room.state.selfId === room.state.creatorId;
 
   const doAdvance = () => {
-    if (canAnswerTrivia(room.state.stage)) {
+    if (room.state.phase === RoomPhase.QUESTION) {
       room.broadcast({
         event: 'turn:feedback',
+        turnId: room.state.turnId,
         answered: triviaAnswers.toList(),
       });
-    } else {
+    } else if (room.state.phase === RoomPhase.FEEDBACK) {
       room.broadcast({
         event: 'turn:end',
         fromTurnId: room.state.turnId,
@@ -271,8 +218,10 @@ export function RoomScreen() {
   };
   return (
     <SafeAreaView style={styles.topContainer}>
+      <RoomStatusBar room={room} />
       <ScrollView style={styles.flex1} keyboardShouldPersistTaps="handled">
-        {shouldShowLobby(room.state.stage) && (
+        {(room.state.phase === RoomPhase.LOBBY ||
+          room.state.phase === RoomPhase.NOT_REGISTERED) && (
           <RoomLobbyControls
             roomState={room.state}
             roomError={room.error}
@@ -282,7 +231,7 @@ export function RoomScreen() {
           />
         )}
         {isCreator &&
-          (shouldShowLobby(room.state.stage) || isModifyingRoom) && (
+          (room.state.phase === RoomPhase.LOBBY || isModifyingRoom) && (
             <RoomCreatorControls
               roomState={room.state}
               canCancel={isModifyingRoom}
@@ -290,17 +239,17 @@ export function RoomScreen() {
               doBegin={doBegin}
             />
           )}
-        {room.state.stage === RoomStage.WAITING_ROOM && (
+        {/* {room.state.phase === RoomPhase.WAITING_ROOM && (
           <Text style={[styles.mt4, styles.textCenter]}>
             Ask the host to add you to the next round.
           </Text>
         )}
-        {room.state.stage === RoomStage.UNKNOWN_TURN && (
+        {room.state.phase === RoomPhase.UNKNOWN_TURN && (
           <Text style={[styles.mt4, styles.textCenter]}>
             Waiting for another player to start their turn.
           </Text>
-        )}
-        {shouldShowTrivia(room.state.stage) && triviaIsPresent(room.state) && (
+        )} */}
+        {triviaIsPresent(room.state) && (
           <TriviaContainer
             state={room.state}
             disabled={isModifyingRoom}
@@ -315,7 +264,7 @@ export function RoomScreen() {
           </TriviaContainer>
         )}
       </ScrollView>
-      {!isPanelActive && shouldShowBottomPanel(room.state.stage) && (
+      {/* {!isPanelActive && shouldShowBottomPanel(room.state.phase) && (
         <SwipeUpHandle onSwipe={() => setPanelActive(true)}>
           <TouchableOpacity
             style={[
@@ -332,7 +281,7 @@ export function RoomScreen() {
           </TouchableOpacity>
         </SwipeUpHandle>
       )}
-      {shouldShowBottomPanel(room.state.stage) && (
+      {shouldShowBottomPanel(room.state.phase) && (
         <SwipeablePanel
           fullWidth={true}
           onlySmall={true}
@@ -371,7 +320,7 @@ export function RoomScreen() {
             </View>
           )}
         </SwipeablePanel>
-      )}
+      )} */}
     </SafeAreaView>
   );
 }

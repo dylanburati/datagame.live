@@ -1,11 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Text, TouchableOpacity } from 'react-native';
 import { OrderedSet } from '../helpers/data';
 import {
-  RoomStage,
+  RoomPhase,
   RoomStateWithTrivia,
-  canAnswerTrivia,
-  shouldShowAdvanceButton,
   hasNumericSelectionOrder,
 } from '../helpers/nplayerLogic';
 import { KeyboardAnswerBox } from './KeyboardAnswerBox';
@@ -26,30 +24,41 @@ export function TriviaView({
   doAdvance,
   setTriviaAnswers,
 }: TriviaViewProps) {
-  const [doneAnswering, setDoneAnswering] = useState(false);
+  const [lastAnsweredId, setLastAnsweredId] = useState(-1);
+  const doneAnswering = lastAnsweredId >= state.turnId;
+  const setDoneAnswering = useCallback(
+    (isDone: boolean) => {
+      setLastAnsweredId(isDone ? state.turnId : state.turnId - 1);
+    },
+    [state.turnId]
+  );
   const advanceBtnBackground =
-    state.stage === RoomStage.FEEDBACK_SELF_TURN
+    state.phase === RoomPhase.FEEDBACK
       ? styles.bgBlue900
       : doneAnswering
       ? styles.bgGreen
       : styles.bgGray300;
-  const advanceBtnTextStyle =
-    state.stage === RoomStage.FEEDBACK_SELF_TURN || doneAnswering
-      ? styles.textWhite
-      : styles.textPenFaint;
+  const canAdvance = state.phase === RoomPhase.FEEDBACK || doneAnswering;
+  const advanceBtnTextStyle = canAdvance
+    ? styles.textWhite
+    : styles.textPenFaint;
   const AnswerBox = hasNumericSelectionOrder(state.trivia)
     ? RankingAnswerBox
     : state.trivia.answerType === 'hangman'
     ? KeyboardAnswerBox
     : MultipleChoiceAnswerBox;
   const submitWhenReady = state.trivia.answerType === 'hangman';
-  const autohideSubmit = submitWhenReady && canAnswerTrivia(state.stage);
+  const autohideSubmit = state.phase === RoomPhase.QUESTION && submitWhenReady;
 
   useEffect(() => {
-    if (doneAnswering && submitWhenReady) {
+    if (
+      doneAnswering &&
+      state.phase === RoomPhase.QUESTION &&
+      submitWhenReady
+    ) {
       doAdvance();
     }
-  }, [doAdvance, doneAnswering, submitWhenReady]);
+  }, [doAdvance, doneAnswering, state.phase, submitWhenReady]);
 
   return (
     <>
@@ -62,7 +71,7 @@ export function TriviaView({
         setTriviaAnswers={setTriviaAnswers}
         setDoneAnswering={setDoneAnswering}
       />
-      {shouldShowAdvanceButton(state) && !autohideSubmit && (
+      {!autohideSubmit && (
         <TouchableOpacity
           style={[
             styles.roundedLg,
@@ -72,13 +81,11 @@ export function TriviaView({
             styles.p4,
             advanceBtnBackground,
           ]}
-          disabled={
-            !doneAnswering && state.stage !== RoomStage.FEEDBACK_SELF_TURN
-          }
+          disabled={!canAdvance}
           onPress={doAdvance}
         >
           <Text style={[styles.textCenter, advanceBtnTextStyle]}>
-            {canAnswerTrivia(state.stage) ? 'SUBMIT' : 'CONTINUE'}
+            {state.phase === RoomPhase.QUESTION ? 'SUBMIT' : 'CONTINUE'}
           </Text>
         </TouchableOpacity>
       )}

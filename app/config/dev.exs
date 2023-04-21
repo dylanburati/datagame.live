@@ -1,4 +1,4 @@
-use Mix.Config
+import Config
 
 # Configure your database
 config :app, App.Repo,
@@ -6,7 +6,7 @@ config :app, App.Repo,
   password: "datagamedev",
   database: "datagame",
   hostname: "127.0.0.1",
-  port: elem(Integer.parse(System.get_env("DATABASE_PORT", "15433"), 10), 0),
+  port: String.to_integer(System.get_env("DATABASE_PORT", "5432"), 10),
   show_sensitive_data_on_connection_error: true,
   pool_size: 10,
   log: false
@@ -15,22 +15,18 @@ config :app, App.Repo,
 # debugging and code reloading.
 #
 # The watchers configuration can be used to run external
-# watchers to your application. For example, we use it
-# with webpack to recompile .js and .css sources.
+# watchers to your application.
 config :app, AppWeb.Endpoint,
   http: [port: 4000],
+  server: true,
   debug_errors: true,
   code_reloader: true,
   check_origin: false,
   watchers: [
-    node: [
-      "node_modules/webpack/bin/webpack.js",
-      "--mode",
-      "development",
-      "--watch-stdin",
-      cd: Path.expand("../assets", __DIR__)
-    ]
+    # Start the esbuild watcher by calling Esbuild.install_and_run(:default, args)
+    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]}
   ]
+
 
 # ## SSL Support
 #

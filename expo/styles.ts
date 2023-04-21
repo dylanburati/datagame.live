@@ -78,16 +78,22 @@ export const styles = StyleSheet.create({
   flexGrow: {
     flexGrow: 1,
   },
+  flexShrink: {
+    flexShrink: 1,
+  },
   flexInitial: {
     flexGrow: 0,
     flexShrink: 1,
     flexBasis: 'auto',
   },
+  flex0: {
+    flex: 0,
+  },
   flex1: {
     flex: 1,
   },
-  flexBasisOneThird: {
-    flex: 1, //: '33.33%',
+  flexBasis16: {
+    flexBasis: 16,
   },
   absolute: {
     position: 'absolute',
@@ -154,6 +160,9 @@ export const styles = StyleSheet.create({
   },
   p1: {
     padding: 4,
+  },
+  p1_5: {
+    padding: 6,
   },
   p2: {
     padding: 8,
@@ -355,6 +364,9 @@ export const styles = StyleSheet.create({
   w40Px: {
     width: 40,
   },
+  h1: {
+    height: 4,
+  },
   hFull: {
     height: '100%',
   },
@@ -391,6 +403,9 @@ export const styles = StyleSheet.create({
   },
   borderBottom: {
     borderBottomWidth: 1,
+  },
+  borderRight: {
+    borderRightWidth: 1,
   },
   borderBottom8: {
     borderBottomWidth: 8,
@@ -477,6 +492,19 @@ export const styles = StyleSheet.create({
   square20Px: {
     height: 20,
     width: 20,
+  },
+  square44Px: {
+    height: 44,
+    width: 44,
+  },
+  maxW40Px: {
+    maxWidth: 40,
+  },
+  maxH54Px: {
+    maxHeight: 54,
+  },
+  aspect1: {
+    aspectRatio: 1,
   },
   z999: {
     zIndex: 999,

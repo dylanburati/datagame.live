@@ -6,6 +6,7 @@ defmodule App.Entities.Trivia.PairingQuestionCardOptions do
     :compare_type,
     :max_correct_options,
     :max_incorrect_options,
+    :answer_type,
     # ===============
     :question_subset,
     :question_pairing,

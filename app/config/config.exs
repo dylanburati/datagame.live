@@ -1,11 +1,4 @@
-# This file is responsible for configuring your application
-# and its dependencies with the aid of the Mix.Config module.
-#
-# This configuration file is loaded before any dependency and
-# is restricted to this project.
-
-# General application configuration
-use Mix.Config
+import Config
 
 config :app,
   ecto_repos: [App.Repo]
@@ -26,7 +19,25 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-if Mix.env() != :test do
+config :esbuild,
+  version: "0.16.4",
+  default: [
+    args: ~w(js/app.js --bundle --target=es2016 --outdir=../priv/static/assets),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
+
+config :dart_sass,
+  version: "1.44.0",
+  default: [
+    args: [
+      "css/app.scss",
+      "../priv/static/css/app.css"
+    ],
+    cd: Path.expand("../assets", __DIR__)
+  ]
+
+if config_env() != :test do
   config :app, :googlesheets,
     client_email: System.get_env("GOOGLEAUTH_CLIENT_EMAIL") ||
       raise "GOOGLEAUTH_CLIENT_EMAIL is missing"
@@ -44,4 +55,4 @@ end
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
-import_config "#{Mix.env()}.exs"
+import_config "#{config_env()}.exs"

@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, View, ViewProps } from 'react-native';
 import { RoomStateWithTrivia, isFeedbackStage } from '../helpers/nplayerLogic';
 import { TriviaStatDisplay } from './TriviaStatDisplay';
-import { TriviaOption } from '../helpers/api';
+import { Trivia } from '../helpers/api';
 import { styles } from '../styles';
 import { TriviaMatchRankDisplay } from './TriviaMatchRankDisplay';
 
@@ -26,7 +26,7 @@ function Underlay({ style }: UnderlayProps) {
 }
 
 export type MultipleChoiceOptionViewProps = {
-  item: TriviaOption;
+  item: Trivia['options'][0];
   index: number;
   state: RoomStateWithTrivia;
   showUnderlay?: boolean;
@@ -47,7 +47,8 @@ export function MultipleChoiceOptionView({
   }
 
   const isMatchRank = state.trivia.answerType === 'matchrank';
-  if (isFeedbackStage(state.stage)) {
+  if (isFeedbackStage(state.phase)) {
+    console.log(51, state);
     return (
       <>
         <View
@@ -79,7 +80,6 @@ export function MultipleChoiceOptionView({
               />
             </Text>
           )}
-          {}
         </View>
         {isMatchRank && (
           <TriviaMatchRankDisplay
@@ -121,7 +121,7 @@ export function MultipleChoiceOptionView({
           styles.textMd,
           styles.fontBold,
           styles.my2_5,
-          // isFeedbackStage(state.stage) ? [styles.mt2] : [styles.my4],
+          // isFeedbackStage(state.phase) ? [styles.mt2] : [styles.my4],
         ]}
       >
         {item.answer}

@@ -1,4 +1,4 @@
-use Mix.Config
+import Config
 
 # Configure your database
 #
@@ -10,7 +10,7 @@ config :app, App.Repo,
   password: "datagametest",
   database: "datagametest",
   hostname: "localhost",
-  port: 15433,
+  port: port: String.to_integer(System.get_env("DATABASE_PORT", "5432"), 10),
   pool: Ecto.Adapters.SQL.Sandbox
 
 # We don't run a server during test. If one is required,

@@ -23,6 +23,18 @@ import {
 } from 'react-native-gesture-handler';
 import { isAndroid, isIOS, isWeb } from '../constants';
 import { DataStatus, overwriteMap } from '../helpers/data';
+import {
+  FieldReference,
+  useAnimatedValue as useValue,
+  useReference,
+} from '../helpers/hooks';
+import {
+  midpoint,
+  Rect,
+  rectAbove,
+  rectBelow,
+  rectCenter,
+} from '../helpers/math';
 import { styleConfig, styles } from '../styles';
 
 export type AnimatedChipPickerProvidedProps<T> = {
@@ -45,71 +57,6 @@ export type AnimatedChipPickerProps<T> = {
 };
 
 const ZERO_ANIM = new Animated.Value(0);
-
-function useValue(initialValue: number) {
-  return useRef(new Animated.Value(initialValue)).current;
-}
-
-type FieldReference<T> = {
-  get: () => T;
-  equals: (other: unknown) => boolean;
-  set: (val: T) => void;
-};
-
-function useReference<T>(initialValue: T): FieldReference<T> {
-  const ref = useRef(initialValue);
-  const value = useMemo(
-    () => ({
-      get: () => ref.current,
-      equals: (other: unknown) => ref.current === other,
-      set: (val: T) => {
-        ref.current = val;
-      },
-    }),
-    [ref]
-  );
-  return value;
-}
-
-type XY = {
-  x: number;
-  y: number;
-};
-
-type Rect = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-function rectCenter(r: Rect) {
-  return {
-    x: r.x + 0.5 * r.width,
-    y: r.y + 0.5 * r.height,
-  };
-}
-
-function rectAbove(src: Rect, neighbor: Rect) {
-  return {
-    ...src,
-    y: neighbor.y - src.height,
-  };
-}
-
-function rectBelow(src: Rect, neighbor: Rect) {
-  return {
-    ...src,
-    y: neighbor.y + neighbor.height,
-  };
-}
-
-function midpoint(p1: XY, p2: XY) {
-  return {
-    x: 0.5 * p1.x + 0.5 * p2.x,
-    y: 0.5 * p1.y + 0.5 * p2.y,
-  };
-}
 
 type AnimContext = {
   anyActiveAnim: Animated.Value;
@@ -221,7 +168,7 @@ function Cell({
     }
   }, [index, updateCellMeasurements]);
 
-  let translateY: Animated.AnimatedInterpolation;
+  let translateY: Animated.AnimatedInterpolation<number>;
   if (sortTranslation) {
     translateY = sortTranslation;
   } else if (cellKey === activeKey) {

@@ -1,12 +1,12 @@
 import React from 'react';
 import { FormattedDate, FormattedNumber } from 'react-intl';
-import { TriviaOption, TriviaStatDef } from '../helpers/api';
+import { Trivia, TriviaStatDef } from '../helpers/api';
 import { relativeDeltaToNow } from '../helpers/math';
 
 export type TriviaStatDisplayProps = {
   statDef?: TriviaStatDef;
   numValue: number;
-  option: TriviaOption;
+  option: Trivia['options'][0];
 };
 
 export function TriviaStatDisplay({
@@ -14,10 +14,10 @@ export function TriviaStatDisplay({
   numValue,
   option,
 }: TriviaStatDisplayProps) {
-  if (!option.questionValueType) {
-    return null;
-  }
-  if (statDef && !Number.isNaN(numValue)) {
+  if (statDef) {
+    if (Number.isNaN(numValue)) {
+      return null;
+    }
     switch (statDef.type) {
       case 'km_distance':
         return (
@@ -36,7 +36,7 @@ export function TriviaStatDisplay({
       case 'date':
         if (
           statDef.axisMod === 'age' &&
-          option.questionValueType === 'string'
+          typeof option.questionValue === 'string'
         ) {
           const birthday = new Date(option.questionValue);
           const [years] = relativeDeltaToNow(birthday);
@@ -50,14 +50,13 @@ export function TriviaStatDisplay({
         return <FormattedDate value={numValue} year="numeric" month="long" />;
     }
   }
-  const array =
-    option.questionValueType === 'string'
-      ? [option.questionValue]
-      : option.questionValue;
+  if (typeof option.questionValue === 'undefined') {
+    return null;
+  }
+  const array = Array.isArray(option.questionValue)
+    ? option.questionValue
+    : [option.questionValue];
   const commaList =
-    array
-      .slice(0, 2)
-      .map((e) => e.toString())
-      .join(', ') + (array.length > 2 ? '...' : '');
+    array.slice(0, 2).join(', ') + (array.length > 2 ? '...' : '');
   return <>{commaList}</>;
 }
