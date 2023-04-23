@@ -48,7 +48,6 @@ export function MultipleChoiceOptionView({
 
   const isMatchRank = state.trivia.answerType === 'matchrank';
   if (isFeedbackStage(state.phase)) {
-    console.log(51, state);
     return (
       <>
         <View

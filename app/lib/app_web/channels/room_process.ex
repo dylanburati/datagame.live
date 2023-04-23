@@ -254,18 +254,30 @@ defmodule AppWeb.RoomProcess do
   end
 
   @turn_feedback_timeout 15_000
-  defp turn_feedback_payload(turn_id, trivia, score_map, answers_map) do
-    score_entries = Enum.map(score_map, fn {k, v} -> %{userId: k, score: v} end)
-    answers_entries = Enum.map(answers_map, fn {k, v} -> %{userId: k, answered: v} end)
+  defp turn_feedback_payload_partial(turn_id, current_scores, grade_map) do
+    score_entries = Enum.map(current_scores, fn {k, v} ->
+      turn_grade = Map.get(grade_map, k)
+      v = if turn_grade == true, do: v + 1, else: v
+      %{userId: k, score: v, turnGrade: turn_grade}
+    end)
 
-    result = %{
+    %{
       turnId: turn_id,
       scores: score_entries,
-      answers: answers_entries,
-      expectedAnswers: TriviaView.expected_answers_json(trivia.expected_answers),
-      durationMillis: @turn_feedback_timeout,
-      deadline: System.system_time(:millisecond) + @turn_feedback_timeout,
     }
+  end
+
+  defp turn_feedback_payload_full(turn_id, current_scores, grade_map, answers_map, trivia, opts \\ []) do
+    answers_entries = Enum.map(answers_map, fn {k, v} -> %{userId: k, answered: v} end)
+    result =
+      turn_feedback_payload_partial(turn_id, current_scores, grade_map)
+      |> Map.merge(%{
+        answers: answers_entries,
+        isFinal: Keyword.get(opts, :is_final, false),
+        expectedAnswers: TriviaView.expected_answers_json(trivia.expected_answers),
+        durationMillis: @turn_feedback_timeout,
+        deadline: System.system_time(:millisecond) + @turn_feedback_timeout,
+      })
     case Map.get(trivia, :stats) do
       %{values: values, definition: stat_def} ->
         stats = %{
@@ -296,109 +308,128 @@ defmodule AppWeb.RoomProcess do
       list_connected_participating_clients(state_agent)
       |> Enum.each(&push(&1, "turn:start", st_payload))
 
-      answers_map =
+      {grade_map, answers_map} =
         stream(state_agent, @turn_start_timeout)
-        |> Stream.filter(fn
-          {:join, client, others_connected} ->
-            payload = join_payload(state_agent, client, round_messages)
+        |> Enum.reduce_while({%{}, %{}}, fn
+          {:join, client, others_connected}, acc ->
+            {acc_grade_map, acc_answers_map} = acc
+            fb_message = if Map.has_key?(acc_answers_map, client.user_id) do
+              turn_feedback_payload_full(turn_id, current_scores, acc_grade_map, acc_answers_map, trivia)
+              |> Map.put(:event, "turn:feedback")
+            else
+              turn_feedback_payload_partial(turn_id, current_scores, acc_grade_map)
+              |> Map.put(:event, "turn:progress")
+            end
+            payload = join_payload(state_agent, client, round_messages ++ [fb_message])
             push(client, "join", payload)
             if client.user_id in game_participants do
               opayload = user_change_payload({client, true})
               Enum.each(others_connected, &push(&1, "user:change", opayload))
             end
-            false
+            {:cont, acc}
 
-          {:leave, client, others_connected} ->
+          {:leave, client, others_connected}, acc ->
             if client.user_id in game_participants do
               opayload = user_change_payload({client, false})
               Enum.each(others_connected, &push(&1, "user:change", opayload))
             end
-            false
+            {:cont, acc}
 
-          {:"turn:feedback", client, %{"turnId" => ans_turn_id}} ->
-            (check(ans_turn_id == turn_id, client, "Incorrect turn ID in message")
-             and check(client.user_id in game_participants, client, "Invalid message type for spectator"))
+          {:"turn:feedback", client, %{"turnId" => ans_turn_id, "answered" => answered}}, acc ->
+            with true <- check(ans_turn_id == turn_id, client, "incorrect turn ID in message"),
+                 true <- check(client.user_id in game_participants, client, "invalid message type for spectator"),
+                 true <- check(is_list(answered), client, "invalid message content for type 'turn:feedback'"),
+                 true <- check(Enum.all?(answered, &is_number/1), client, "invalid message content for type 'turn:feedback'")
+            do
+              {_, acc_answers_map} = acc
+              reply(client, {:ok, %{}})
+              acc_answers_map = Map.put(acc_answers_map, client.user_id, answered)
+              acc_grade_map = TriviaService.grade_answers(trivia, acc_answers_map)
 
-          {:"turn:feedback", client, _} ->
-            check(false, client, "invalid message content for type 'turn:feedback'")
-
-          {event, client, _} ->
-            check(false, client, "invalid message type for question phase #{Atom.to_string(event)}")
-        end)
-        |> Enum.reduce_while(%{}, fn {_, client, payload}, acc ->
-          with %{"answered" => answered} when is_list(answered) <- payload,
-               true <- Enum.all?(answered, &is_number/1) do
-            # TODO feedback during question phase?
-            reply(client, {:ok, %{}})
-            next_acc = Map.put(acc, client.user_id, answered)
-            if map_size(next_acc) >= length(game_participants) do
-              {:halt, next_acc}
+              if map_size(acc_answers_map) >= length(game_participants) do
+                {:halt, {acc_grade_map, acc_answers_map}}
+              else
+                uid = client.user_id
+                list_connected_participating_clients(state_agent)
+                |> Enum.each(fn
+                  (c = %{user_id: ^uid}) ->
+                    fb_payload = turn_feedback_payload_full(turn_id, current_scores, acc_grade_map, acc_answers_map, trivia)
+                    push(c, "turn:feedback", fb_payload)
+                  c ->
+                    fb_payload = turn_feedback_payload_partial(turn_id, current_scores, acc_grade_map)
+                    push(c, "turn:progress", fb_payload)
+                end)
+                {:cont, {acc_grade_map, acc_answers_map}}
+              end
             else
-              {:cont, next_acc}
+              _ -> {:cont, acc}
             end
-          else
-            _ ->
-              check(false, client, "invalid message content for type 'turn:feedback'")
-              {:cont, acc}
-          end
+
+          {:"turn:feedback", client, _}, acc ->
+            check(false, client, "invalid message content for type 'turn:feedback'")
+            {:cont, acc}
+
+          {event, client, _}, acc ->
+            check(false, client, "invalid message type for question phase #{Atom.to_string(event)}")
+            {:cont, acc}
         end)
+
+      score_map =
+        grade_map
+        |> Enum.filter(fn {_, correct?} -> correct? end)
+        |> Map.new(fn {id, _} -> {id, 1} end)
+        |> Map.merge(current_scores, fn _, v1, v2 -> v1 + v2 end)
+      grade_map = Map.new(game_participants, fn k -> {k, Map.get(grade_map, k, false)} end)
+      fb_payload = turn_feedback_payload_full(
+        turn_id, current_scores, grade_map, answers_map, trivia, is_final: true
+      )
+      round_messages = [
+        Map.put(st_payload, :event, "turn:start"),
+        Map.put(fb_payload, :event, "turn:feedback"),
+      ]
+      list_connected_participating_clients(state_agent)
+      |> Enum.each(&push(&1, "turn:feedback", fb_payload))
+
+      # End after 15s or after everyone hits "continue"
+      stream(state_agent, @turn_feedback_timeout)
+      |> Stream.filter(fn
+        {:join, client, others_connected} ->
+          payload = join_payload(state_agent, client, round_messages)
+          push(client, "join", payload)
+          if client.user_id in game_participants do
+            opayload = user_change_payload({client, true})
+            Enum.each(others_connected, &push(&1, "user:change", opayload))
+          end
+          false
+
+        {:leave, client, others_connected} ->
+          if client.user_id in game_participants do
+            opayload = user_change_payload({client, false})
+            Enum.each(others_connected, &push(&1, "user:change", opayload))
+          end
+          false
+
+        {:"turn:end", client, %{"fromTurnId" => end_turn_id}} ->
+          (check(end_turn_id == turn_id, client, "Incorrect turn ID in message")
+            and check(client.user_id in game_participants, client, "Invalid message type for spectator"))
+
+        {:"turn:end", client, _} ->
+          check(false, client, "invalid message content for type 'turn:end'")
+
+        {event, client, _} ->
+          check(false, client, "invalid message type for question phase #{Atom.to_string(event)}")
+      end)
+      |> Enum.reduce_while(MapSet.new(), fn {_, client, _}, acc ->
+        reply(client, {:ok, %{}})
+        next_acc = MapSet.put(acc, client.user_id)
+        if MapSet.size(next_acc) >= length(game_participants) do
+          {:halt, next_acc}
+        else
+          {:cont, next_acc}
+        end
+      end)
 
       if map_size(answers_map) >= 1 do
-        score_updates = TriviaService.grade_answers(trivia, answers_map)
-        score_map =
-          score_updates
-          |> Enum.filter(fn {_, correct?} -> correct? end)
-          |> Map.new(fn {id, _} -> {id, 1} end)
-          |> Map.merge(current_scores, fn _, v1, v2 -> v1 + v2 end)
-
-        fb_payload = turn_feedback_payload(turn_id, trivia, score_map, answers_map)
-        round_messages = [
-          Map.put(st_payload, :event, "turn:start"),
-          Map.put(fb_payload, :event, "turn:feedback"),
-        ]
-
-        list_connected_participating_clients(state_agent)
-        |> Enum.each(&push(&1, "turn:feedback", fb_payload))
-
-        # End after 15s or after everyone hits "continue"
-        stream(state_agent, @turn_feedback_timeout)
-        |> Stream.filter(fn
-          {:join, client, others_connected} ->
-            payload = join_payload(state_agent, client, round_messages)
-            push(client, "join", payload)
-            if client.user_id in game_participants do
-              opayload = user_change_payload({client, true})
-              Enum.each(others_connected, &push(&1, "user:change", opayload))
-            end
-            false
-
-          {:leave, client, others_connected} ->
-            if client.user_id in game_participants do
-              opayload = user_change_payload({client, false})
-              Enum.each(others_connected, &push(&1, "user:change", opayload))
-            end
-            false
-
-          {:"turn:end", client, %{"fromTurnId" => end_turn_id}} ->
-            (check(end_turn_id == turn_id, client, "Incorrect turn ID in message")
-             and check(client.user_id in game_participants, client, "Invalid message type for spectator"))
-
-          {:"turn:end", client, _} ->
-            check(false, client, "invalid message content for type 'turn:end'")
-
-          {event, client, _} ->
-            check(false, client, "invalid message type for question phase #{Atom.to_string(event)}")
-        end)
-        |> Enum.reduce_while(MapSet.new(), fn {_, client, _}, acc ->
-          reply(client, {:ok, %{}})
-          next_acc = MapSet.put(acc, client.user_id)
-          if MapSet.size(next_acc) >= length(game_participants) do
-            {:halt, next_acc}
-          else
-            {:cont, next_acc}
-          end
-        end)
-
         {:ok, score_map}
       else
         {:skip, "did not receive any answers"}

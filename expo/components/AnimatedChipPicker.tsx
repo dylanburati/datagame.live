@@ -458,8 +458,21 @@ export function AnimatedChipPicker<T>({
     if (!layouts.length || layouts.length !== indexToKey.size) {
       return;
     }
+    // layouts.sort(([_, r1], [__, r2]) => r1.y - r2.y);
+    // for (let i = 0; i < layouts.length - 1; i++) {
+    //   const r = layouts[i][1];
+    //   const nextR = layouts[i + 1][1];
+    //   if (nextR.y - r.y < r.height - 0.01) {
+    //     return;
+    //   }
+    // }
+    let lastYUnsorted = 0;
+    for (const [_, rect] of layouts) {
+      rect.y = Math.max(rect.y, lastYUnsorted);
+      lastYUnsorted += rect.height;
+    }
     const result = [];
-    let lastY = layouts[0][1].y;
+    let lastY = 0;
     layouts.sort((a, b) => a[2] - b[2]);
     for (const [key, rect] of layouts) {
       result.push({ key, translateY: lastY - rect.y });
@@ -503,6 +516,7 @@ export function AnimatedChipPicker<T>({
           })
         );
         valLst.push([key, val]);
+        console.log('sortTranslation', key, translateY);
         return [animLst, valLst];
       },
       acc

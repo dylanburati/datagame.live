@@ -95,6 +95,9 @@ export const styles = StyleSheet.create({
   flexBasis16: {
     flexBasis: 16,
   },
+  relative: {
+    position: 'relative',
+  },
   absolute: {
     position: 'absolute',
   },
@@ -146,6 +149,12 @@ export const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
+  inset0_5: {
+    top: 2,
+    right: 2,
+    bottom: 2,
+    left: 2,
+  },
   top0: {
     top: 0,
   },
@@ -157,6 +166,9 @@ export const styles = StyleSheet.create({
   },
   left0: {
     left: 0,
+  },
+  p0_5: {
+    padding: 2,
   },
   p1: {
     padding: 4,
@@ -175,6 +187,9 @@ export const styles = StyleSheet.create({
   },
   pr4: {
     paddingRight: 16,
+  },
+  pb1_5: {
+    paddingBottom: 6,
   },
   pb4: {
     paddingBottom: 16,
@@ -205,6 +220,9 @@ export const styles = StyleSheet.create({
     paddingRight: 0,
     paddingTop: 0,
     paddingBottom: 0,
+  },
+  m0_5: {
+    margin: 2,
   },
   m2: {
     margin: 8,
@@ -333,6 +351,9 @@ export const styles = StyleSheet.create({
   },
   textEmerald: {
     color: '#059669',
+  },
+  textGreenAccent: {
+    color: '#00c175',
   },
   textPenFaint: {
     color: '#717176',

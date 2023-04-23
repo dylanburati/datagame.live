@@ -4,7 +4,6 @@ import {
   RoomScoreEntry,
   Trivia,
   TriviaExpectation,
-  TriviaOption,
   TriviaStatDef,
 } from './api';
 import { OrderedSet } from './data';
@@ -13,14 +12,28 @@ export enum RoomPhase {
   NOT_REGISTERED,
   LOBBY,
   QUESTION,
-  FEEDBACK,
+  DIRECT_FEEDBACK,
+  ROOM_FEEDBACK,
   RESULTS,
 }
+
+export const ROOM_PHASE_LABELS = {
+  [RoomPhase.NOT_REGISTERED]: 'NOT_REGISTERED',
+  [RoomPhase.LOBBY]: 'LOBBY',
+  [RoomPhase.QUESTION]: 'QUESTION',
+  [RoomPhase.DIRECT_FEEDBACK]: 'DIRECT_FEEDBACK',
+  [RoomPhase.ROOM_FEEDBACK]: 'ROOM_FEEDBACK',
+  [RoomPhase.RESULTS]: 'RESULTS',
+};
 
 export type RoomPlayer = {
   id: number;
   name: string;
   isPresent: boolean;
+  lastGrade?: {
+    turnId: number;
+    value: boolean;
+  };
 };
 
 export class RoomPlayerList {
@@ -47,9 +60,21 @@ export class RoomPlayerList {
     return this;
   }
 
-  updateScores(scoreChanges: RoomScoreEntry[]) {
-    scoreChanges.forEach(({ userId, score }) => {
+  updateScores(scoreChanges: RoomScoreEntry[], turnId: number) {
+    scoreChanges.forEach(({ userId, score, turnGrade }) => {
       this.scoreMap.set(userId, score);
+      if (turnGrade !== null) {
+        const index = this.array.findIndex((item) => item.id === userId);
+        if (index !== -1) {
+          this.array[index] = {
+            ...this.array[index],
+            lastGrade: {
+              turnId,
+              value: turnGrade,
+            },
+          };
+        }
+      }
     });
     return this;
   }
@@ -64,6 +89,14 @@ export class RoomPlayerList {
 
   getScore(playerId: number) {
     return this.scoreMap.get(playerId);
+  }
+
+  getGrade(playerId: number, turnId: number): boolean | null {
+    const entry = this.array.find((item) => item.id === playerId);
+    if (entry === undefined || entry.lastGrade?.turnId !== turnId) {
+      return null;
+    }
+    return entry.lastGrade.value;
   }
 
   scoresWithUpdates(scoreChanges: RoomScoreEntry[]) {
@@ -105,7 +138,8 @@ export type RoomFeedbackState = RoomQuestionState & {
 
 export type RoomStateWithTrivia =
   | ({ phase: RoomPhase.QUESTION } & RoomQuestionState)
-  | ({ phase: RoomPhase.FEEDBACK } & RoomFeedbackState);
+  | ({ phase: RoomPhase.DIRECT_FEEDBACK } & RoomFeedbackState)
+  | ({ phase: RoomPhase.ROOM_FEEDBACK } & RoomFeedbackState);
 
 export type RoomState =
   | RoomStateWithTrivia
@@ -113,28 +147,32 @@ export type RoomState =
   | ({ phase: RoomPhase.LOBBY } & RoomLobbyState);
 
 export type StyledTriviaOption = {
-  option: TriviaOption;
+  option: Trivia['options'][0];
   chipStyle: ViewProps['style'];
   barGraph?: ViewProps['style'];
   directionIndicator?: string;
 };
 
 export function isFeedbackStage(phase: RoomPhase) {
-  return phase === RoomPhase.FEEDBACK;
+  return (
+    phase === RoomPhase.DIRECT_FEEDBACK || phase === RoomPhase.ROOM_FEEDBACK
+  );
 }
 
 export function triviaIsPresent(
   state: RoomState
 ): state is RoomStateWithTrivia {
   return (
-    state.phase === RoomPhase.QUESTION || state.phase === RoomPhase.FEEDBACK
+    state.phase === RoomPhase.QUESTION ||
+    state.phase === RoomPhase.DIRECT_FEEDBACK ||
+    state.phase === RoomPhase.ROOM_FEEDBACK
   );
 }
 
-export function expectedAnswersArePresent(
-  state: RoomState
-): state is { phase: RoomPhase.FEEDBACK } & RoomFeedbackState {
-  return state.phase === RoomPhase.FEEDBACK;
+export function expectedAnswersArePresent(state: RoomState): state is {
+  phase: RoomPhase.DIRECT_FEEDBACK | RoomPhase.ROOM_FEEDBACK;
+} & RoomFeedbackState {
+  return isFeedbackStage(state.phase);
 }
 
 export function shouldShowBottomPanel(phase: RoomPhase) {
@@ -191,7 +229,7 @@ function getChangeInRanking(
   expectations: TriviaExpectation[],
   answers: OrderedSet<number>,
   optionIds: number[]
-) {
+): (number | undefined)[] {
   const bestOrder = expectations
     .flatMap((expObject) =>
       expObject.kind === 'all' && expObject.minPos !== undefined
@@ -207,17 +245,17 @@ function getChangeInRanking(
   const bestOrderSet = OrderedSet.from(bestOrder);
 
   return optionIds.map((id) => {
-    const pos = answers.getIndex(id) ?? -1;
+    const pos = answers.getIndex(id);
+    if (pos === undefined) {
+      return undefined;
+    }
     return (bestOrderSet.getIndex(id) ?? -1) - pos;
   });
 }
 
 export function getCorrectArray(state: RoomFeedbackState) {
   const { trivia, expectedAnswers, participantId } = state;
-  const answerList = state.receivedAnswers.get(state.selfId);
-  if (answerList === undefined) {
-    return { correctArray: [] };
-  }
+  const answerList = state.receivedAnswers.get(state.selfId) || [];
   const answers = OrderedSet.from(answerList);
   const expectations: TriviaExpectation[] = expectedAnswers.flatMap(
     (expObject) => {

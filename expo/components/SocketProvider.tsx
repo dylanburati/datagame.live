@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useContext, useEffect, useMemo, useRef } from 'react';
 import { Socket } from 'phoenix';
+import { RestClientContext } from './RestClientProvider';
 
 export const SocketContext = React.createContext<Socket>(null as any);
 
@@ -11,13 +12,21 @@ export const SocketProvider = ({
   wsUrl,
   children,
 }: React.PropsWithChildren<SocketProviderProps>) => {
+  const { logger } = useContext(RestClientContext);
+  const logs = useRef<any[]>([]);
   const socket = useMemo(
     () =>
       new Socket(wsUrl, {
+        logger: (kind, message, data) => {
+          logs.current.push({ kind, message, data });
+          if (kind === 'transport') {
+            logger.info({ kind: `socket:${kind}`, message, data });
+          }
+        },
         transport: WebSocket,
         heartbeatIntervalMs: 1000,
       }),
-    [wsUrl]
+    [logger, wsUrl]
   );
 
   useEffect(() => {

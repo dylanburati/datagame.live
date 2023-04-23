@@ -108,6 +108,7 @@ export type TriviaStatDef = {
 export type RoomScoreEntry = {
   userId: number;
   score: number;
+  turnGrade: boolean | null;
 };
 
 export type RoomAnswersEntry = {
@@ -154,8 +155,14 @@ export type RoomIncomingMessage =
       durationMillis: number;
     }
   | {
+      event: 'turn:progress';
+      turnId: number;
+      scores: RoomScoreEntry[];
+    }
+  | {
       event: 'turn:feedback';
       turnId: number;
+      isFinal: boolean;
       scores: RoomScoreEntry[];
       answers: RoomAnswersEntry[];
       expectedAnswers: LazyTriviaExpectation[];

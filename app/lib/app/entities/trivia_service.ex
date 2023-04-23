@@ -5,6 +5,7 @@ defmodule App.Entities.TriviaService do
   import App.Utils, only: [cascade_error: 1]
 
   alias App.Repo
+  alias App.Entities.Card
   alias App.Entities.CardStatDef
   alias App.Entities.Pairing
   alias App.Entities.TriviaDef
@@ -168,10 +169,11 @@ defmodule App.Entities.TriviaService do
       "matchrank" ->
         {[%{kind: "matchrank"}], nil}
       "hangman" ->
-        group = Enum.concat(options, prefilled_ans)
-        |> Enum.reject(fn %{question_value: qv} -> Enum.empty?(qv) end)
-        |> Enum.map(&Map.fetch!(&1, :id))
-        {[%{kind: "all", group: group}], nil}
+        {fgroup, tgroup} = Enum.concat(options, prefilled_ans)
+        |> Enum.split_with(fn %{question_value: qv} -> Enum.empty?(qv) end)
+        tgroup = Enum.map(tgroup, &Map.fetch!(&1, :id))
+        fgroup = Enum.map(fgroup, &Map.fetch!(&1, :id))
+        {[%{kind: "all", group: tgroup}, %{kind: "fewer", group: fgroup, max: 1}], nil}
       "stat." <> order ->
         multi = order in ["asc", "desc"]
         ascending = order in ["asc", "min"]
@@ -199,7 +201,6 @@ defmodule App.Entities.TriviaService do
           {[%{kind: "any", group: List.first(ties)}], stats_obj}
         end
     end
-    qtext = elem(qinst, 1) || ""
     min_answers = case atyp do
       "selection" -> trivia_def.selection_min_true
       "matchrank" -> trivia_def.selection_length
@@ -212,8 +213,17 @@ defmodule App.Entities.TriviaService do
       "hangman" -> Enum.count(options)
       _ -> min_answers
     end
+    qtext = String.replace(qf, "{}", elem(qinst, 1) || "")
+    qtext = case elem(qinst, 0) do
+      %Card{stat_box: stat_box} ->
+        Card.all_stat_keys
+        |> Enum.map(fn k -> {Atom.to_string(k), Map.get(stat_box, k)} end)
+        |> Enum.filter(fn {_, v} -> not is_nil(v) end)
+        |> Enum.reduce(qtext, fn {k, v}, acc -> String.replace(acc, "{#{k}}", v) end)
+      _ -> qtext
+    end
     prompt = %{
-      question: String.replace(qf, "{}", qtext),
+      question: qtext,
       question_value_type: qv_type,
       options: options,
       prefilled_answers: prefilled_ans,
@@ -278,14 +288,21 @@ defmodule App.Entities.TriviaService do
 
   def grade_answers_single(expected_ans, answer_lst, options) do
     any_checks = Enum.filter(expected_ans, &(Map.get(&1, :kind) == "any"))
-    checked_by_any = Enum.flat_map(any_checks, &(Map.get(&1, :group, []))) |> MapSet.new()
+    checked1 = Enum.flat_map(any_checks, &(Map.get(&1, :group, []))) |> MapSet.new()
     passed1 = Enum.all?(any_checks, fn %{group: group} ->
       Enum.count(group, &(&1 in answer_lst)) == 1
     end)
 
-    passed2 = options
+    fewer_checks = Enum.filter(expected_ans, &(Map.get(&1, :kind) == "fewer"))
+    checked2 = Enum.flat_map(fewer_checks, &(Map.get(&1, :group, []))) |> MapSet.new()
+    checked = MapSet.union(checked1, checked2)
+    passed2 = Enum.all?(fewer_checks, fn %{group: group, max: v} ->
+      Enum.count(answer_lst, &(&1 in group)) <= v
+    end)
+
+    passed3 = options
     |> Enum.map(fn %{id: aid} -> aid end)
-    |> Enum.filter(&(&1 not in checked_by_any))
+    |> Enum.filter(&(&1 not in checked))
     |> Enum.all?(fn aid ->
       pos = Enum.find_index(answer_lst, &(&1 == aid)) || -1
       chkr = Enum.find(expected_ans, fn %{kind: kind, group: group} ->
@@ -305,7 +322,7 @@ defmodule App.Entities.TriviaService do
       min_pos <= pos and pos <= max_pos
     end)
 
-    passed1 and passed2
+    passed1 and passed2 and passed3
   end
 
   def grade_answers(trivia, answer_map) do

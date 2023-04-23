@@ -53,6 +53,8 @@ function getStyledOptions(
     [-1, '▲'],
     [1, '▼'],
   ]);
+  const getIndicator = (val: number | undefined) =>
+    val !== undefined ? changeSignToIndicator.get(Math.sign(val)) : undefined;
   return numeric.map((num, index) => {
     const frac = (num - min) / (max - min);
     const isCorrect: boolean | undefined = graded.correctArray[index];
@@ -77,8 +79,7 @@ function getStyledOptions(
         },
       ],
       directionIndicator:
-        graded.changeInRanking &&
-        changeSignToIndicator.get(Math.sign(graded.changeInRanking[index])),
+        graded.changeInRanking && getIndicator(graded.changeInRanking[index]),
     };
   });
 }
@@ -92,12 +93,18 @@ export function RankingAnswerBox({
   const { trivia, triviaStats } = state;
   const defaultBg = styles.bgPaperDarker;
   const styledOptions = getStyledOptions(state, defaultBg);
-  const splitViewSortable = triviaAnswers
-    .toList()
+  const sortableOptionIds = triviaAnswers.toList();
+  if (isFeedbackStage(state.phase)) {
+    sortableOptionIds.push(
+      ...trivia.options.map((e) => e.id).filter((id) => !triviaAnswers.has(id))
+    );
+  }
+  const splitViewSortable = sortableOptionIds
     .map((id) => styledOptions.find(({ option }) => option.id === id))
     .filter((opt): opt is StyledTriviaOption => opt !== undefined);
+  const sortableOptionIdSet = new Set(sortableOptionIds);
   const splitViewBank = styledOptions.filter(
-    ({ option }) => !triviaAnswers.has(option.id)
+    ({ option }) => !sortableOptionIdSet.has(option.id)
   );
   useEffect(() => {
     setDoneAnswering(triviaAnswers.size >= trivia.minAnswers);

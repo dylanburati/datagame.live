@@ -17,7 +17,7 @@ defmodule AppWeb.TriviaView do
       question: trivia.question,
       questionValueType: trivia.question_value_type,
       options: Enum.map(trivia.options, &option_json/1),
-      prefilledAnswers: trivia.prefilled_answers,
+      prefilledAnswers: Enum.map(trivia.prefilled_answers, &option_json/1),
       answerType: trivia.answer_type,
       minAnswers: trivia.min_answers,
       maxAnswers: trivia.max_answers

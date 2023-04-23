@@ -14,7 +14,7 @@ import { styles } from '../styles';
 export type TriviaViewProps = {
   state: RoomStateWithTrivia;
   triviaAnswers: OrderedSet<number>;
-  setTriviaAnswers: React.Dispatch<React.SetStateAction<OrderedSet<number>>>;
+  setTriviaAnswers: (answers: OrderedSet<number>) => void;
   doAdvance: () => void;
 };
 
@@ -32,13 +32,15 @@ export function TriviaView({
     },
     [state.turnId]
   );
+  const canAdvance =
+    state.phase === RoomPhase.ROOM_FEEDBACK ||
+    (state.phase === RoomPhase.QUESTION && doneAnswering);
   const advanceBtnBackground =
-    state.phase === RoomPhase.FEEDBACK
+    state.phase === RoomPhase.ROOM_FEEDBACK
       ? styles.bgBlue900
-      : doneAnswering
+      : canAdvance
       ? styles.bgGreen
       : styles.bgGray300;
-  const canAdvance = state.phase === RoomPhase.FEEDBACK || doneAnswering;
   const advanceBtnTextStyle = canAdvance
     ? styles.textWhite
     : styles.textPenFaint;

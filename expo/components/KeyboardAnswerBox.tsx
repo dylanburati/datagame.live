@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Image, Text, View, ViewStyle } from 'react-native';
 import {
+  isFeedbackStage,
   RoomPhase,
   RoomStateWithTrivia,
   StyledTriviaOption,
@@ -57,7 +58,10 @@ export function KeyboardAnswerBox({
 
   const answerLength =
     1 + Math.max(...trivia.options.flatMap((option) => option.questionValue));
-  const partialAnswer = new Array(answerLength).fill(' ');
+  const partialAnswer = new Array(answerLength).fill(0).map((_) => ({
+    text: ' ',
+    highlight: false,
+  }));
   const numLives = 2;
   let numWrong = 0;
   let numUnfilled = 0;
@@ -67,16 +71,27 @@ export function KeyboardAnswerBox({
     }
     for (const index of option.questionValue) {
       if (triviaAnswers.has(option.id)) {
-        partialAnswer[index] = option.answer;
+        partialAnswer[index] = { text: option.answer, highlight: false };
       } else {
-        partialAnswer[index] = '_';
+        if (isFeedbackStage(state.phase)) {
+          partialAnswer[index] = { text: option.answer, highlight: true };
+        } else {
+          partialAnswer[index] = { text: '_', highlight: false };
+        }
         numUnfilled += 1;
       }
     }
   }
+  for (const option of trivia.prefilledAnswers) {
+    for (const index of option.questionValue) {
+      partialAnswer[index] = { text: option.answer, highlight: false };
+    }
+  }
   const doneAnswering = numWrong >= numLives || numUnfilled === 0;
   useEffect(() => {
+    console.log(79, doneAnswering, triviaAnswers);
     setDoneAnswering(doneAnswering);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doneAnswering, setDoneAnswering]);
 
   return (
@@ -94,7 +109,11 @@ export function KeyboardAnswerBox({
           styles.shiftOne,
         ]}
       >
-        {partialAnswer.join('')}
+        {partialAnswer.map(({ text, highlight }, index) => (
+          <Text key={index} style={[highlight && styles.textRed]}>
+            {text}
+          </Text>
+        ))}
       </Text>
       <View style={[styles.flexCol, styles.mx6, styles.mt8]}>
         <View style={[styles.flexRow, styles.selfCenter]}>

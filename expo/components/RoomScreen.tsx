@@ -1,5 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import React, { useState, useEffect, useContext, useReducer } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useReducer,
+  useCallback,
+} from 'react';
 import { SafeAreaView, ScrollView } from 'react-native';
 import { RoomCreatorControls } from './RoomCreatorControls';
 import { RoomLobbyControls } from './RoomLobbyControls';
@@ -11,6 +17,7 @@ import {
   RoomPhase,
   RoomState,
   triviaIsPresent,
+  ROOM_PHASE_LABELS,
 } from '../helpers/nplayerLogic';
 import { ChannelHook, useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
@@ -83,8 +90,23 @@ function roomReducer(
       receivedAnswers: new Map(),
     };
   }
+  if (message.event === 'turn:progress') {
+    if (
+      state.phase !== RoomPhase.QUESTION &&
+      state.phase !== RoomPhase.DIRECT_FEEDBACK
+    ) {
+      return state;
+    }
+    return {
+      ...state,
+      players: state.players.updateScores(message.scores, message.turnId),
+    };
+  }
   if (message.event === 'turn:feedback') {
-    if (state.phase !== RoomPhase.QUESTION) {
+    if (
+      state.phase !== RoomPhase.QUESTION &&
+      state.phase !== RoomPhase.DIRECT_FEEDBACK
+    ) {
       // TODO should error
       return state;
     }
@@ -96,12 +118,16 @@ function roomReducer(
       : undefined;
     return {
       ...state,
-      phase: RoomPhase.FEEDBACK,
+      phase: message.isFinal
+        ? RoomPhase.ROOM_FEEDBACK
+        : RoomPhase.DIRECT_FEEDBACK,
       expectedAnswers: message.expectedAnswers,
       triviaStats,
-      deadline: message.deadline,
-      durationMillis: message.durationMillis,
-      players: state.players.updateScores(message.scores),
+      deadline: message.isFinal ? message.deadline : state.deadline,
+      durationMillis: message.isFinal
+        ? message.durationMillis
+        : state.durationMillis,
+      players: state.players.updateScores(message.scores, message.turnId),
     };
   }
 
@@ -116,8 +142,14 @@ export function RoomScreen() {
   const [isModifyingRoom, setModifyingRoom] = useState(false);
   const [nameOnJoin, setNameOnJoin] = useState('');
   const [renameError, setRenameError] = useState<[string, string]>();
-  const [triviaAnswers, setTriviaAnswers] = useStateNoCmp(
-    OrderedSet.empty<number>()
+  const [triviaAnswerState, setTriviaAnswerState] = useState({
+    turnId: -1,
+    answers: OrderedSet.empty<number>(),
+  });
+  const setTriviaAnswers = useCallback(
+    (answers: OrderedSet<number>) =>
+      setTriviaAnswerState((val) => ({ turnId: val.turnId, answers })),
+    []
   );
   // const [isPanelActive, setPanelActive] = useState(false);
 
@@ -141,6 +173,12 @@ export function RoomScreen() {
       // TODO FIX!!!
       const s2 = roomReducer(s, a);
       logger.info([s, a, s2]);
+      const transition = [
+        a.event,
+        ROOM_PHASE_LABELS[s.phase],
+        ROOM_PHASE_LABELS[s2.phase],
+      ];
+      console.log(`[${transition.join(', ')}]`);
       return s2;
     },
     initialState,
@@ -184,9 +222,23 @@ export function RoomScreen() {
   }, [room.error]);
 
   const turnId = triviaIsPresent(room.state) ? room.state.turnId : -1;
+  const prefilled = triviaIsPresent(room.state)
+    ? room.state.trivia.prefilledAnswers
+    : undefined;
   useEffect(() => {
-    setTriviaAnswers(triviaAnswers.clear());
-  }, [setTriviaAnswers, triviaAnswers, turnId]);
+    if (triviaAnswerState.turnId !== turnId) {
+      setTriviaAnswerState({
+        turnId,
+        answers: triviaAnswerState.answers
+          .clear()
+          .extend((prefilled || []).map((e) => e.id)),
+      });
+    }
+  }, [prefilled, setTriviaAnswers, triviaAnswerState, turnId]);
+  const triviaAnswers =
+    triviaAnswerState.turnId === turnId
+      ? triviaAnswerState.answers
+      : OrderedSet.empty<number>();
 
   const doBegin = (_playerOrder: number[]) => {
     setModifyingRoom(false);
@@ -207,15 +259,16 @@ export function RoomScreen() {
       room.broadcast({
         event: 'turn:feedback',
         turnId: room.state.turnId,
-        answered: triviaAnswers.toList(),
+        answered: triviaAnswerState.answers.toList(),
       });
-    } else if (room.state.phase === RoomPhase.FEEDBACK) {
+    } else if (room.state.phase === RoomPhase.ROOM_FEEDBACK) {
       room.broadcast({
         event: 'turn:end',
         fromTurnId: room.state.turnId,
       });
     }
   };
+
   return (
     <SafeAreaView style={styles.topContainer}>
       <RoomStatusBar room={room} />
