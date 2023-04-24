@@ -23,6 +23,18 @@ import {
 } from 'react-native-gesture-handler';
 import { isAndroid, isIOS, isWeb } from '../constants';
 import { DataStatus, overwriteMap } from '../helpers/data';
+import {
+  FieldReference,
+  useAnimatedValue as useValue,
+  useReference,
+} from '../helpers/hooks';
+import {
+  midpoint,
+  Rect,
+  rectAbove,
+  rectBelow,
+  rectCenter,
+} from '../helpers/math';
 import { styleConfig, styles } from '../styles';
 
 export type AnimatedChipPickerProvidedProps<T> = {
@@ -45,71 +57,6 @@ export type AnimatedChipPickerProps<T> = {
 };
 
 const ZERO_ANIM = new Animated.Value(0);
-
-function useValue(initialValue: number) {
-  return useRef(new Animated.Value(initialValue)).current;
-}
-
-type FieldReference<T> = {
-  get: () => T;
-  equals: (other: unknown) => boolean;
-  set: (val: T) => void;
-};
-
-function useReference<T>(initialValue: T): FieldReference<T> {
-  const ref = useRef(initialValue);
-  const value = useMemo(
-    () => ({
-      get: () => ref.current,
-      equals: (other: unknown) => ref.current === other,
-      set: (val: T) => {
-        ref.current = val;
-      },
-    }),
-    [ref]
-  );
-  return value;
-}
-
-type XY = {
-  x: number;
-  y: number;
-};
-
-type Rect = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-function rectCenter(r: Rect) {
-  return {
-    x: r.x + 0.5 * r.width,
-    y: r.y + 0.5 * r.height,
-  };
-}
-
-function rectAbove(src: Rect, neighbor: Rect) {
-  return {
-    ...src,
-    y: neighbor.y - src.height,
-  };
-}
-
-function rectBelow(src: Rect, neighbor: Rect) {
-  return {
-    ...src,
-    y: neighbor.y + neighbor.height,
-  };
-}
-
-function midpoint(p1: XY, p2: XY) {
-  return {
-    x: 0.5 * p1.x + 0.5 * p2.x,
-    y: 0.5 * p1.y + 0.5 * p2.y,
-  };
-}
 
 type AnimContext = {
   anyActiveAnim: Animated.Value;
@@ -221,7 +168,7 @@ function Cell({
     }
   }, [index, updateCellMeasurements]);
 
-  let translateY: Animated.AnimatedInterpolation;
+  let translateY: Animated.AnimatedInterpolation<number>;
   if (sortTranslation) {
     translateY = sortTranslation;
   } else if (cellKey === activeKey) {
@@ -511,8 +458,13 @@ export function AnimatedChipPicker<T>({
     if (!layouts.length || layouts.length !== indexToKey.size) {
       return;
     }
+    let lastYUnsorted = 0;
+    for (const [_, rect] of layouts) {
+      rect.y = Math.max(rect.y, lastYUnsorted);
+      lastYUnsorted += rect.height;
+    }
     const result = [];
-    let lastY = layouts[0][1].y;
+    let lastY = 0;
     layouts.sort((a, b) => a[2] - b[2]);
     for (const [key, rect] of layouts) {
       result.push({ key, translateY: lastY - rect.y });
@@ -556,6 +508,7 @@ export function AnimatedChipPicker<T>({
           })
         );
         valLst.push([key, val]);
+        console.log('sortTranslation', key, translateY);
         return [animLst, valLst];
       },
       acc
@@ -583,12 +536,12 @@ export function AnimatedChipPicker<T>({
       ? data.slice().sort(sorter)
       : data;
   return (
-    <GestureHandlerRootView>
+    <GestureHandlerRootView style={style}>
       <PanGestureHandler
         onHandlerStateChange={onHandlerStateChange}
         onGestureEvent={onGestureEvent}
       >
-        <View ref={containerRef} style={style}>
+        <View ref={containerRef}>
           {visibleData.map((item, index) => {
             const styleModifier = chipStyle ? chipStyle({ item, index }) : [];
             const key = keySelector(item);
@@ -615,7 +568,7 @@ export function AnimatedChipPicker<T>({
                   ]}
                   activeOpacity={0.5}
                   disabled={disabled || showSorted}
-                  onLongPress={() => setActiveKey(key)}
+                  onPressIn={() => setActiveKey(key)}
                   onPressOut={() => {
                     const gState = panGestureState.get();
                     if (

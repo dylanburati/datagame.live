@@ -31,9 +31,10 @@ if (isHermesEnabled || isAndroid) {
   // https://formatjs.io/docs/polyfills/intl-datetimeformat/#default-timezone
   if ('__setDefaultTimeZone' in Intl.DateTimeFormat) {
     try {
-      Intl.DateTimeFormat.__setDefaultTimeZone(
-        require('expo-localization').timezone
-      );
+      const tz = require('expo-localization').getCalendars()[0].timeZone;
+      if (tz != null) {
+        Intl.DateTimeFormat.__setDefaultTimeZone(tz);
+      }
     } catch (err) {
       console.warn('No default timezone');
     }

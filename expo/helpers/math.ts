@@ -1,3 +1,43 @@
+export type XY = {
+  x: number;
+  y: number;
+};
+
+export type Rect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export function rectCenter(r: Rect) {
+  return {
+    x: r.x + 0.5 * r.width,
+    y: r.y + 0.5 * r.height,
+  };
+}
+
+export function rectAbove(src: Rect, neighbor: Rect) {
+  return {
+    ...src,
+    y: neighbor.y - src.height,
+  };
+}
+
+export function rectBelow(src: Rect, neighbor: Rect) {
+  return {
+    ...src,
+    y: neighbor.y + neighbor.height,
+  };
+}
+
+export function midpoint(p1: XY, p2: XY) {
+  return {
+    x: 0.5 * p1.x + 0.5 * p2.x,
+    y: 0.5 * p1.y + 0.5 * p2.y,
+  };
+}
+
 export function argsort<T>(array: T[], sorter: (e1: T, e2: T) => number) {
   return array
     .map((e, i): [number, T] => [i, e])

@@ -15,10 +15,12 @@ defmodule App.Application do
       {Phoenix.PubSub, name: App.PubSub},
       # Start the Endpoint (http/https)
       AppWeb.Endpoint,
-      # Heartbeat service
-      AppWeb.Presence,
       # Start a worker by calling: App.Worker.start_link(arg)
-      App.CacheSupervisor
+      App.CacheSupervisor,
+      # Start the RoomSupervisor
+      {Task.Supervisor, name: AppWeb.RoomSupervisor},
+      # Start the RoomServer
+      {AppWeb.RoomServer, name: AppWeb.RoomServer},
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

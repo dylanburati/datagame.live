@@ -28,6 +28,12 @@ defprotocol App.Entities.Trivia.TriviaLoader do
                  "question_value" => ["Little Women", "Lady Bird", ...]}
   """
   def get_extra_info(trivia, options)
+
+  @doc """
+  Get the Typescript name of the type get_answer_query and get_extra_info return as a
+  :question_value
+  """
+  def get_question_value_type(trivia)
 end
 
 alias App.Entities.Trivia.TriviaLoader
@@ -43,6 +49,7 @@ import Ecto.Query
 alias App.Repo
 alias App.Entities.Card
 alias App.Entities.PairingService
+alias App.Entities.TriviaDef
 alias App.Entities.TriviaService
 
 defimpl TriviaLoader, for: CardQuestionCardOptions do
@@ -55,14 +62,14 @@ defimpl TriviaLoader, for: CardQuestionCardOptions do
     option_difficulty: difficulty
   }) do
     query = from c in Card,
-      select: field(c, ^qcol_name),
+      select: {c, field(c, ^qcol_name)},
       where: c.deck_id == ^deck_id,
       where: c.is_disabled == false,
       where: not is_nil(field(c, ^qcol_name)),
       where: not is_nil(field(c, ^col_name)),
       limit: 1
 
-    {nil, TriviaService.randomize(query, difficulty: difficulty) |> Repo.one()}
+    TriviaService.randomize(query, difficulty: difficulty) |> Repo.one()
   end
 
   def get_answer_query(
@@ -125,6 +132,8 @@ defimpl TriviaLoader, for: CardQuestionCardOptions do
     #   Map.put(opt, :question_value, Map.get(back_qvals, ans, []))
     # end)
   end
+
+  def get_question_value_type(_trivia), do: nil
 end
 
 defimpl TriviaLoader, for: CardQuestionStatOptions do
@@ -137,14 +146,14 @@ defimpl TriviaLoader, for: CardQuestionStatOptions do
     option_difficulty: difficulty
   }) do
     query = from c in Card,
-      select: field(c, ^qcol_name),
+      select: {c, field(c, ^qcol_name)},
       where: c.deck_id == ^deck_id,
       where: c.is_disabled == false,
       where: c.stat_box[^stat_def.key] != fragment("'null'::jsonb"),
       where: not is_nil(field(c, ^qcol_name)),
       limit: 1
 
-    {nil, TriviaService.randomize(query, difficulty: difficulty) |> Repo.one()}
+    TriviaService.randomize(query, difficulty: difficulty) |> Repo.one()
   end
 
   def get_answer_query(
@@ -155,7 +164,8 @@ defimpl TriviaLoader, for: CardQuestionStatOptions do
       option_difficulty: difficulty,
       compare_type: def_cmp_type,
       max_correct_options: tl_max,
-      max_incorrect_options: fl_max
+      max_incorrect_options: fl_max,
+      answer_type: ans_type,
     },
     {_, question_value},
     invert_cmp
@@ -163,11 +173,16 @@ defimpl TriviaLoader, for: CardQuestionStatOptions do
     limit = if invert_cmp, do: fl_max, else: tl_max
     cmp_type = TriviaService.maybe_invert_compare_type(invert_cmp, def_cmp_type)
     query = from c in Card,
-      select: %{answer: c.title, question_value: c.stat_box[^stat_def.key]},
       where: c.deck_id == ^deck_id,
       where: c.is_disabled == false,
       where: c.stat_box[^stat_def.key] != fragment("'null'::jsonb"),
       limit: ^limit
+
+    query = if ans_type in TriviaDef.stat_answer_types() do
+      query |> select([c], %{answer: c.title, question_value: c.stat_box[^stat_def.key]})
+    else
+      query |> select([c], %{answer: c.stat_box[^stat_def.key], question_value: c.title})
+    end
 
     query = TriviaService.randomize(query, difficulty: difficulty)
     case cmp_type do
@@ -179,6 +194,8 @@ defimpl TriviaLoader, for: CardQuestionStatOptions do
   end
 
   def get_extra_info(_, options), do: options
+
+  def get_question_value_type(_trivia), do: "string"
 end
 
 defimpl TriviaLoader, for: CardQuestionTagOptions do
@@ -192,7 +209,7 @@ defimpl TriviaLoader, for: CardQuestionTagOptions do
   }) do
     query = from c in Card,
       join: ct in assoc(c, :tags),
-      select: field(c, ^qcol_name),
+      select: {c, field(c, ^qcol_name)},
       where: c.deck_id == ^deck_id,
       where: c.is_disabled == false,
       where: ct.card_tag_def_id == ^tag_def.id,
@@ -200,7 +217,7 @@ defimpl TriviaLoader, for: CardQuestionTagOptions do
       where: not is_nil(ct.value),
       limit: 1
 
-    {nil, TriviaService.randomize(query, difficulty: difficulty) |> Repo.one()}
+    TriviaService.randomize(query, difficulty: difficulty) |> Repo.one()
   end
 
   def get_answer_query(
@@ -250,9 +267,11 @@ defimpl TriviaLoader, for: CardQuestionTagOptions do
     |> Map.new(fn %{answer: ans, question_value: qval} -> {ans, qval} end)
 
     Enum.map(options, fn opt = %{answer: ans} ->
-      Map.put(opt, :question_value, Map.get(back_qvals, ans, []))
+      Map.merge(opt, %{question_value: Map.get(back_qvals, ans, [])})
     end)
   end
+
+  def get_question_value_type(_trivia), do: "string[]"
 end
 
 defimpl TriviaLoader, for: TagQuestionCardOptions do
@@ -266,7 +285,7 @@ defimpl TriviaLoader, for: TagQuestionCardOptions do
   }) do
     query = from c in Card,
       join: ct in assoc(c, :tags),
-      select: {ct.id, ct.value},
+      select: {ct, ct.value},
       where: c.deck_id == ^deck_id,
       where: c.is_disabled == false,
       where: not is_nil(field(c, ^col_name)),
@@ -286,9 +305,10 @@ defimpl TriviaLoader, for: TagQuestionCardOptions do
       max_correct_options: tl_max,
       max_incorrect_options: fl_max
     },
-    {tag_id, question_value},
+    {ct, question_value},
     invert_cmp
   ) do
+    tag_id = if is_map(ct), do: ct.id, else: nil
     limit = if invert_cmp, do: fl_max, else: tl_max
     cmp_type = TriviaService.maybe_invert_compare_type(invert_cmp, def_cmp_type)
     query = from c in Card,
@@ -329,9 +349,11 @@ defimpl TriviaLoader, for: TagQuestionCardOptions do
     |> Map.new(fn %{answer: ans, question_value: qval} -> {ans, qval} end)
 
     Enum.map(options, fn opt = %{answer: ans} ->
-      Map.put(opt, :question_value, Map.get(back_qvals, ans, []))
+      Map.merge(opt, %{question_value: Map.get(back_qvals, ans, [])})
     end)
   end
+
+  def get_question_value_type(_trivia), do: "string[]"
 end
 
 defimpl TriviaLoader, for: PairingQuestionCardOptions do
@@ -382,6 +404,8 @@ defimpl TriviaLoader, for: PairingQuestionCardOptions do
   end
 
   def get_extra_info(_, options), do: options
+
+  def get_question_value_type(_trivia), do: "string"
 end
 
 defimpl TriviaLoader, for: PairingQuestionStatOptions do
@@ -428,4 +452,6 @@ defimpl TriviaLoader, for: PairingQuestionStatOptions do
   end
 
   def get_extra_info(_, options), do: options
+
+  def get_question_value_type(_trivia), do: "string"
 end

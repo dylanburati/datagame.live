@@ -1,4 +1,3 @@
-import { Presence } from 'phoenix';
 import { ColorValue } from 'react-native';
 import config from '../config';
 import { AsyncStorageLogger } from './logging';
@@ -54,10 +53,10 @@ export type RoomUser = {
   displayName: string;
 };
 
-export type TriviaOption = {
+export type TriviaOption<T> = {
   id: number;
   answer: string;
-  questionValue: string | string[];
+  questionValue: T;
 };
 
 export type TriviaStatType =
@@ -68,13 +67,35 @@ export type TriviaStatType =
   | 'km_distance'
   | 'lat_lon';
 
+export type TriviaQuestionValueType = 'string' | 'string[]' | 'number';
+
 export type Trivia = {
   question: string;
-  options: TriviaOption[];
   answerType: string;
   minAnswers: number;
   maxAnswers: number;
-};
+} & (
+  | {
+      questionValueType: null;
+      options: TriviaOption<undefined>[];
+      prefilledAnswers: TriviaOption<undefined>[];
+    }
+  | {
+      questionValueType: 'string';
+      options: TriviaOption<string>[];
+      prefilledAnswers: TriviaOption<string>[];
+    }
+  | {
+      questionValueType: 'string[]';
+      options: TriviaOption<string[]>[];
+      prefilledAnswers: TriviaOption<string[]>[];
+    }
+  | {
+      questionValueType: 'number[]';
+      options: TriviaOption<number[]>[];
+      prefilledAnswers: TriviaOption<number[]>[];
+    }
+);
 
 export type TriviaStatDef = {
   label: string;
@@ -87,6 +108,7 @@ export type TriviaStatDef = {
 export type RoomScoreEntry = {
   userId: number;
   score: number;
+  turnGrade: boolean | null;
 };
 
 export type RoomAnswersEntry = {
@@ -106,6 +128,10 @@ export type LazyTriviaExpectation = TriviaExpectation | { kind: 'matchrank' };
 
 export type RoomIncomingMessage =
   | {
+      event: 'clock';
+      timestamp: number;
+    }
+  | {
       event: 'join';
       creatorId: number;
       createdAt: string;
@@ -114,39 +140,33 @@ export type RoomIncomingMessage =
       users: {
         userId: number;
         displayName: string;
+        isPresent: boolean;
       }[];
       roundMessages: RoomIncomingMessage[];
-    }
-  | {
-      event: 'user:new';
-      userId: number;
-      displayName: string;
-      isNow: boolean;
     }
   | {
       event: 'user:change';
       userId: number;
       displayName: string;
-    }
-  | {
-      event: 'round:start';
-      playerOrder: number[];
+      isPresent: boolean;
     }
   | {
       event: 'turn:start';
-      userId: number;
       turnId: number;
       trivia: Trivia;
       participantId?: number;
+      deadline: number;
+      durationMillis: number;
     }
   | {
-      event: 'turn:abort';
-      userId: number;
+      event: 'turn:progress';
       turnId: number;
+      scores: RoomScoreEntry[];
     }
   | {
       event: 'turn:feedback';
       turnId: number;
+      isFinal: boolean;
       scores: RoomScoreEntry[];
       answers: RoomAnswersEntry[];
       expectedAnswers: LazyTriviaExpectation[];
@@ -154,14 +174,12 @@ export type RoomIncomingMessage =
         values: [number, number][];
         definition: TriviaStatDef;
       };
+      deadline: number;
+      durationMillis: number;
     }
   | {
       event: 'round:scores';
       scores: RoomScoreEntry[];
-    }
-  | {
-      event: 'presence';
-      presence: Presence;
     };
 
 export type RoomOutgoingMessage =
@@ -171,10 +189,10 @@ export type RoomOutgoingMessage =
     }
   | {
       event: 'round:start';
-      playerOrder: number[];
     }
   | {
       event: 'turn:feedback';
+      turnId: number;
       answered: number[];
     }
   | {

@@ -1,14 +1,14 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
-import { TriviaOption } from '../helpers/api';
+import { Trivia } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { kissMarryShoot, medals } from '../helpers/iconography';
-import { RoomState, RoomStage } from '../helpers/nplayerLogic';
+import { RoomStateWithTrivia } from '../helpers/nplayerLogic';
 import { styles } from '../styles';
 
 export type TriviaMatchRankDisplayProps = {
-  roomState: RoomState;
-  option: TriviaOption;
+  roomState: RoomStateWithTrivia;
+  option: Trivia['options'][0];
   index: number;
 };
 
@@ -17,35 +17,10 @@ export function TriviaMatchRankDisplay({
   option,
   index,
 }: TriviaMatchRankDisplayProps) {
-  const { trivia } = roomState;
-  if (!trivia) {
-    return null;
-  }
-  const firstId =
-    roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
-      ? roomState.participantId
-      : roomState.players.activeId;
-  const secondId =
-    roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
-      ? roomState.players.activeId
-      : roomState.participantId;
-  if (firstId === undefined || secondId === undefined) {
-    return null;
-  }
-  const selfTurn = roomState.players.activeId === roomState.selfId;
-  const whoseTurn =
-    selfTurn || roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
-      ? 'You'
-      : roomState.players.activeName ?? '';
-  const whoseTurn2 =
-    selfTurn || roomState.stage === RoomStage.FEEDBACK_PARTICIPANT
-      ? 'Them'
-      : roomState.participantId !== undefined
-      ? roomState.players.getPlayerName(roomState.participantId) ?? ''
-      : '';
+  const { selfId, participantId, trivia } = roomState;
 
-  const answerList1 = roomState.receivedAnswers.get(firstId);
-  const answerList2 = roomState.receivedAnswers.get(secondId);
+  const answerList1 = roomState.receivedAnswers.get(selfId);
+  const answerList2 = roomState.receivedAnswers.get(participantId as number);
   if (answerList1 === undefined || answerList2 === undefined) {
     return null;
   }
@@ -71,12 +46,9 @@ export function TriviaMatchRankDisplay({
         ]}
       >
         {index === 0 && (
-          <Text style={[styles.fontBold, styles.opacity50]}>{whoseTurn}</Text>
+          <Text style={[styles.fontBold, styles.opacity50]}>You</Text>
         )}
-        <Image
-          style={[styles.square20Px, styles.raiseMinusOne]}
-          source={emojiArr[firstPos]}
-        />
+        <Image style={[styles.square20Px]} source={emojiArr[firstPos]} />
       </View>
       <View
         style={[
@@ -88,12 +60,9 @@ export function TriviaMatchRankDisplay({
         ]}
       >
         {index === 0 && (
-          <Text style={[styles.fontBold, styles.opacity50]}>{whoseTurn2}</Text>
+          <Text style={[styles.fontBold, styles.opacity50]}>Them</Text>
         )}
-        <Image
-          style={[styles.square20Px, styles.raiseMinusOne]}
-          source={emojiArr[secondPos]}
-        />
+        <Image style={[styles.square20Px]} source={emojiArr[secondPos]} />
       </View>
     </>
   );

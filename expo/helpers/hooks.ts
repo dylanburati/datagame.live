@@ -7,11 +7,36 @@ import React, {
   useReducer,
   useState,
 } from 'react';
-import type { Comparator } from 'lodash';
+import { Animated } from 'react-native';
 import { Presence } from 'phoenix';
 import { SocketContext } from '../components/SocketProvider';
 import { RestClientContext } from '../components/RestClientProvider';
 import config from '../config';
+
+export function useAnimatedValue(initialValue: number) {
+  return useRef(new Animated.Value(initialValue)).current;
+}
+
+export type FieldReference<T> = {
+  get: () => T;
+  equals: (other: unknown) => boolean;
+  set: (val: T) => void;
+};
+
+export function useReference<T>(initialValue: T): FieldReference<T> {
+  const ref = useRef(initialValue);
+  const value = useMemo(
+    () => ({
+      get: () => ref.current,
+      equals: (other: unknown) => ref.current === other,
+      set: (val: T) => {
+        ref.current = val;
+      },
+    }),
+    [ref]
+  );
+  return value;
+}
 
 export function useSet<T>(initialValue: Set<T>) {
   const set = useRef(initialValue).current;
@@ -58,6 +83,8 @@ export function useStateNoCmp<T>(
   return [state2.state, setState];
 }
 
+type Comparator<T> = (a: T, b: T) => boolean;
+
 // convenience so that objects/arrays don't have to be referentially stable
 export function useMemoWithComparator<T>(state: T, comparator: Comparator<T>) {
   const history = useRef<T[]>([]).current;
@@ -95,11 +122,19 @@ export type ChannelHookArgs<TState, TAction> = {
   initialState: TState;
 };
 
+export type ChannelHook<TSend extends HasEvent, TState> = {
+  state: TState;
+  connected: boolean;
+  loading: boolean;
+  error?: string;
+  broadcast: SendFunc<TSend>;
+};
+
 export function useChannel<
   TSend extends HasEvent,
   TState,
   TAction extends HasEvent
->(params: ChannelHookArgs<TState, TAction>) {
+>(params: ChannelHookArgs<TState, TAction>): ChannelHook<TSend, TState> {
   const { logger } = useContext(RestClientContext);
   const { topic, joinParams, disable, reducer, initialState } = params;
   const socket = useContext(SocketContext);

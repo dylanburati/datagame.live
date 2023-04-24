@@ -94,7 +94,13 @@ export class SheetAdvancedPage {
             'textarea',
             {
               className: 'border border-blue-500 bg-surface json',
-              onChange: editor.listener
+              onChange: editor.listener,
+              onKeydown: (ev) => {
+                if (ev.key === 'F' && ev.altKey) {
+                  ev.target.value = prettyPrint(JSON.parse(ev.target.value));
+                  localStorage.setItem(`sheetAdvanced__${title}`, ev.target.value);
+                }
+              },
             },
             editor.value
           ),

@@ -63,6 +63,12 @@ export const styles = StyleSheet.create({
   selfStart: {
     alignSelf: 'flex-start',
   },
+  selfCenter: {
+    alignSelf: 'center',
+  },
+  flexRow: {
+    flexDirection: 'row',
+  },
   flexCol: {
     flexDirection: 'column',
   },
@@ -72,19 +78,31 @@ export const styles = StyleSheet.create({
   flexGrow: {
     flexGrow: 1,
   },
+  flexShrink: {
+    flexShrink: 1,
+  },
   flexInitial: {
     flexGrow: 0,
     flexShrink: 1,
     flexBasis: 'auto',
   },
+  flex0: {
+    flex: 0,
+  },
   flex1: {
     flex: 1,
   },
-  flexBasisOneThird: {
-    flex: 1, //: '33.33%',
+  flexBasis16: {
+    flexBasis: 16,
+  },
+  relative: {
+    position: 'relative',
   },
   absolute: {
     position: 'absolute',
+  },
+  bgPaper: {
+    backgroundColor: '#FFF',
   },
   bgPaperDarker: {
     backgroundColor: '#E4E4E7',
@@ -134,6 +152,12 @@ export const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
+  inset0_5: {
+    top: 2,
+    right: 2,
+    bottom: 2,
+    left: 2,
+  },
   top0: {
     top: 0,
   },
@@ -146,8 +170,17 @@ export const styles = StyleSheet.create({
   left0: {
     left: 0,
   },
+  bottom50Percent: {
+    bottom: '50%',
+  },
+  p0_5: {
+    padding: 2,
+  },
   p1: {
     padding: 4,
+  },
+  p1_5: {
+    padding: 6,
   },
   p2: {
     padding: 8,
@@ -160,6 +193,9 @@ export const styles = StyleSheet.create({
   },
   pr4: {
     paddingRight: 16,
+  },
+  pb1_5: {
+    paddingBottom: 6,
   },
   pb4: {
     paddingBottom: 16,
@@ -191,6 +227,9 @@ export const styles = StyleSheet.create({
     paddingTop: 0,
     paddingBottom: 0,
   },
+  m0_5: {
+    margin: 2,
+  },
   m2: {
     margin: 8,
   },
@@ -209,8 +248,14 @@ export const styles = StyleSheet.create({
   mt8: {
     marginTop: 32,
   },
+  mr1: {
+    marginRight: 4,
+  },
   mr2: {
     marginRight: 8,
+  },
+  mr3: {
+    marginRight: 12,
   },
   mr4: {
     marginRight: 16,
@@ -230,11 +275,22 @@ export const styles = StyleSheet.create({
   mb16: {
     marginBottom: 64,
   },
+  ml1: {
+    marginLeft: 4,
+  },
   ml2: {
     marginLeft: 8,
   },
   ml4: {
     marginLeft: 16,
+  },
+  mx0_5: {
+    marginLeft: 2,
+    marginRight: 2,
+  },
+  mx1: {
+    marginLeft: 4,
+    marginRight: 4,
   },
   mx2: {
     marginLeft: 8,
@@ -287,6 +343,9 @@ export const styles = StyleSheet.create({
   text3Xl: {
     fontSize: 48,
   },
+  textTrackingExtraWide: {
+    letterSpacing: 7,
+  },
   textWhite: {
     color: '#fff',
   },
@@ -302,6 +361,9 @@ export const styles = StyleSheet.create({
   textEmerald: {
     color: '#059669',
   },
+  textGreenAccent: {
+    color: '#00c175',
+  },
   textPenFaint: {
     color: '#717176',
   },
@@ -314,14 +376,29 @@ export const styles = StyleSheet.create({
   fontBold: {
     fontWeight: 'bold',
   },
+  fontMonospace: {
+    fontFamily: 'RobotoMono-Light',
+  },
   wFull: {
     width: '100%',
   },
   wHalf: {
     width: '50%',
   },
+  wEleventh: {
+    width: '9.09%',
+  },
+  wFiveSixths: {
+    width: '90.9%',
+  },
+  w16Px: {
+    width: 16,
+  },
   w40Px: {
     width: 40,
+  },
+  h1: {
+    height: 4,
   },
   hFull: {
     height: '100%',
@@ -359,6 +436,9 @@ export const styles = StyleSheet.create({
   },
   borderBottom: {
     borderBottomWidth: 1,
+  },
+  borderRight: {
+    borderRightWidth: 1,
   },
   borderBottom8: {
     borderBottomWidth: 8,
@@ -438,9 +518,26 @@ export const styles = StyleSheet.create({
     height: 16,
     width: 16,
   },
+  square15Px: {
+    height: 15,
+    width: 15,
+  },
   square20Px: {
     height: 20,
     width: 20,
+  },
+  square44Px: {
+    height: 44,
+    width: 44,
+  },
+  maxW40Px: {
+    maxWidth: 40,
+  },
+  maxH54Px: {
+    maxHeight: 54,
+  },
+  aspect1: {
+    aspectRatio: 1,
   },
   z999: {
     zIndex: 999,
@@ -460,7 +557,13 @@ export const styles = StyleSheet.create({
   leadingLg: {
     lineHeight: 20,
   },
+  leadingXl: {
+    lineHeight: 40,
+  },
   raiseMinusOne: {
-    transform: [{ translateY: 0 }],
+    transform: [{ translateY: 1 }],
+  },
+  shiftOne: {
+    transform: [{ translateX: 4 }],
   },
 });

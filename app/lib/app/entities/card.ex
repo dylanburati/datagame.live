@@ -20,6 +20,8 @@ defmodule App.Entities.Card do
       field :stat1, :string
       field :stat2, :string
       field :stat3, :string
+      field :stat4, :string
+      field :stat5, :string
     end
 
     belongs_to :deck, Deck, type: :id
@@ -42,6 +44,8 @@ defmodule App.Entities.Card do
       "1" -> :stat1
       "2" -> :stat2
       "3" -> :stat3
+      "4" -> :stat4
+      "5" -> :stat5
       _ -> nil
     end
   end
@@ -51,11 +55,13 @@ defmodule App.Entities.Card do
       :stat1 -> "Stat1"
       :stat2 -> "Stat2"
       :stat3 -> "Stat3"
+      :stat4 -> "Stat4"
+      :stat5 -> "Stat5"
       _ -> nil
     end
   end
 
   def all_stat_keys() do
-    [:stat1, :stat2, :stat3]
+    [:stat1, :stat2, :stat3, :stat4, :stat5]
   end
 end

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { FormattedRelativeDate } from './FormattedRelativeDate';
-import { RoomState } from '../helpers/nplayerLogic';
+import { RoomPhase, RoomState } from '../helpers/nplayerLogic';
 import { styles } from '../styles';
 
 export type RoomLobbyControlsProps = {
@@ -21,18 +21,23 @@ export function RoomLobbyControls({
 }: RoomLobbyControlsProps) {
   const [draftName, setDraftName] = useState('');
 
+  const selfName =
+    roomState.phase !== RoomPhase.NOT_REGISTERED
+      ? roomState.selfName
+      : undefined;
   useEffect(() => {
-    if (roomState.selfName && connected) {
-      setDraftName(roomState.selfName);
+    if (selfName && connected) {
+      setDraftName(selfName);
     }
-  }, [connected, roomState.selfName]);
+  }, [connected, selfName]);
 
-  const otherNames = roomState.selfId
-    ? roomState.players
-        .othersPresent(roomState.selfId)
-        .map((pl) => pl.name)
-        .join(', ')
-    : '';
+  const otherNames =
+    roomState.phase !== RoomPhase.NOT_REGISTERED
+      ? roomState.players
+          .othersPresent(roomState.selfId)
+          .map((pl) => pl.name)
+          .join(', ')
+      : '';
   const dispError =
     roomError ||
     (renameError && renameError[0] === draftName ? renameError[1] : undefined);
@@ -43,13 +48,13 @@ export function RoomLobbyControls({
     <>
       <View style={[styles.m4]}>
         <Text style={[styles.textXl, styles.fontBold]}>{roomState.roomId}</Text>
-        {roomState.createdAt && (
+        {roomState.phase !== RoomPhase.NOT_REGISTERED && (
           <Text>
             Created{' '}
             <FormattedRelativeDate dateString={roomState.createdAt + 'Z'} />
           </Text>
         )}
-        {roomState.selfId && (
+        {roomState.phase !== RoomPhase.NOT_REGISTERED && (
           <Text>
             Here now: {otherNames ? `You + ${otherNames}` : 'Just you'}
           </Text>

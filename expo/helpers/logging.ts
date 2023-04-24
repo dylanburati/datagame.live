@@ -1,4 +1,5 @@
 import { pick } from 'lodash';
+import objectInspect from 'object-inspect';
 import { loadJson, storeJson } from '../helpers/storage';
 
 const LOG_LIMIT_NUM_FILES = 4;
@@ -104,7 +105,7 @@ export class AsyncStorageLogger {
     if (msg instanceof Error) {
       json = JSON.stringify(pick(msg, ['message', 'name', 'stack']));
     } else {
-      json = JSON.stringify(msg);
+      json = objectInspect(msg);
     }
     this.queue.push([
       new Date().toISOString(),

@@ -32,3 +32,20 @@ export function kissMarryShoot() {
     require('../assets/emoji/skull24.png'),
   ];
 }
+
+export function heart() {
+  return require('../assets/emoji/black_heart_suit24.png');
+}
+
+export function paintings() {
+  return [
+    require('../assets/paintings/michelangelo_the_creation_of_adam.jpg'),
+    require('../assets/paintings/vermeer_girl_with_a_pearl_earring.jpg'),
+    require('../assets/paintings/friedrich_wandering_above_a_sea_of_fog.jpg'),
+    require('../assets/paintings/hokusai_the_great_wave_off_kanagawa.png'),
+    require('../assets/paintings/van_gogh_the_starry_night.jpg'),
+    require('../assets/paintings/munch_the_scream.jpg'),
+    require('../assets/paintings/monet_water_lilies.jpg'),
+    require('../assets/paintings/dali_the_persistence_of_memory.jpg'),
+  ];
+}

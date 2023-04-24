@@ -1,7 +1,7 @@
 import { memoize } from 'lodash';
-import { ThreeAxisMeasurement } from 'expo-sensors';
+import { AccelerometerMeasurement } from 'expo-sensors';
 
-export enum GameStage {
+export enum GamePhase {
   NOT_LEVEL = 'NOT_LEVEL',
   READY = 'READY',
   QUESTION = 'QUESTION',
@@ -10,21 +10,21 @@ export enum GameStage {
   FINISHED = 'FINISHED',
 }
 
-export function shouldShowTimer(gs: GameStage) {
-  return gs !== GameStage.NOT_LEVEL && gs !== GameStage.FINISHED;
+export function shouldShowTimer(gs: GamePhase) {
+  return gs !== GamePhase.NOT_LEVEL && gs !== GamePhase.FINISHED;
 }
 
-export function shouldRunTimer(gs: GameStage) {
-  return gs !== GameStage.NOT_LEVEL && gs !== GameStage.FINISHED;
+export function shouldRunTimer(gs: GamePhase) {
+  return gs !== GamePhase.NOT_LEVEL && gs !== GamePhase.FINISHED;
 }
 
 export function timerFormat(
-  gs: GameStage,
+  gs: GamePhase,
   gameLength: number,
   secsElapsed: number
 ) {
   const secondsLeft = Math.ceil(gameLength - secsElapsed);
-  if (gs === GameStage.READY) {
+  if (gs === GamePhase.READY) {
     return (secondsLeft - gameLength).toString();
   }
   const minutePart = Math.floor(secondsLeft / 60);
@@ -45,7 +45,7 @@ const fastSin = memoize((deg) => Math.sin((deg * Math.PI) / 180));
  * - for elevation angle, -Z is the y-coordinate
  * - for roll angle, +Y is the y-coordinate
  */
-export function isAngleNeutral({ y, z }: ThreeAxisMeasurement) {
+export function isAngleNeutral({ y, z }: AccelerometerMeasurement) {
   if (Math.abs(y) > fastSin(45)) {
     return false;
   }
@@ -53,7 +53,7 @@ export function isAngleNeutral({ y, z }: ThreeAxisMeasurement) {
   return elev >= fastSin(-15) && elev <= fastSin(25);
 }
 
-export function isAngleDown({ y, z }: ThreeAxisMeasurement) {
+export function isAngleDown({ y, z }: AccelerometerMeasurement) {
   if (Math.abs(y) > fastSin(45)) {
     return false;
   }
@@ -61,7 +61,7 @@ export function isAngleDown({ y, z }: ThreeAxisMeasurement) {
   return elev <= fastSin(-50);
 }
 
-export function isAngleUp({ y, z }: ThreeAxisMeasurement) {
+export function isAngleUp({ y, z }: AccelerometerMeasurement) {
   if (Math.abs(y) > fastSin(45)) {
     return false;
   }

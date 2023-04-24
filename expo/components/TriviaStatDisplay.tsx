@@ -1,12 +1,12 @@
 import React from 'react';
 import { FormattedDate, FormattedNumber } from 'react-intl';
-import { TriviaOption, TriviaStatDef } from '../helpers/api';
+import { Trivia, TriviaStatDef } from '../helpers/api';
 import { relativeDeltaToNow } from '../helpers/math';
 
 export type TriviaStatDisplayProps = {
   statDef?: TriviaStatDef;
   numValue: number;
-  option: TriviaOption;
+  option: Trivia['options'][0];
 };
 
 export function TriviaStatDisplay({
@@ -14,7 +14,10 @@ export function TriviaStatDisplay({
   numValue,
   option,
 }: TriviaStatDisplayProps) {
-  if (statDef && !Number.isNaN(numValue)) {
+  if (statDef) {
+    if (Number.isNaN(numValue)) {
+      return null;
+    }
     switch (statDef.type) {
       case 'km_distance':
         return (
@@ -31,7 +34,10 @@ export function TriviaStatDisplay({
           <FormattedNumber style="currency" currency="USD" value={numValue} />
         );
       case 'date':
-        if (statDef.axisMod === 'age' && !Array.isArray(option.questionValue)) {
+        if (
+          statDef.axisMod === 'age' &&
+          typeof option.questionValue === 'string'
+        ) {
           const birthday = new Date(option.questionValue);
           const [years] = relativeDeltaToNow(birthday);
           return (
@@ -43,6 +49,9 @@ export function TriviaStatDisplay({
         }
         return <FormattedDate value={numValue} year="numeric" month="long" />;
     }
+  }
+  if (typeof option.questionValue === 'undefined') {
+    return null;
   }
   const array = Array.isArray(option.questionValue)
     ? option.questionValue

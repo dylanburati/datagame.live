@@ -13,7 +13,7 @@ defmodule App.Entities.Room do
     timestamps()
   end
 
-  @code_alpha "ABCEFHJKMNRSTVXZ"
+  @code_alpha "ABCEFHJLMNRSTVXZ"
   # random looking codes without the birthday paradox
   def id_to_code(room_id) do
     cond do

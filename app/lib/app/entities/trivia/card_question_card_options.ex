@@ -7,6 +7,7 @@ defmodule App.Entities.Trivia.CardQuestionCardOptions do
     :compare_type,
     :max_correct_options,
     :max_incorrect_options,
+    :answer_type,
     # ===============
     :question_col_name,
     :option_col_name
