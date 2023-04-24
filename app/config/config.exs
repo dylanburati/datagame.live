@@ -22,13 +22,13 @@ config :phoenix, :json_library, Jason
 config :esbuild,
   version: "0.16.4",
   default: [
-    args: ~w(js/app.js --bundle --target=es2016 --outdir=../priv/static/assets),
+    args: ~w(js/app.js --bundle --target=es2016 --outdir=../priv/static/js),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
 
 config :dart_sass,
-  version: "1.44.0",
+  version: "1.62.0",
   default: [
     args: [
       "css/app.scss",
