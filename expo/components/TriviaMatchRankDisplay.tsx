@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
-import { TriviaOption } from '../helpers/api';
+import { Trivia } from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { kissMarryShoot, medals } from '../helpers/iconography';
 import { RoomStateWithTrivia } from '../helpers/nplayerLogic';
@@ -8,7 +8,7 @@ import { styles } from '../styles';
 
 export type TriviaMatchRankDisplayProps = {
   roomState: RoomStateWithTrivia;
-  option: TriviaOption;
+  option: Trivia['options'][0];
   index: number;
 };
 

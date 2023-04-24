@@ -128,6 +128,10 @@ export type LazyTriviaExpectation = TriviaExpectation | { kind: 'matchrank' };
 
 export type RoomIncomingMessage =
   | {
+      event: 'clock';
+      timestamp: number;
+    }
+  | {
       event: 'join';
       creatorId: number;
       createdAt: string;

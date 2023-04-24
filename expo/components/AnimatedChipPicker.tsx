@@ -458,14 +458,6 @@ export function AnimatedChipPicker<T>({
     if (!layouts.length || layouts.length !== indexToKey.size) {
       return;
     }
-    // layouts.sort(([_, r1], [__, r2]) => r1.y - r2.y);
-    // for (let i = 0; i < layouts.length - 1; i++) {
-    //   const r = layouts[i][1];
-    //   const nextR = layouts[i + 1][1];
-    //   if (nextR.y - r.y < r.height - 0.01) {
-    //     return;
-    //   }
-    // }
     let lastYUnsorted = 0;
     for (const [_, rect] of layouts) {
       rect.y = Math.max(rect.y, lastYUnsorted);
@@ -544,12 +536,12 @@ export function AnimatedChipPicker<T>({
       ? data.slice().sort(sorter)
       : data;
   return (
-    <GestureHandlerRootView>
+    <GestureHandlerRootView style={style}>
       <PanGestureHandler
         onHandlerStateChange={onHandlerStateChange}
         onGestureEvent={onGestureEvent}
       >
-        <View ref={containerRef} style={style}>
+        <View ref={containerRef}>
           {visibleData.map((item, index) => {
             const styleModifier = chipStyle ? chipStyle({ item, index }) : [];
             const key = keySelector(item);
@@ -576,7 +568,7 @@ export function AnimatedChipPicker<T>({
                   ]}
                   activeOpacity={0.5}
                   disabled={disabled || showSorted}
-                  onLongPress={() => setActiveKey(key)}
+                  onPressIn={() => setActiveKey(key)}
                   onPressOut={() => {
                     const gState = panGestureState.get();
                     if (

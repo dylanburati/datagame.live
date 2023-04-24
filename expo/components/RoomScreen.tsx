@@ -32,11 +32,18 @@ function roomReducer(
   state: RoomState,
   message: RoomIncomingMessage
 ): RoomState {
+  if (message.event === 'clock') {
+    return {
+      ...state,
+      clockDiffMs: Date.now() - message.timestamp,
+    };
+  }
   if (message.event === 'join') {
     const { roundMessages, users, ...room } = message;
     storeJson(roomStorageKey(state.roomId), room);
     const withRoom: RoomState = {
       roomId: state.roomId,
+      clockDiffMs: state.clockDiffMs,
       phase: RoomPhase.LOBBY,
       creatorId: message.creatorId,
       createdAt: message.createdAt,
@@ -84,7 +91,7 @@ function roomReducer(
       phase: RoomPhase.QUESTION,
       trivia: message.trivia,
       turnId: message.turnId,
-      deadline: message.deadline,
+      deadline: message.deadline + state.clockDiffMs,
       durationMillis: message.durationMillis,
       participantId: message.participantId,
       receivedAnswers: new Map(),
@@ -123,7 +130,9 @@ function roomReducer(
         : RoomPhase.DIRECT_FEEDBACK,
       expectedAnswers: message.expectedAnswers,
       triviaStats,
-      deadline: message.isFinal ? message.deadline : state.deadline,
+      deadline: message.isFinal
+        ? message.deadline + state.clockDiffMs
+        : state.deadline,
       durationMillis: message.isFinal
         ? message.durationMillis
         : state.durationMillis,
@@ -155,6 +164,7 @@ export function RoomScreen() {
 
   const initialState: RoomState = {
     roomId,
+    clockDiffMs: 0,
     phase: RoomPhase.NOT_REGISTERED,
   };
   const room = useChannel<RoomOutgoingMessage, RoomState, RoomIncomingMessage>({

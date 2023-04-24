@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useLayoutEffect } from 'react';
 import { Text, View, ViewStyle } from 'react-native';
 import {
   isFeedbackStage,
@@ -10,7 +10,6 @@ import {
 } from '../helpers/nplayerLogic';
 import { AnimatedChipPicker } from './AnimatedChipPicker';
 import { AnswerBoxProps } from './AnswerBoxProps';
-import { ChipPicker } from './ChipPicker';
 import { MultipleChoiceOptionView } from './MultipleChoiceOptionView';
 import { styles } from '../styles';
 
@@ -93,22 +92,18 @@ export function RankingAnswerBox({
   const { trivia, triviaStats } = state;
   const defaultBg = styles.bgPaperDarker;
   const styledOptions = getStyledOptions(state, defaultBg);
-  const sortableOptionIds = triviaAnswers.toList();
-  if (isFeedbackStage(state.phase)) {
-    sortableOptionIds.push(
-      ...trivia.options.map((e) => e.id).filter((id) => !triviaAnswers.has(id))
-    );
-  }
-  const splitViewSortable = sortableOptionIds
+  const orderedOptions = triviaAnswers
+    .toList()
     .map((id) => styledOptions.find(({ option }) => option.id === id))
     .filter((opt): opt is StyledTriviaOption => opt !== undefined);
-  const sortableOptionIdSet = new Set(sortableOptionIds);
-  const splitViewBank = styledOptions.filter(
-    ({ option }) => !sortableOptionIdSet.has(option.id)
-  );
-  useEffect(() => {
-    setDoneAnswering(triviaAnswers.size >= trivia.minAnswers);
-  }, [setDoneAnswering, trivia.minAnswers, triviaAnswers.size]);
+  useLayoutEffect(() => {
+    if (triviaAnswers.size < trivia.minAnswers) {
+      setTriviaAnswers(
+        triviaAnswers.clear().extend(trivia.options.map((e) => e.id))
+      );
+      setDoneAnswering(true);
+    }
+  });
 
   return (
     <>
@@ -121,7 +116,7 @@ export function RankingAnswerBox({
           styles.itemsStretch,
           styles.minH200Px,
         ]}
-        data={splitViewSortable}
+        data={orderedOptions}
         keySelector={({ option }) => String(option.id)}
         chipStyle={({ item: { chipStyle } }) => [
           styles.p0,
@@ -152,45 +147,16 @@ export function RankingAnswerBox({
             showUnderlay={!!barGraph}
             underlayStyle={barGraph}
             directionIndicator={directionIndicator}
+            isDraggable={state.phase === RoomPhase.QUESTION}
           />
         )}
       </AnimatedChipPicker>
-      {splitViewBank.length > 0 && (
+      {state.phase === RoomPhase.QUESTION && (
         <View style={[styles.mt8, styles.row, styles.centerAll]}>
           <Text style={[styles.textPenFainter, styles.textCenter]}>
-            {['▲  TAP TO ADD  ▲', '﹉'.repeat(20)].join('\n')}
+            {['DRAG TO REORDER', '﹉'.repeat(20)].join('\n')}
           </Text>
         </View>
-      )}
-      {state.phase === RoomPhase.QUESTION && (
-        <ChipPicker
-          style={[
-            styles.mt4,
-            styles.mx6,
-            styles.startAll,
-            styles.flexCol,
-            styles.itemsStretch,
-          ]}
-          data={splitViewBank}
-          keySelector={({ option }) => String(option.id)}
-          chipStyle={({ item: { chipStyle } }) => [
-            styles.p0,
-            styles.roundedLg,
-            styles.mt2,
-            chipStyle,
-          ]}
-          onPress={({ item: { option } }) => {
-            setTriviaAnswers(triviaAnswers.append(option.id));
-          }}
-        >
-          {({ item: { option }, index }) => (
-            <MultipleChoiceOptionView
-              item={option}
-              index={index}
-              state={state}
-            />
-          )}
-        </ChipPicker>
       )}
     </>
   );

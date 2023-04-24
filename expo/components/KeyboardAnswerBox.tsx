@@ -14,6 +14,10 @@ import { TriviaOption } from '../helpers/api';
 import { heart } from '../helpers/iconography';
 
 const QWERTY = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
+const QWERTY_SET = QWERTY.reduce(
+  (acc, cur) => acc.extend([...cur]),
+  OrderedSet.empty<string>()
+);
 
 function getStyledOptions(
   state: RoomStateWithTrivia,
@@ -47,10 +51,19 @@ export function KeyboardAnswerBox({
   const { phase, trivia } = state;
   const defaultBg = styles.bgPaperDarker;
   const styledOptions = getStyledOptions(state, triviaAnswers, defaultBg);
+  let orderedOptions = styledOptions.slice();
+  for (const e of styledOptions) {
+    const index = QWERTY_SET.getIndex(e.option.answer);
+    if (index === undefined) {
+      orderedOptions = styledOptions;
+      break;
+    }
+    orderedOptions[index] = e;
+  }
   const keyboardRows = [
-    styledOptions.slice(0, QWERTY[0].length),
-    styledOptions.slice(QWERTY[0].length, QWERTY[0].length + QWERTY[1].length),
-    styledOptions.slice(QWERTY[0].length + QWERTY[1].length),
+    orderedOptions.slice(0, QWERTY[0].length),
+    orderedOptions.slice(QWERTY[0].length, QWERTY[0].length + QWERTY[1].length),
+    orderedOptions.slice(QWERTY[0].length + QWERTY[1].length),
   ];
   if (trivia.questionValueType !== 'number[]') {
     throw new Error();

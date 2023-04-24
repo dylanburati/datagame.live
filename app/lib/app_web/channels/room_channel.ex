@@ -91,6 +91,7 @@ defmodule AppWeb.RoomChannel do
         display_name: room_user.name,
       }
       :ok = RoomServer.join(room, entrance)
+      push(socket, "clock", %{timestamp: System.system_time(:millisecond)})
       {:noreply, socket}
     else
       _ -> {:noreply, socket}

@@ -5,6 +5,7 @@ import { TriviaStatDisplay } from './TriviaStatDisplay';
 import { Trivia } from '../helpers/api';
 import { styles } from '../styles';
 import { TriviaMatchRankDisplay } from './TriviaMatchRankDisplay';
+import Svg, { Line } from 'react-native-svg';
 
 type UnderlayProps = {
   style: ViewProps['style'];
@@ -32,6 +33,7 @@ export type MultipleChoiceOptionViewProps = {
   showUnderlay?: boolean;
   underlayStyle?: ViewProps['style'];
   directionIndicator?: string;
+  isDraggable?: boolean;
 };
 
 export function MultipleChoiceOptionView({
@@ -41,6 +43,7 @@ export function MultipleChoiceOptionView({
   showUnderlay = false,
   underlayStyle,
   directionIndicator,
+  isDraggable = false,
 }: MultipleChoiceOptionViewProps) {
   if (!state.trivia) {
     return null;
@@ -125,6 +128,44 @@ export function MultipleChoiceOptionView({
       >
         {item.answer}
       </Text>
+      {isDraggable && (
+        <Svg
+          style={[
+            styles.absolute,
+            styles.bottom50Percent,
+            styles.right0,
+            styles.mr3,
+          ]}
+          width={16}
+          height={16}
+          viewBox="0 0 3 3"
+        >
+          <Line
+            x1={0}
+            y1={0.5}
+            x2={3}
+            y2={0.5}
+            strokeWidth={0.5}
+            stroke="#00000033"
+          />
+          <Line
+            x1={0}
+            y1={1.5}
+            x2={3}
+            y2={1.5}
+            strokeWidth={0.5}
+            stroke="#00000033"
+          />
+          <Line
+            x1={0}
+            y1={2.5}
+            x2={3}
+            y2={2.5}
+            strokeWidth={0.5}
+            stroke="#00000033"
+          />
+        </Svg>
+      )}
     </View>
   );
 }

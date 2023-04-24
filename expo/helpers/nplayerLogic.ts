@@ -109,6 +109,7 @@ export class RoomPlayerList {
 
 export type RoomZeroState = {
   roomId: string;
+  clockDiffMs: number;
 };
 
 export type RoomLobbyState = RoomZeroState & {
@@ -211,21 +212,33 @@ function evaluateExpectations(
     }
   }
 
-  return optionIds.map((id) => {
-    const pos = answers.getIndex(id) ?? -1;
-    const minPos = minimumPositions.get(id) as number;
-    const maxPos = maximumPositions.get(id) as number;
-    if (minPos <= pos && pos <= maxPos) {
-      return maxPos >= 0 ? true : undefined;
+  const expInclusionPairs = optionIds.map(
+    (id): [boolean, boolean | undefined] => {
+      // -> [expected to be included, included ? in correct place : undefined]
+      const pos = answers.getIndex(id) ?? -1;
+      const minPos = minimumPositions.get(id) as number;
+      const maxPos = maximumPositions.get(id) as number;
+      if (minPos <= pos && pos <= maxPos) {
+        return maxPos >= 0 ? [true, true] : [false, undefined];
+      }
+      if (minPos >= 0 && pos === -1) {
+        return [true, undefined];
+      }
+      return [minPos >= 0, false];
     }
-    if (minPos >= 0 && pos === -1) {
+  );
+  const includedWrongCount = expInclusionPairs.filter(
+    ([a, b]) => a && b === false
+  ).length;
+  return expInclusionPairs.map(([a, b]) => {
+    if (a && b === undefined && includedWrongCount > 0) {
       return true; // incorrect, but should be colored green to differentiate
     }
-    return false;
+    return b;
   });
 }
 
-function getChangeInRanking(
+export function getChangeInRanking(
   expectations: TriviaExpectation[],
   answers: OrderedSet<number>,
   optionIds: number[]

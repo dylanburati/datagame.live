@@ -101,6 +101,9 @@ export const styles = StyleSheet.create({
   absolute: {
     position: 'absolute',
   },
+  bgPaper: {
+    backgroundColor: '#FFF',
+  },
   bgPaperDarker: {
     backgroundColor: '#E4E4E7',
   },
@@ -166,6 +169,9 @@ export const styles = StyleSheet.create({
   },
   left0: {
     left: 0,
+  },
+  bottom50Percent: {
+    bottom: '50%',
   },
   p0_5: {
     padding: 2,
@@ -247,6 +253,9 @@ export const styles = StyleSheet.create({
   },
   mr2: {
     marginRight: 8,
+  },
+  mr3: {
+    marginRight: 12,
   },
   mr4: {
     marginRight: 16,
@@ -381,6 +390,9 @@ export const styles = StyleSheet.create({
   },
   wFiveSixths: {
     width: '90.9%',
+  },
+  w16Px: {
+    width: 16,
   },
   w40Px: {
     width: 40,

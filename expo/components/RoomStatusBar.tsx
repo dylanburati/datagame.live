@@ -18,12 +18,12 @@ import Svg, { Circle, ClipPath, G, Image as SvgImage } from 'react-native-svg';
 type RoomAvatarProps = {
   icon: ImageSourcePropType;
   borderColor: ColorValue;
-  borderFraction: number;
+  borderLength: number;
 };
 
 class RoomAvatar extends React.Component<RoomAvatarProps> {
   render() {
-    const { icon, borderColor, borderFraction } = this.props;
+    const { icon, borderColor, borderLength } = this.props;
     return (
       <Svg style={[styles.aspect1, styles.flexShrink]} viewBox="0 0 100 100">
         <ClipPath id="clip-path">
@@ -42,9 +42,8 @@ class RoomAvatar extends React.Component<RoomAvatarProps> {
             r={48}
             rotation={-90}
             stroke={borderColor}
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-            strokeDasharray={[borderFraction, 99999]}
+            strokeWidth={3}
+            strokeDasharray={[borderLength, 99999]}
           />
         </G>
       </Svg>
@@ -68,18 +67,21 @@ export function RoomStatusBar({ room }: RoomStatusBarProps) {
   }, [connected]);
 
   const fraction = useAnimatedValue(0);
-  const width = fraction.interpolate({
+  const borderLength = fraction.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0%', '314.2%'],
+    outputRange: [0, 96 * 3.142],
     extrapolate: 'clamp',
   });
-  const deadline = state.phase === RoomPhase.QUESTION ? state.deadline : 1;
-  const durationMillis =
-    state.phase === RoomPhase.QUESTION ? state.durationMillis : 1;
+  const [deadline, durationMillis] =
+    state.phase === RoomPhase.QUESTION ||
+    state.phase === RoomPhase.DIRECT_FEEDBACK
+      ? [state.deadline, state.durationMillis]
+      : [1, 1];
   useEffect(() => {
-    if (state.phase !== RoomPhase.QUESTION) {
-      fraction.setValue(0);
-    } else {
+    if (
+      state.phase === RoomPhase.QUESTION ||
+      state.phase === RoomPhase.DIRECT_FEEDBACK
+    ) {
       fraction.setValue(1 - (deadline - Date.now()) / durationMillis);
       Animated.timing(fraction, {
         toValue: 1,
@@ -87,6 +89,8 @@ export function RoomStatusBar({ room }: RoomStatusBarProps) {
         duration: deadline - Date.now(),
         useNativeDriver: false,
       }).start();
+    } else {
+      fraction.setValue(0);
     }
   }, [fraction, state.phase, deadline, durationMillis]);
 
@@ -101,7 +105,11 @@ export function RoomStatusBar({ room }: RoomStatusBarProps) {
       <View style={barStyles}>
         <View style={[styles.flexRow, styles.justifyCenter, styles.py2]}>
           <Text>
-            {hasConnected ? 'Lost connection, retrying...' : 'Connecting...'}
+            {hasConnected
+              ? 'Lost connection, retrying...'
+              : state.phase === RoomPhase.NOT_REGISTERED
+              ? 'Enter name to join'
+              : 'Connecting...'}
           </Text>
         </View>
       </View>
@@ -150,7 +158,7 @@ export function RoomStatusBar({ room }: RoomStatusBarProps) {
                     ? styles.textGreenAccent.color
                     : styles.textRed.color
                 }
-                borderFraction={grade !== null ? 99999 : width}
+                borderLength={grade !== null ? 99999 : borderLength}
               />
             </View>,
             index === 0 && displayPlayers.length > 1 && (
