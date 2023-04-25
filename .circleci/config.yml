@@ -31,7 +31,7 @@ jobs:
 
   macos-build-and-deploy:
     macos:
-      xcode: 14.3.0
+      xcode: 14.2.0
     resource_class: medium
     environment:
       FL_OUTPUT_DIR: output
