@@ -1,25 +1,33 @@
 default_platform(:ios)
 
 platform :ios do
-    before_all do
-        setup_circle_ci
-    end
-
     desc "Push a new beta build to TestFlight"
     lane :beta do
         # Retrieve the api key from key file
         api_key = app_store_connect_api_key(
             key_id: "T54A69Z5XR",
             issuer_id: "b98df218-7e26-4289-8a11-6997abe22122",
-            key_filepath: "AppStoreConnectApiKey.p8",
+            key_content: ENV["APP_STORE_CONNECT_API_KEY"],
+            is_key_content_base64: true,
             duration: 1000,
             in_house: false
         )
 
         # Retrieve signing certificate from file
+        keychain_name = ENV["MATCH_KEYCHAIN_NAME"]
+        keychain_password = ENV["MATCH_KEYCHAIN_PASSWORD"]
+        create_keychain(
+            name: keychain_name,
+            password: keychain_password,
+            default_keychain: true,
+            unlock: true,
+            timeout: 3600,
+            add_to_search_list: true
+        )
         import_certificate(
-            certificate_path: "PrivateKey.p12"
-            # keychain_name: ENV["MATCH_KEYCHAIN_NAME"]
+            certificate_path: "PrivateKey.p12",
+            keychain_name: keychain_name,
+            keychain_password: keychain_password
         )
 
         # Import mobile provisioning profile from app store
@@ -68,6 +76,8 @@ platform :ios do
             skip_waiting_for_build_processing: true,
             api_key: api_key
         )
+
+        delete_keychain(name: keychain_name)
     end
 end
 
