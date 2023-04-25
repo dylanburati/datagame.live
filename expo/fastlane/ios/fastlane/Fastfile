@@ -25,7 +25,8 @@ platform :ios do
             add_to_search_list: true
         )
         import_certificate(
-            certificate_path: "PrivateKey.p12",
+            certificate_path: "distribution.p12",
+            certificate_password: ENV["IOS_CERT_KEYSTORE_PASSWORD"],
             keychain_name: keychain_name,
             keychain_password: keychain_password
         )
