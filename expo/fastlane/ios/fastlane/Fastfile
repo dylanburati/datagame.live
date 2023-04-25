@@ -32,9 +32,10 @@ platform :ios do
         )
 
         # Import mobile provisioning profile from app store
+        provisioning_name = "*[expo] com.dylanburati.datagame AppStore 2022-08-24T10:02:13.119Z"
         get_provisioning_profile(
             filename: "distribution.mobileprovision",
-            provisioning_name: "*[expo] com.dylanburati.datagame AppStore 2022-08-24T10:02:13.119Z",
+            provisioning_name: provisioning_name,
             ignore_profiles_with_different_name: true,
             readonly: true,
             api_key: api_key
@@ -55,7 +56,7 @@ platform :ios do
             use_automatic_signing: false,
             path: "DatagameLive.xcodeproj",
             bundle_identifier: "com.dylanburati.datagame",
-            profile_name: "DatagameLive",
+            profile_name: provisioning_name,
         )
 
         # Build the iOS app
@@ -66,7 +67,7 @@ platform :ios do
             export_method: "app-store",
             export_options: {
                 provisioningProfiles: {
-                    "com.dylanburati.datagame" => "DatagameLive",
+                    "com.dylanburati.datagame" => provisioning_name,
                 }
             },
             codesigning_identity: "iPhone Distribution: Dylan Burati (8ZJSR88RX4)"
