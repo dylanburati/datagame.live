@@ -1,0 +1,73 @@
+default_platform(:ios)
+
+platform :ios do
+    before_all do
+        setup_circle_ci
+    end
+
+    desc "Push a new beta build to TestFlight"
+    lane :beta do
+        # Retrieve the api key from key file
+        api_key = app_store_connect_api_key(
+            key_id: "T54A69Z5XR",
+            issuer_id: "b98df218-7e26-4289-8a11-6997abe22122",
+            key_filepath: "AppStoreConnectApiKey.p8",
+            duration: 1000,
+            in_house: false
+        )
+
+        # Retrieve signing certificate from file
+        import_certificate(
+            certificate_path: "PrivateKey.p12"
+            # keychain_name: ENV["MATCH_KEYCHAIN_NAME"]
+        )
+
+        # Import mobile provisioning profile from app store
+        get_provisioning_profile(
+            filename: "distribution.mobileprovision",
+            provisioning_name: "*[expo] com.dylanburati.datagame AppStore 2022-08-24T10:02:13.119Z",
+            ignore_profiles_with_different_name: true,
+            readonly: true,
+            api_key: api_key
+        )
+
+        previous_build_number = latest_testflight_build_number(
+            api_key: api_key
+        )
+
+        # Increment build number
+        increment_build_number(
+            xcodeproj: "DatagameLive.xcodeproj",
+            build_number: previous_build_number + 1
+        )
+
+        # Disable automatic code signing, so the signing certificate on the filesystem can be used
+        update_code_signing_settings(
+            use_automatic_signing: false,
+            path: "DatagameLive.xcodeproj",
+            bundle_identifier: "com.dylanburati.datagame",
+            profile_name: "DatagameLive",
+        )
+
+        # Build the iOS app
+        build_app(
+            workspace: "DatagameLive.xcworkspace",
+            scheme: "DatagameLive",
+            skip_profile_detection: true,
+            export_method: "app-store",
+            export_options: {
+                provisioningProfiles: {
+                    "com.dylanburati.datagame" => "DatagameLive",
+                }
+            },
+            codesigning_identity: "iPhone Distribution: Dylan Burati (8ZJSR88RX4)"
+        )
+
+        # Upload app to TestFlight, skipping waiting for build processing to reduce CI credit waste
+        upload_to_testflight(
+            skip_waiting_for_build_processing: true,
+            api_key: api_key
+        )
+    end
+end
+

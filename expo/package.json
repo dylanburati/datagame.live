@@ -2,9 +2,9 @@
   "main": "./index",
   "scripts": {
     "lint": "eslint --ext .js,.ts,.tsx --ignore-path .gitignore ./",
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest",
     "eject": "expo eject"
@@ -25,7 +25,7 @@
     "@react-native-segmented-control/segmented-control": "2.4.0",
     "@react-navigation/native": "^6.0.2",
     "@react-navigation/native-stack": "^6.1.0",
-    "expo": "^47.0.0",
+    "expo": "~47.0.14",
     "expo-av": "~13.0.3",
     "expo-dev-client": "~2.0.1",
     "expo-font": "~11.0.1",
