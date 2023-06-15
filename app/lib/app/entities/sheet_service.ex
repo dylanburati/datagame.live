@@ -122,19 +122,19 @@ defmodule App.Entities.SheetService do
     |> Enum.reduce(%Card.CardStatBox{}, fn {k, v}, box -> Map.put(box, k, v) end)
 
     params = cells
-    |> Map.new(fn {nm, val} ->
+    |> Enum.reduce(%{stat_box: stat_box}, fn {nm, val}, acc ->
       case nm do
-        "Card" -> {:title, val}
-        "Disable?" -> {:is_disabled, is_binary(val) and val != ""}
-        "Popularity" -> {:popularity_unscaled, float_or_nil(val)}
-        "ID" -> {:unique_id, non_empty_or_nil(val)}
-        "Category1" -> {:cat1, non_empty_or_nil(val)}
-        "Category2" -> {:cat2, non_empty_or_nil(val)}
-        "Notes" -> {:notes, val}
-        _ -> {:unused, nil}
+        "Card" ->
+          if is_binary(val) and val != "", do: Map.put(acc, :title, val), else: acc
+        "Disable?" -> Map.put(acc, :is_disabled, is_binary(val) and val != "")
+        "Popularity" -> Map.put(acc, :popularity_unscaled, float_or_nil(val))
+        "ID" -> Map.put(acc, :unique_id, non_empty_or_nil(val))
+        "Category1" -> Map.put(acc, :cat1, non_empty_or_nil(val))
+        "Category2" -> Map.put(acc, :cat2, non_empty_or_nil(val))
+        "Notes" -> Map.put(acc, :notes, val)
+        _ -> acc
       end
     end)
-    |> Map.delete(:unused)
     |> Map.put(:stat_box, stat_box)
 
     if Map.has_key?(params, :title) do
@@ -298,17 +298,28 @@ defmodule App.Entities.SheetService do
         where: is_nil(c.unique_id) or not (c.unique_id in ^card_user_ids)
       end
     )
-    |> Ecto.Multi.insert_all(
+    |> Ecto.Multi.run(
       :cards,
-      Card,
-      fn %{deck: deck} -> Enum.map(cards, &(Map.put(&1, :deck_id, deck.id) |> add_timestamps())) end,
-      returning: [:id],
-      on_conflict: {:replace_all_except, [:id, :inserted_at]},
-      conflict_target: [:deck_id, :unique_id]
+      fn repo, %{deck: deck} ->
+        db_cards = Enum.map(cards, &(Map.put(&1, :deck_id, deck.id)))
+        |> Enum.chunk_every(5000)
+        |> Enum.map(fn lst ->
+          repo.insert_all(
+            Card,
+            Enum.map(lst, &add_timestamps/1),
+            returning: [:id],
+            on_conflict: {:replace_all_except, [:id, :inserted_at]},
+            conflict_target: [:deck_id, :unique_id]
+          )
+        end)
+        |> Enum.map(fn {_ct, rows} -> rows end)
+        |> Enum.concat()
+        {:ok, db_cards}
+      end
     )
     |> Ecto.Multi.run(
       :card_tags,
-      fn repo, %{cards: {_, db_cards}, card_tag_defs: {_, db_tag_defs}} ->
+      fn repo, %{cards: db_cards, card_tag_defs: {_, db_tag_defs}} ->
         pos_map = for {ctdef, %{id: id}} <- Enum.zip(ctdefs, db_tag_defs), into: %{} do
           {ctdef.position, id}
         end
