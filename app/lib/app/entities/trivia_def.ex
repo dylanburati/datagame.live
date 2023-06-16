@@ -1,4 +1,9 @@
 defmodule App.Entities.TriviaDef do
+  @moduledoc """
+  An entity that defines a way to generate a Trivia item (question,
+  options, and grading expectations).
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -6,6 +11,34 @@ defmodule App.Entities.TriviaDef do
   alias App.Entities.Pairing
   alias App.Entities.CardStatDef
   alias App.Entities.CardTagDef
+
+  @type t :: %__MODULE__{
+    id: non_neg_integer,
+    question_format: String.t,
+    question_source: String.t,
+    question_difficulty: float,
+    question_pairing_subset: String.t,
+    option_source: String.t,
+    option_difficulty: float,
+    selection_length: integer,
+    selection_min_true: integer,
+    selection_max_true: integer,
+    selection_compare_type: String.t,
+    answer_type: String.t,
+    deck_id: non_neg_integer | nil,
+    pairing_id: non_neg_integer | nil,
+    question_tag_def_id: non_neg_integer | nil,
+    option_stat_def_id: non_neg_integer | nil,
+    option_tag_def_id: non_neg_integer | nil,
+    deck: Deck.t | nil,
+    pairing: Pairing.t | nil,
+    option_format_separator: String.t | nil,
+    question_tag_def: CardTagDef.t | nil,
+    option_stat_def: CardStatDef.t | nil,
+    option_tag_def: CardTagDef.t | nil,
+    inserted_at: NaiveDateTime.t,
+    updated_at: NaiveDateTime.t,
+  }
 
   schema "trivia_def" do
     field :question_format, :string
@@ -29,8 +62,14 @@ defmodule App.Entities.TriviaDef do
     timestamps()
   end
 
+  @spec stat_answer_types :: [String.t]
+  @doc """
+  The list of valid values for a trivia def's `answer_type` when its `option_source` is
+  "stat".
+  """
   def stat_answer_types(), do: ~w(stat.asc stat.desc stat.min stat.max)
 
+  @doc false
   def validations(trivia_def) do
     changeset = trivia_def
     |> validate_required([

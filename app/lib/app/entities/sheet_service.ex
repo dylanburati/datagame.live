@@ -35,7 +35,7 @@ defmodule App.Entities.SheetService do
     end
   end
 
-  def authorize() do
+  defp authorize() do
     case App.Cache.lookup(@tkn_cache_key) do
       nil -> get_new_token()
       tkn -> {:ok, tkn}
@@ -73,6 +73,10 @@ defmodule App.Entities.SheetService do
     end
   end
 
+  @spec get_spreadsheet(String.t) :: {:ok, map()} | {:error, any()}
+  @doc """
+  Gets the spreadsheet data in the Google Sheet with the given ID.
+  """
   def get_spreadsheet(spreadsheet_id) do
     with {:ok, tkn} <- authorize() do
       auth = [{"Authorization", "Bearer #{tkn}"}]
@@ -375,7 +379,7 @@ defmodule App.Entities.SheetService do
             col_metas = case meta_loc do
               nil -> %{}
               idx ->
-                headers_after_loc = Enum.drop(col_names, meta_loc + 1)
+                headers_after_loc = Enum.drop(col_names, idx + 1)
                 |> Enum.take_while(&(not is_nil(&1)))
 
                 Enum.map(rows, fn row -> Enum.drop(row, idx) end)

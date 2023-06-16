@@ -3,8 +3,6 @@ defmodule AppWeb.DeckView do
 
   import App.Utils
 
-  alias App.Entities.Deck
-
   def card_tag_def_json(card_tag_def) do
     %{
       id: card_tag_def.id,
@@ -22,8 +20,6 @@ defmodule AppWeb.DeckView do
       createdAt: deck.inserted_at,
       updatedAt: deck.updated_at,
       numEnabledCards: deck.enabled_count,
-      canSelectDifficulty: Deck.can_select_difficulty?(deck),
-      canSelectCategories: Deck.can_select_categories?(deck),
     }
     |> maybe_put(is_list(deck.category_counts), :categoryCounts, deck.category_counts)
     |> maybe_put_lazy(

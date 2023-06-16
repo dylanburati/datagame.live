@@ -32,8 +32,8 @@ defmodule AppWeb.DeckController do
 
       case DeckService.update(id, params_full) do
         {:ok, deck} -> render(conn, "deck.json", %{deck: deck})
-        {:error, _, err} -> conn |> put_status(400) |> json(%{"error" => to_string(err)})
         {:error, err} -> conn |> put_status(400) |> json(%{"error" => to_string(err)})
+        {:error, _, err} -> conn |> put_status(400) |> json(%{"error" => to_string(err)})
       end
     else
       _ -> conn |> put_status(403) |> json(%{"error" => "Forbidden"})

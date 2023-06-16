@@ -1,4 +1,7 @@
 defmodule App.Entities.GameService do
+  @moduledoc """
+  A service for games that run with a list of one deck's cards.
+  """
 
   import Ecto.Query
 
@@ -43,14 +46,30 @@ defmodule App.Entities.GameService do
     dynamic([], ^weight_col / fragment("-log(random())"))
   end
 
+  defp can_select_difficulty?(deck) do
+    (deck.has_popularity_count / deck.enabled_count) >= 0.9
+  end
+
+  defp can_select_categories?(deck) do
+    (deck.cat1_nunique > 1) and ((deck.has_cat1_count / deck.enabled_count) >= 0.9)
+  end
+
+  @spec get_cards(deck_id :: integer,
+                  difficulty :: float,
+                  category_boosts :: [{String.t, float}],
+                  limit :: non_neg_integer) :: {:ok, %{cards: [Card.t], deck: Deck.t}} | {:error, String.t}
+  @doc """
+  Samples cards from the given deck, adjusting each card's probability of inclusion
+  based on the other arguments.
+  """
   def get_cards(deck_id, difficulty, category_boosts, limit) do
     with {:ok, deck} <- DeckService.show(deck_id) do
-      df = case Deck.can_select_difficulty?(deck) do
+      df = case can_select_difficulty?(deck) do
         true -> min(10, max(-10, difficulty))
         false -> 0
       end
       # upper limit at 20 as a precaution
-      boosts_adj = case Deck.can_select_categories?(deck) do
+      boosts_adj = case can_select_categories?(deck) do
         true -> category_boosts |> Enum.take(20) |> Enum.map(fn {cat, val} -> {cat, val * 0.3} end)
         false -> []
       end

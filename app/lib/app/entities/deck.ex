@@ -1,4 +1,8 @@
 defmodule App.Entities.Deck do
+  @moduledoc """
+  An entity representing a single type of `Card`.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -7,6 +11,28 @@ defmodule App.Entities.Deck do
   alias App.Entities.CardStatDef
   alias App.Entities.DeckTag
   alias App.Entities.Pairing
+
+  @type t :: %__MODULE__{
+    id: non_neg_integer,
+    category_label: String.t,
+    spreadsheet_id: String.t,
+    sheet_name: String.t,
+    title: String.t,
+    enabled_count: integer,
+    has_popularity_count: integer,
+    has_id_count: integer,
+    has_cat1_count: integer,
+    cat1_nunique: integer,
+    cards: [Card.t],
+    card_tag_defs: [CardTagDef.t],
+    card_stat_defs: [CardStatDef.t],
+    pairings: [Pairing.t],
+    tags: [DeckTag.t],
+    image_url: String.t,
+    image_dominant_color: String.t,
+    inserted_at: NaiveDateTime.t,
+    updated_at: NaiveDateTime.t,
+  }
 
   schema "deck" do
     field :category_label, :string
@@ -29,14 +55,6 @@ defmodule App.Entities.Deck do
     many_to_many :tags, DeckTag, join_through: "deck_deck_tag"
 
     timestamps()
-  end
-
-  def can_select_difficulty?(deck) do
-    (deck.has_popularity_count / deck.enabled_count) >= 0.9
-  end
-
-  def can_select_categories?(deck) do
-    (deck.cat1_nunique > 1) and ((deck.has_cat1_count / deck.enabled_count) >= 0.9)
   end
 
   @doc false

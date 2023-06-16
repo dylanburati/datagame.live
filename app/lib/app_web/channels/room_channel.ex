@@ -40,7 +40,6 @@ defmodule AppWeb.RoomChannel do
             {_n, {reason, _}} -> {:error, %{reason: "name #{reason}"}}
             {_, _} -> {:error, %{reason: "unknown error"}}
           end
-        _ -> {:error, %{reason: "unknown error"}}
       end
     else
       _ -> {:error, %{reason: "room user #{user_id} doesn't exist"}}

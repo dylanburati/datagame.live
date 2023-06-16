@@ -1,21 +1,44 @@
+alias App.Entities.Trivia.TriviaLoader
+alias App.Entities.Trivia.TriviaLoaderDefaults
+alias App.Entities.Trivia.CardQuestionCardOptions
+alias App.Entities.Trivia.CardQuestionStatOptions
+alias App.Entities.Trivia.CardQuestionTagOptions
+alias App.Entities.Trivia.PairingQuestionCardOptions
+alias App.Entities.Trivia.PairingQuestionStatOptions
+alias App.Entities.Trivia.TagQuestionCardOptions
+
+import Ecto.Query
+alias App.Repo
+alias App.Entities.Card
+alias App.Entities.CardTag
+alias App.Entities.PairingService
+alias App.Entities.TriviaDef
+alias App.Entities.TriviaService
+
 defprotocol App.Entities.Trivia.TriviaLoader do
+  @type t_question :: {Card.t | CardTag.t | nil, String.t | [String.t] | nil}
+
+  @spec get_question_instance(t) :: t_question
   @doc """
   Randomly select one question row (Card or CardTag), which has an
   association with at least 1 non-null answer row.
   """
   def get_question_instance(trivia)
 
+  @spec get_answer_query(t, t_question, boolean) :: any
   @doc """
   Get the query to select answer rows for the question instance. They will be correct
   if `invert_cmp` is false, and incorrect if it's true.
   """
   def get_answer_query(trivia, question_instance, invert_cmp)
 
+  @spec exec_answer_query(t, any) :: [map]
   @doc """
   Execute the query to select answer rows.
   """
   def exec_answer_query(trivia, query)
 
+  @spec get_extra_info(t, [map]) :: [map]
   @doc """
   Fetch additional information for each answer in the "question_value" field. Example:
 
@@ -29,28 +52,13 @@ defprotocol App.Entities.Trivia.TriviaLoader do
   """
   def get_extra_info(trivia, options)
 
+  @spec get_question_value_type(t) :: String.t | nil
   @doc """
   Get the Typescript name of the type get_answer_query and get_extra_info return as a
   :question_value
   """
   def get_question_value_type(trivia)
 end
-
-alias App.Entities.Trivia.TriviaLoader
-alias App.Entities.Trivia.TriviaLoaderDefaults
-alias App.Entities.Trivia.CardQuestionCardOptions
-alias App.Entities.Trivia.CardQuestionStatOptions
-alias App.Entities.Trivia.CardQuestionTagOptions
-alias App.Entities.Trivia.PairingQuestionCardOptions
-alias App.Entities.Trivia.PairingQuestionStatOptions
-alias App.Entities.Trivia.TagQuestionCardOptions
-
-import Ecto.Query
-alias App.Repo
-alias App.Entities.Card
-alias App.Entities.PairingService
-alias App.Entities.TriviaDef
-alias App.Entities.TriviaService
 
 defimpl TriviaLoader, for: CardQuestionCardOptions do
   use TriviaLoaderDefaults
@@ -376,23 +384,23 @@ defimpl TriviaLoader, for: PairingQuestionCardOptions do
   ) do
     limit = if invert_cmp, do: fl_max, else: tl_max
     cmp_type = TriviaService.maybe_invert_compare_type(invert_cmp, def_cmp_type)
-    opts = case cmp_type do
-      :eq -> [intersect: subset]
-      :neq -> [subtract: subset]
-      _ -> []
+    subset_tuple = case cmp_type do
+      :eq -> {:intersect, subset}
+      :neq -> {:subtract, subset}
+      _ -> nil
     end
     pairing = pairing
     |> Repo.preload([deck: [:card_stat_defs]])
-    [pairing, difficulty, limit, title_sep || " + ", opts]
+    {pairing, difficulty, limit, title_sep || " + ", subset_tuple}
   end
 
   def exec_answer_query(
     %PairingQuestionCardOptions{},
-    [pairing, difficulty, limit, title_sep, opts]
+    {pairing, difficulty, limit, title_sep, subset_tuple}
   ) do
     %{"agg" => aggs} = pairing.criteria
     with :ok <- PairingService.validate_aggs(pairing.deck, aggs |> Map.to_list()) do
-      result = PairingService.sample_pairs(pairing, difficulty, limit, opts)
+      result = PairingService.sample_pairs(pairing, difficulty, limit, subset_tuple)
 
       Enum.map(result, fn {c1, c2, extra} ->
         %{
@@ -432,11 +440,11 @@ defimpl TriviaLoader, for: PairingQuestionStatOptions do
 
   def exec_answer_query(
     %PairingQuestionStatOptions{option_stat_def: stat_def},
-    [pairing, difficulty, limit, title_sep, opts]
+    {pairing, difficulty, limit, title_sep, subset_tuple}
   ) do
     %{"agg" => aggs} = pairing.criteria
     with :ok <- PairingService.validate_aggs(pairing.deck, aggs |> Map.to_list()) do
-      result = PairingService.sample_pairs(pairing, difficulty, limit, opts)
+      result = PairingService.sample_pairs(pairing, difficulty, limit, subset_tuple)
 
       Enum.map(result, fn {c1, c2, _} ->
         sa = String.to_atom(stat_def.key)

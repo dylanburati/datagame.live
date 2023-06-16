@@ -1,4 +1,8 @@
 defmodule App.Entities.PairingService do
+  @moduledoc """
+  A service that speeds up queries on pairings.
+  """
+
   import App.Utils
   import Ecto.Query
   import App.Entities.Card, only: [column_map: 0]
@@ -6,8 +10,17 @@ defmodule App.Entities.PairingService do
   alias App.MathExtensions
   alias App.Repo
   alias App.Entities.Card
+  alias App.Entities.CardStatDef
+  alias App.Entities.Deck
+  alias App.Entities.Pairing
   alias App.Entities.PairingInstance
 
+  @spec validate_aggs(deck :: Deck.t, aggs :: [{String.t, String.t}]) :: :ok | {:error, String.t}
+  @doc """
+  Checks that each given {key, funcname} is a valid aggregation for the deck,
+  i.e. the key refers to a stat which the deck's cards contain, and the funcname
+  refers to a function which takes two stats of that type.
+  """
   def validate_aggs(_deck, []), do: :ok
   def validate_aggs(deck, [{stat_key, funcname} | rest]) do
     case validate_aggs(deck, rest) do
@@ -24,6 +37,11 @@ defmodule App.Entities.PairingService do
     end
   end
 
+  @spec calc_agg(stat_def :: CardStatDef.t, funcname :: String.t, v1 :: String.t, v2 :: String.t) :: any()
+  @doc """
+  Calculates an aggregate function named by the second parameter, using the
+  third and fourth parameters as input.
+  """
   def calc_agg(_stat_def, "geodist", v1, v2) do
     [lat1, lon1] = String.split(v1, ",")
     |> Enum.map(&(parse_float!(&1) * :math.pi / 180.0))
@@ -33,21 +51,21 @@ defmodule App.Entities.PairingService do
     MathExtensions.geodist(lat1, lon1, lat2, lon2)
   end
 
-  def to_exp_dist(w) do
+  defp to_exp_dist(w) do
     -1.0 * :math.exp(w) / :math.log(:rand.uniform())
   end
 
-  def card_exp_dist(c, d, penalty \\ 0) do
+  defp card_exp_dist(c, d, penalty \\ 0) do
     to_exp_dist(c.popularity * d + penalty)
   end
 
-  def update_card_items(map, cards) do
+  defp update_card_items(map, cards) do
     Enum.reduce(cards, map, fn c, acc ->
       Map.update!(acc, c.id, fn {_, t} -> {c, t + 1} end)
     end)
   end
 
-  def candidates_impl(pairing) do
+  defp candidates_impl(pairing) do
     %{"filter" => cond_lst} = pairing.criteria
     indep_conds = Enum.reduce(
       cond_lst,
@@ -70,6 +88,10 @@ defmodule App.Entities.PairingService do
     query |> Repo.all()
   end
 
+  @spec candidates(pairing :: Pairing.t) :: [Card.t]
+  @doc """
+  Returns the list of cards which satisfy this pairing's 1-card filter criteria.
+  """
   def candidates(pairing) do
     cache_key = "PairingService.candidates.#{pairing.id}.#{pairing.updated_at}"
     case App.Cache.lookup(cache_key) do
@@ -81,12 +103,13 @@ defmodule App.Entities.PairingService do
     end
   end
 
-  def pair_id(id1, id2) when is_binary(id1) and is_binary(id2) do
+  @spec pair_id(Card.t | String.t, Card.t | String.t) :: {String.t, String.t}
+  defp pair_id(id1, id2) when is_binary(id1) and is_binary(id2) do
     if id1 < id2, do: {id1, id2}, else: {id2, id1}
   end
-  def pair_id(c1, c2), do: pair_id(c1.id, c2.id)
+  defp pair_id(c1, c2), do: pair_id(c1.id, c2.id)
 
-  def subset_impl(pairing, name) do
+  defp subset_impl(pairing, name) do
     query = from p in PairingInstance,
       select: {p.card_id1, p.card_id2, p.info},
       where: p.pairing_id == ^pairing.id,
@@ -103,6 +126,13 @@ defmodule App.Entities.PairingService do
     )
   end
 
+  @spec subset(pairing :: Pairing.t, name :: String.t) :: {MapSet.t, MapSet.t, map()}
+  @doc """
+  Processes all pairing instances for the given subset into a triple. The first item
+  is a set of card IDs which are part of any pair; the second item is the set of pair IDs,
+  which are constructed from the card IDs; the third item is a map from pair ID to pair info
+  (a string).
+  """
   def subset(pairing, name) do
     cache_key = "PairingService.subset.#{pairing.id}.#{pairing.updated_at}.#{name}"
     case App.Cache.lookup(cache_key) do
@@ -114,16 +144,24 @@ defmodule App.Entities.PairingService do
     end
   end
 
-  def sample_pairs(pairing, difficulty, limit, opts \\ []) do
+  @spec sample_pairs(pairing :: Pairing.t,
+                     difficulty :: float,
+                     limit :: non_neg_integer,
+                     {:subset | :intersect, String.t} | nil) :: [map]
+  @doc """
+  Obtains `limit` pairs from the pairing for inclusion in trivia, subtracting or intersecting with the
+  subset if one is given.
+  """
+  def sample_pairs(pairing, difficulty, limit, subset_tuple) do
     %{"filter" => cond_lst} = pairing.criteria
     boost_lst = Map.get(pairing.criteria, "boost", [])
-    {_, subtract_pairs, _} = case Keyword.get(opts, :subtract) do
-      nil -> {nil, MapSet.new(), nil}
-      name -> subset(pairing, name)
+    {_, subtract_pairs, _} = case subset_tuple do
+      {:subtract, name} -> subset(pairing, name)
+      _ -> {nil, MapSet.new(), nil}
     end
-    {intersect_ids, intersect_pairs, info_map} = case Keyword.get(opts, :intersect) do
+    {intersect_ids, intersect_pairs, info_map} = case subset_tuple do
+      {:intersect, name} -> subset(pairing, name)
       nil -> {nil, nil, %{}}
-      name -> subset(pairing, name)
     end
 
     halfdif = difficulty * 0.5
@@ -159,6 +197,10 @@ defmodule App.Entities.PairingService do
     end
   end
 
+  @spec eval_join_conditions(maybe_improper_list, Card.t, Card.t) :: boolean
+  @doc """
+  Evaluates the list of 2-card filter criteria using the two cards as input.
+  """
   def eval_join_conditions([], _, _), do: true
   def eval_join_conditions([cnd | rest], card1, card2) do
     curr = case cnd do
@@ -174,6 +216,10 @@ defmodule App.Entities.PairingService do
     curr and eval_join_conditions(rest, card1, card2)
   end
 
+  @spec eval_popularity(maybe_improper_list, Card.t, Card.t, Deck.t) :: float
+  @doc """
+  Computes the sum of the outputs of each boost criterion for the two cards.
+  """
   def eval_popularity([], _card1, card2, _deck), do: card2.popularity
   def eval_popularity([cnd | rest], card1, card2, deck) do
     curr = case cnd do

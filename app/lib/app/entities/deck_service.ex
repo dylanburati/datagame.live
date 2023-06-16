@@ -11,6 +11,10 @@ defmodule App.Entities.DeckService do
   alias App.Entities.Pairing
   alias App.Entities.TriviaDef
 
+  @spec list() :: [Deck.t]
+  @doc """
+  Lists the Decks in the database.
+  """
   def list() do
     Repo.all(Deck)
   end
@@ -43,6 +47,10 @@ defmodule App.Entities.DeckService do
     %Deck{deck | card_tag_defs: updated_ctdefs}
   end
 
+  @spec show(id :: integer) :: {:ok, Deck.t} | {:error, String.t}
+  @doc """
+  Gets a `Deck` by ID, and loads the fields necessary for a detailed view.
+  """
   def show(id) do
     case Repo.get(Deck, id) do
       nil -> {:error, "Invalid ID #{id}"}
@@ -57,6 +65,11 @@ defmodule App.Entities.DeckService do
     end
   end
 
+  @spec show!(id :: integer) :: Deck.t
+  @doc """
+  Gets a `Deck` by ID, and loads the fields necessary for a detailed view. Raises
+  `KeyError` if the ID is not found.
+  """
   def show!(id) do
     case show(id) do
       {:ok, result} -> result
@@ -149,11 +162,45 @@ defmodule App.Entities.DeckService do
     end
   end
 
-  def update_image_props(deck, image_props) do
+  defp update_image_props(deck, image_props) do
     cast(deck, image_props, [:image_url, :image_dominant_color])
     |> Repo.update()
   end
 
+  @typedoc """
+  An update to be applied to a Deck. Encompasses all aspects of the Deck
+  that can't be imported from a spreadsheet.
+
+  ```typescript
+  type DeckUpdate {
+    references: {
+      [r: string]: {
+        entity: "Pairing" | "CardTagDef" | "CardStatDef";
+        selector: Record<string, any>;
+      }
+    };
+    image: {
+      image_url: string;
+      image_dominant_color: string;
+    };
+    pairings: {
+      name: string;
+      criteria: {
+        filter: string[][];
+        boost?: string[][];
+        agg?: Record<string, string>;
+      }
+    }[];
+    trivia_defs: Record<string, any>[];
+  }
+  ```
+  """
+  @type deck_update :: map
+
+  @spec update(id :: integer, params :: deck_update) :: {:ok, Deck.t} | {:error, String.t} | {:error, Deck.t, [String.t]}
+  @doc """
+  Updates a deck with new pairings and trivia defs, and a new image.
+  """
   def update(
     id,
     %{"references" => refs,
@@ -173,12 +220,15 @@ defmodule App.Entities.DeckService do
     end)
     |> Map.new()
 
-    with (deck0 = %Deck{}) <- Repo.get(Deck, id),
-         init_deck = Repo.preload(deck0, [:pairings, :card_tag_defs, :card_stat_defs]),
-         {:ok, deck1} <- update_pairings(init_deck, pairings, refs_elixir),
-         {:ok, deck2} <- update_trivia_defs(deck1, trivia_defs, refs_elixir),
-         {:ok, deck} <- update_image_props(deck2, image_props) do
-      {:ok, deck}
+    with (deck0 = %Deck{}) <- Repo.get(Deck, id) do
+      init_deck = Repo.preload(deck0, [:pairings, :card_tag_defs, :card_stat_defs])
+      with {:ok, deck1} <- update_pairings(init_deck, pairings, refs_elixir),
+           {:ok, deck2} <- update_trivia_defs(deck1, trivia_defs, refs_elixir),
+           {:ok, deck} <- update_image_props(deck2, image_props) do
+        {:ok, deck}
+      end
+    else
+      _ -> {:error, "Deck not found"}
     end
   end
 

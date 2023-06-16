@@ -16,7 +16,7 @@ defmodule AppWeb.RoomProcess do
     :ok = Phoenix.PubSub.unsubscribe(pubsub_server, "__room:" <> room_id)
   end
 
-  @spec update(room_id :: binary(), message :: term()) :: :ok
+  @spec update(String.t, any) :: :ok
   def update(room_id, message) do
     Phoenix.PubSub.broadcast(App.PubSub, "__room:" <> room_id, message)
   end
@@ -170,7 +170,7 @@ defmodule AppWeb.RoomProcess do
     end
   end
 
-  @spec stream(state_agent :: Agent.t(), timeout :: number() | :infinity) :: Stream.t()
+  @spec stream(state_agent :: Agent.agent, timeout :: number() | :infinity) :: Enum.t
   defp stream(state_agent, timeout) do
     Stream.unfold(timeout, fn ms -> pull_event_and_apply(state_agent, ms) end)
   end

@@ -114,7 +114,7 @@ defmodule App.Entities.TriviaService do
     end)
     with {:ok, option_vals} <- cascade_error(parsed) do
       options_numeric = case {stat_def.stat_type, stat_def.axis_mod} do
-        {"date", "age"} -> Enum.map(option_vals, fn dt -> DateTime.diff(DateTime.utc_now(), dt) end)
+        {"date", "age"} -> Enum.map(option_vals, fn dt -> NaiveDateTime.diff(NaiveDateTime.utc_now(), dt) end)
         _ -> option_vals
       end
       {:ok, options_numeric, stat_def}
