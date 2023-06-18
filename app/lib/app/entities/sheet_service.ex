@@ -1,4 +1,6 @@
 defmodule App.Entities.SheetService do
+  require Logger
+
   import String, except: [length: 1]
   import Ecto.Changeset
   import Ecto.Query
@@ -80,14 +82,64 @@ defmodule App.Entities.SheetService do
   def get_spreadsheet(spreadsheet_id) do
     with {:ok, tkn} <- authorize() do
       auth = [{"Authorization", "Bearer #{tkn}"}]
-      with {:ok, top} <- fetch_json("#{@base_url}/#{spreadsheet_id}", auth) do
+      qs = URI.encode_query([{"fields", "properties.title,sheets.properties(sheetId,title,sheetType,gridProperties)"}])
+      with {:ok, top} <- fetch_json("#{@base_url}/#{spreadsheet_id}?#{qs}", auth) do
         case top do
           %{"sheets" => sheets, "properties" => %{"title" => title}} ->
             with {:ok, sheet_range_data} <- get_spreadsheet_values(spreadsheet_id, sheets, auth) do
               {:ok, Map.put(sheet_range_data, "title", title)}
             end
-          %{"error" => %{"message" => err}} ->
-            {:error, err}
+          %{"error" => error} ->
+            :ok = Logger.warning("Google API error", response: error)
+            {:error, "Google API error"}
+          _ ->
+            {:error, "Unknown error"}
+        end
+      end
+    end
+  end
+
+  defp get_spreadsheet_values_(spreadsheet_id, sheets, auth) do
+    decks = sheets
+    |> Enum.map(fn item -> item["properties"] end)
+    |> Enum.filter(fn
+      %{"sheetType" => "GRID"} -> true
+      _ -> false
+    end)
+    |> Enum.map(fn %{"title" => title, "gridProperties" => grid_props} ->
+      case title do
+        "Deck:" <> name ->
+          h = grid_props["rowCount"]
+          w = grid_props["columnCount"]
+          {name, "#{title}!R1C1:R#{h}C#{w}"}
+        _ ->
+          :skip
+      end
+    end)
+    |> Enum.filter(fn e -> e != :skip end)
+
+    if length(decks) > 0 do
+      query_lst = decks |> Enum.map(fn {_, rng} -> {"ranges", rng} end) |> Enum.to_list()
+      qs = URI.encode_query(query_lst ++ [{"majorDimension", "COLUMNS"}])
+      with {:ok, %{body: body}} <- HTTPoison.get("#{@base_url}/#{spreadsheet_id}/values:batchGet?#{qs}", auth) do
+        App.Native.parse_spreadsheet(Enum.map(decks, &elem(&1, 0)), body)
+      end
+    else
+      {:error, "No sheets named 'Deck:*'"}
+    end
+  end
+
+  def get_spreadsheet_(spreadsheet_id) do
+    with {:ok, tkn} <- authorize() do
+      auth = [{"Authorization", "Bearer #{tkn}"}]
+      qs = URI.encode_query([{"fields", "properties.title,sheets.properties(sheetId,title,sheetType,gridProperties)"}])
+      with {:ok, top} <- fetch_json("#{@base_url}/#{spreadsheet_id}?#{qs}", auth) do
+        case top do
+          %{"sheets" => sheets, "properties" => %{"title" => _title}} ->
+            get_spreadsheet_values_(spreadsheet_id, sheets, auth)
+          %{"error" => error} ->
+            :ok = Logger.warning("Google API error", response: error)
+            {:error, "Google API error"}
           _ ->
             {:error, "Unknown error"}
         end

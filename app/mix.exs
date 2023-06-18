@@ -52,6 +52,7 @@ defmodule App.MixProject do
       {:httpoison, "~> 2.1"},
       {:csv, "~> 3.0"},
       {:heap, "~> 3.0"},
+      {:rustler, "~> 0.28.0"},
       {:gradient, github: "esl/gradient", only: [:dev], runtime: false}
     ]
   end
