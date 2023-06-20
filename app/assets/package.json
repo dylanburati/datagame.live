@@ -1,0 +1,11 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Dylan Burati",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "dayjs": "^1.11.8"
+  }
+}

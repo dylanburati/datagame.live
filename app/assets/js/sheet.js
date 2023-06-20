@@ -1,3 +1,5 @@
+import { queryParser, toInteger, toPredicate } from "./advancedQuery";
+import { Result } from "./attoparsec";
 import { EffectList, h, modify, prettyPrint } from "./utils";
 
 export class SheetPage {
@@ -5,10 +7,10 @@ export class SheetPage {
     this.r = {
       titleEl: document.getElementById('sheet-title'),
       controls: document.getElementById('control-container'),
-      controlSwitcher: document.querySelector('#control-container button'),
       searchInput: document.querySelector('#control-container input'),
-      pagination: document.querySelector('#control-container nav ul'),
-      deckPicker: document.querySelector('#control-container select'),
+      deckPicker: document.querySelector('#bottom-controls select'),
+      pagination: document.getElementById('pagination'),
+      paginationReadout: document.getElementById('pagination-readout'),
       errorBox: document.getElementById('error-box'),
       warningList: document.getElementById('warning-list'),
       table: document.getElementById('sheet-table'),
@@ -25,7 +27,8 @@ export class SheetPage {
       tableData: null,
       currentPage: 1,
       deckName: null,
-      query: '',
+      query: [],
+      queryText: '',
       pageSize: 50,
     }
 
@@ -34,8 +37,9 @@ export class SheetPage {
     this.setTableData = effects.setter(val => { this.s.tableData = val; });
     this.setCurrentPage = effects.setter(val => { this.s.currentPage = val; });
     this.setDeckName = effects.setter(val => { this.s.deckName = val; });
-    this.setQuery = effects.setter(val => {
-      this.s.query = val;
+    this.setQuery = effects.setter(val => { this.s.query = val; });
+    this.setQueryText = effects.setter(val => {
+      this.s.queryText = val;
       this.r.searchInput.value = val;
     });
 
@@ -43,8 +47,10 @@ export class SheetPage {
     effects.register(this.populateTable.bind(this), () => [this.s.tableData, this.s.currentPage]);
     effects.register(
       this.calculateTableData.bind(this),
-      () => [this.s.deckName, this.s.sheetData, this.s.query]
+      () => [this.s.deckName, this.s.sheetData]
     );
+    effects.register(this.calculateQuery.bind(this), () => [this.s.tableData && this.s.tableData.columns, this.s.queryText]);
+    effects.register(this.runQuery.bind(this), () => [this.s.tableData && this.s.tableData.columns, this.s.query]);
 
     effects.register(() => {
       const { sheetData } = this.s;
@@ -52,7 +58,7 @@ export class SheetPage {
         return;
       }
       modify(this.r.deckPicker, true, {},
-        sheetData.decks.map(d => h('option', { value: d.title }, d.title.replace('Deck:', '', 1)))
+        sheetData.map(({ deck }) => h('option', {}, deck.title))
       );
     }, () => [this.s.sheetData]);
 
@@ -65,7 +71,6 @@ export class SheetPage {
       refreshBtn,
       publishBtn,
       deckPicker,
-      controlSwitcher,
       searchInput
     } = this.r;
     refreshBtn.addEventListener('click', () => {
@@ -82,123 +87,108 @@ export class SheetPage {
 
     deckPicker.addEventListener('change', evt => {
       this.setDeckName(evt.target.selectedOptions[0].value);
-      this.setQuery('');
-    });
-
-    controlSwitcher.addEventListener('click', () => {
-      if (Array.from(searchInput.classList).includes('hidden')) {
-        controlSwitcher.textContent = '☰'
-      } else {
-        controlSwitcher.textContent = '🔍'
-      }
-      searchInput.classList.toggle('hidden');
-      deckPicker.classList.toggle('hidden');
+      this.setQueryText('disable:false');
     });
 
     searchInput.addEventListener('input', evt => {
-      this.setQuery(evt.target.value);
+      this.setQueryText(evt.target.value);
       this.setCurrentPage(1);
     });
   }
 
   repaginate() {
-    const { pagination } = this.r;
+    const { pagination, paginationReadout } = this.r;
     const { tableData, currentPage, pageSize } = this.s;
-    if (tableData == null) return;
 
-    const pageTotal = Math.ceil((tableData.length - 1) / pageSize);
-
-    const getMiddle = n => {
-      switch (n) {
-        case 1: return [n + 1, n + 2].filter(x => x < pageTotal);
-        case 2: return [n, n + 1, n + 2].filter(x => x < pageTotal);
-        case pageTotal - 1: return [n - 2, n - 1, n].filter(x => x > 1);
-        case pageTotal: return [n - 2, n - 1].filter(x => x > 1);
-        default: return [n - 1, n, n + 1];
-      }
-    };
-
-    const pages = getMiddle(currentPage);
-    if (pages[0] > 1) {
-      if (pages[0] > 2) {
-        pages.unshift('...')
-      }
-      pages.unshift(1);
+    const pageTotal = tableData != null ? Math.max(1, Math.ceil(tableData.length / pageSize)) : 1;
+    if (currentPage > pageTotal) {
+      this.setCurrentPage(1);
+      return;
     }
-    if (pages[pages.length - 1] < pageTotal) {
-      if (pages[pages.length - 1] < pageTotal - 1) {
-        pages.push('...');
-      }
-      pages.push(pageTotal);
-    }
-
-    const oldPageLinks = {};
-    const separators = {};
-    Array.from(pagination.children).forEach((child, i) => {
-      if (child.textContent === '...') {
-        const which = i === 1 ? 'left' : 'right';
-        separators[which] = child;
-      } else {
-        oldPageLinks[child.textContent] = child;
-      }
-    });
-    pagination.replaceChildren(
-      ...pages.map((pg, i) => {
-        if (pg === '...') {
-          const which = i === 1 ? 'left' : 'right';
-          return separators[which] || h('span', { style: { margin: '0 0.25rem' } }, '...');
-        }
-        const attrs = {
-          active: pg === currentPage,
-          class: 'interactable',
-          onClick: () => {
-            this.setCurrentPage(pg);
-          },
-        };
-        if (String(pg) in oldPageLinks) {
-          if (pg === currentPage) {
-            oldPageLinks[String(pg)].querySelector('button').setAttribute('active', '');
-          } else {
-            oldPageLinks[String(pg)].querySelector('button').removeAttribute('active');
+    const destinations = [
+      currentPage <= 1 ? null : 1,
+      currentPage <= 1 ? null : currentPage - 1,
+      currentPage >= pageTotal ? null : currentPage + 1,
+      currentPage >= pageTotal ? null : pageTotal
+    ];
+    const children = [...pagination.querySelectorAll("button")];
+    children.forEach(
+      /** @type {(el: HTMLElement, i: number) => void} */
+      (el, index) => {
+        const dest = destinations[index];
+        if (dest === null) {
+          el.classList.add("disabled");
+          el.classList.remove("interactable");
+          el.setAttribute("tabindex", -1);
+          if (typeof el.dataset.to !== "undefined") {
+            delete el.dataset.to;
+          }
+        } else {
+          el.classList.remove("disabled");
+          el.classList.add("interactable");
+          el.removeAttribute("tabindex");
+          if (el.dataset.to !== String(dest)) {
+            el.dataset.to = String(dest);
+            el.onclick = () => {
+              this.setCurrentPage(dest);
+            }
           }
         }
-        return oldPageLinks[String(pg)] || h('li', {}, h('button', attrs, pg));
-      })
+      }
     );
+    if (tableData == null) {
+      paginationReadout.textContent = '';
+    } else {
+      paginationReadout.textContent = `Page ${currentPage} of ${pageTotal}`;
+    }
   }
 
   populateTable() {
     const { warningList, table } = this.r;
-    const { tableData, currentPage, pageSize } = this.s;
+    const { deckName, tableData, currentPage, pageSize } = this.s;
     if (tableData == null) {
-      modify(table, true, {}, []);
+      modify(table, true, {}, [
+        h("caption", {}, "Loading...")
+      ]);
       warningList.classList.add('hidden');
       return;
     }
 
-    const { deck, warnings } = tableData;
+    const { columns, indices, length, warnings } = tableData;
     if (warnings.length) {
       warningList.classList.remove('hidden');
       modify(warningList, true, {},
-        warnings.map(txt => h('li', { class: 'text-sm' }, txt))
+        warnings.map(({ message }) => h('li', { class: 'text-sm' }, message))
       );
     } else {
       warningList.classList.add('hidden');
     }
     const rowNums = new Array(pageSize).fill(0)
       .map((_, i) => (currentPage - 1) * pageSize + i)
-      .filter(e => e < tableData.length);
+      .filter(n => n < length)
+      .map(n => indices[n]);
+    const numWidth = Math.ceil(Math.log10(1 + Math.max(1, ...rowNums)));
+    const showCols = columns.filter(col => col.show);
     modify(table, true, {}, [
-      h('thead', {},
-        deck.map(col =>
-          h('th', {}, col.name)
-        )
-      ),
+      h('thead', {}, [
+        h('tr', {},
+          showCols.map((col, i) =>
+            h('th', i === 0 ? { width: `${numWidth}ex` } : {}, col.label)
+          )
+        ),
+        h('tr', {},
+          showCols.map(col =>
+            h('td', { class: 'text-xs text-center font-mono p-1' },
+              col.section ? `${col.section}, ${col.type}` : col.type
+            )
+          )
+        ),
+      ]),
       h('tbody', {},
         rowNums.map(n =>
           h('tr', {},
-            deck.map(({ rows }) =>
-              h('td', { class: 'text-sm p-1' }, n < rows.length ? rows[n] : '')
+            showCols.map(col =>
+              h('td', { class: 'text-sm p-1' }, col.formatter(col.get(n)))
             )
           )
         )
@@ -206,214 +196,197 @@ export class SheetPage {
     ]);
   }
 
+  runQuery() {
+    const { query, tableData } = this.s;
+    if (tableData == null) {
+      return;
+    }
+    const { deck } = tableData;
+
+    const mask = query.reduce(
+      (acc, { accessor, test }) =>
+        deck.data.cards.map((_, i) => acc[i] && test(accessor(i))),
+      deck.data.cards.map(() => true)
+    );
+    const indices = new Array(mask.length).fill(-1);
+    let lengthFiltered = 0;
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i]) {
+        indices[lengthFiltered] = i;
+        lengthFiltered += 1;
+      }
+    }
+
+    this.setTableData({
+      ...tableData,
+      indices,
+      length: lengthFiltered,
+    })
+  }
+
+  calculateQuery() {
+    const { tableData, queryText } = this.s;
+    if (tableData == null) {
+      return;
+    }
+
+    const [_, queryResult] = queryParser.parse(queryText);
+    if (queryResult.kind === Result.OK) {
+      const query = [];
+      for (const qpart of queryResult.val) {
+        const [field, ...subpath] = qpart.field.split('.');
+        /** @type {{ type: keyof import('./advancedQuery').PredicateTypes }} */
+        const column = tableData.columns.find((col) =>
+          col.label.toLowerCase().replace(/ /g, '_').replace(/[^A-Za-z0-9_]/g, '') === field.toLowerCase()
+        );
+        if (column === undefined) {
+          console.log('Field not found: ' + field);
+        }
+        let type = column.type;
+        let accessor = column.get;
+        if (subpath.length > 1) {
+          console.log("Too deeply nested: " + qpart.field);
+          return;
+        }
+        if (subpath.length > 0) {
+          if (type === "latLng") {
+            const accessorOrErr = toInteger(subpath[0]).validate("", n => n === 0 || n === 1)
+              .map((n) => (i) => {
+                const v = column.get(i);
+                return v != null ? v[n] : null;
+              });
+            if (accessorOrErr.kind === Result.ERR) {
+              console.log(`Not a LatLng field: .${subpath[0]}`);
+              return;
+            }
+            type = "number";
+            accessor = accessorOrErr.val;
+          } else {
+            console.log("Field does not exist")
+          }
+        }
+        const testOrErr = toPredicate(qpart)[column.type];
+        if (testOrErr.kind === Result.ERR) {
+          console.log(testOrErr.msg);
+          return;
+        }
+        query.push({ accessor: column.get, test: testOrErr.val });
+      }
+      this.setQuery(query);
+    } else {
+      console.log(queryResult.msg);
+    }
+  }
+
   calculateTableData() {
-    const { sheetData, deckName, query } = this.s;
+    const { sheetData, deckName } = this.s;
     if (!sheetData || !deckName) {
       this.setTableData(null);
       return;
     }
-    const deck = sheetData.decks.find(d => d.title === deckName);
-    if (!deck) {
+    /** @type {import('./client').DeckAndCallouts | null} */
+    const entry = sheetData.find(d => d.deck.title === deckName);
+    if (!entry) {
       this.setTableData(null);
       return;
     }
+    const { deck, callouts } = entry;
+    const { cards, stat_defs: statDefs, tag_defs: tagDefs } = deck.data;
+    const unpascal = (s) => s.slice(0, 1).toLowerCase() + s.slice(1);
+    const warnings = callouts.slice();
 
-    const warnings = [];
-    const first = (arr) => arr.length ? arr[0] : null;
-    const tagLabelPos = deck.values.findIndex((col, i, arr) =>
-      first(col) === 'Column' && i + 1 < arr.length && first(arr[i + 1]) === 'Label'
-    );
-    const tagLabels = {};
-    if (tagLabelPos !== -1) {
-      const kCol = deck.values[tagLabelPos];
-      const vCol = deck.values[tagLabelPos + 1];
-      for (let i = 1; i < Math.min(kCol.length, vCol.length); i++) {
-        if (/^(Category|Tag|Stat)/.test(kCol[i]) && vCol[i]) {
-          tagLabels[kCol[i]] = vCol[i];
-        }
-      }
-    } else {
-      warnings.push("Tags don't have labels")
-    }
-    const showCols = [];
-    const disabledRows = new Set();
-    const disableMapCol = deck.values.find(col => col[0] === 'Disable?');
-    if (disableMapCol !== undefined) {
-      disableMapCol.forEach((e, i) => {
-        if (e && i > 0) disabledRows.add(i - 1);
-      });
-    } else {
-      warnings.push("No column named 'Disable?'");
-    }
-    const filteredRows = new Set();
-    let stopAtCol = deck.values.findIndex(col => first(col) === null);
-    if (stopAtCol === -1) {
-      stopAtCol = deck.values.length;
-      warnings.push("Couldn't find blank column to end main section");
-    }
-    if (query) {
-      const queryL = query.toLowerCase();
-      for (const col of deck.values.slice(0, stopAtCol)) {
-        if (col.length > 1 && col[0] !== 'Disable?' && col[0] !== 'ID') {
-          col.forEach((cell, i) => {
-            if (i > 0 && cell.toLowerCase().includes(queryL)) {
-              filteredRows.add(i - 1);
-            }
-          });
-        }
-      }
-    }
-
-    let longCol = [];
-    let numRows = 0;
-    let popColCount = null;
-    let cardColCount = null;
-    const tagColCounts = {};
-    const statColTypes = {};
-    const countOccurrences = (acc, cur, i) => {
-      if (cur !== '' && !disabledRows.has(i)) {
-        acc.total += 1;
-        acc.grouped[cur] = (acc.grouped[cur] || 0) + 1;
+    const categorySummary = cards.reduce((acc, { category }) => {
+      if (category != null) {
+        acc.count += 1;
+        acc.groupCounts.set((acc.groupCounts.get(category) || 0) + 1);
       }
       return acc;
-    };
-    const countTagOccurrences = (acc, cur, i) => {
-      if (cur !== '' && !disabledRows.has(i)) {
-        acc.total += 1;
-        const tagList = cur.split(/\s*,\s*/);
-        for (const tag of tagList) {
-          acc.grouped[tag] = (acc.grouped[tag] || 0) + 1;
-        }
-        acc.multi = acc.multi || tagList.length > 1;
-      }
-      return acc;
-    };
-    const inferType = (str) => {
-      if (str === '')
-        return 'empty';
-      else if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(str))
-        return 'date';
-      else if (/^\$[0-9.,]+$/.test(str))
-        return 'dollar_amount';
-      else if (str.includes(' ') || Number.isNaN(parseFloat(str, 10)))
-        return 'string';
-
-      return 'number';
+    }, { count: 0, groupCounts: new Map() });
+    const formatters = {
+      string: (x) => x != null ? x : "",
+      date: (x) => x != null ? x.slice(0, 10) : "",
+      number: (x) => x != null ? x.toLocaleString() : "",
+      currency: (x) =>  x != null ? `$${x.toLocaleString()}` : "",
+      latLng: (x) => x != null ? `${x[0]}, ${x[1]}` : "",
+      boolean: (x) => x === true ? "true" : "",
+      stringArray: (x) => x != null ? x.join(", ") : "",
     }
-    const countTypes = (acc, cur, i) => {
-      if (!disabledRows.has(i)) {
-        const typ = inferType(cur);
-        acc[typ] = (acc[typ] || 0) + 1;
-      }
-      return acc;
-    };
-    for (const col of deck.values.slice(0, stopAtCol + 1)) {
-      if (col.length > 1 && col[0] !== 'Disable?' && col[0] !== 'ID') {
-        const colRep = {
-          name: tagLabels[col[0]] || col[0],
-          rows: col.slice(1).filter((_, i) =>
-            !disabledRows.has(i) && (!query || filteredRows.has(i))
-          ),
+    const columns = [
+      { label: "#", type: "", show: true, get: (i) => String(i + 1), formatter: formatters.string, },
+      { label: "Card", type: "string", show: true, get: (i) => cards[i].title, formatter: formatters.string, },
+      { label: "Disable?", type: "boolean", show: false, get: (i) => cards[i].is_disabled, formatter: formatters.boolean, },
+      { label: "Notes", type: "string", show: false, get: (i) => cards[i].notes, formatter: formatters.string, },
+      { label: "ID", type: "string", show: false, get: (i) => cards[i].unique_id, formatter: formatters.string, },
+      { label: "Popularity", type: "number", show: true, get: (i) => cards[i].popularity, formatter: formatters.number, },
+      { label: "Category", type: "string", show: categorySummary.count > 0, get: (i) => cards[i].category, formatter: formatters.string },
+      ...tagDefs.map(e => ({
+        label: e.label,
+        section: "tag",
+        type: "string[]",
+        show: true,
+        get: (i) => e.values[i],
+        formatter: formatters.stringArray,
+      })),
+      ...statDefs.map(e => {
+        return {
+          label: e.label,
+          section: "stat",
+          type: unpascal(e.data.kind),
+          show: true,
+          get: (i) => e.data.values[i],
+          formatter:
+            e.data.kind === 'Date'
+              ? formatters.date
+              : e.data.kind === 'LatLng'
+              ? formatters.latLng
+              : e.data.kind === 'Number' && e.data.unit === 'Dollar'
+              ? formatters.currency
+              : e.data.kind === 'Number'
+              ? formatters.number
+              : formatters.string,
         };
-        showCols.push(colRep);
-        if (col.length > longCol.length) {
-          longCol = col;
-          numRows = colRep.rows.length;
-        }
-        if (/^(Category|Tag|Stat)/.test(col[0])) {
-          if (!tagLabels[col[0]]) {
-            warnings.push(`Column '${col[0]}' needs a descriptive label`);
-          }
-          if (col[0].startsWith('Tag') || col[0].startsWith('Category')) {
-            tagColCounts[col[0]] = col.slice(1).reduce(countTagOccurrences, {
-              total: 0,
-              grouped: {},
-              multi: false
-            });
-          } else {
-            statColTypes[col[0]] = col.slice(1).reduce(countTypes, {});
-          }
-        } else if (col[0] === 'Popularity') {
-          popColCount = col.slice(1).reduce(countTypes, {});
-        } else if (col[0] === 'Card') {
-          cardColCount = col.slice(1).reduce(countOccurrences, {
-            total: 0,
-            grouped: {},
+      }),
+    ];
+    if (categorySummary.count === 0) {
+      warnings.push({
+        kind: "Warning",
+        message: "Category is not filled out - the game customization sliders will be disabled"
+      });
+    } else {
+      if (categorySummary.count < cards.length) {
+        warnings.push({
+          kind: "Warning",
+          message: `Category is blank for ${cards.length - categorySummary.count} cells`
+        });
+      }
+      categorySummary.groupCounts.forEach((v, cat) => {
+        if (v < 10) {
+          warnings.push({
+            kind: "Warning",
+            message: `Fewer than 10 cards have the primary category: ${cat}`
           });
         }
-      }
-    }
-    const enabledCount = longCol.length - 1 - disabledRows.size;
-    if (!cardColCount) {
-      warnings.unshift("Error: column 'Card' is required");
-    } else {
-      if (cardColCount.total < enabledCount) {
-        warnings.push(
-          `Column 'Card' is blank for ${enabledCount - cardColCount.total} cells - ` +
-          'these will be dropped'
-        );
-      }
-      Object.entries(cardColCount.grouped).filter(([, v]) => v > 1).forEach(([card, c]) => {
-        warnings.push(`Card value '${card.replace(/\n/g, "⮐")}' appears ${c} times`);
       });
-    }
-    if (!popColCount) {
-      warnings.push("Column 'Popularity' is not filled out");
-    } else {
-      if (popColCount['empty'] > 0) {
-        warnings.push(
-          `Column 'Popularity' is blank for ${popColCount['empty']} cells - ` +
-          'these will be treated as zeros'
-        );
-      }
-      const nanPop = Object.entries(popColCount)
-        .filter(([k, v]) => k !== 'empty' && k !== 'number' && v !== 0);
-      nanPop.forEach(([k, v]) => {
-        warnings.push(
-          `Column 'Popularity' is a ${k} for ${v} cells - ` +
-          'these will be treated as zeros'
-        );
-      });
-    }
-    if (!tagColCounts['Category1']) {
-      warnings.push("Column 'Category1' is not filled out - the game customization sliders will be disabled");
-    } else {
-      const counts1 = tagColCounts['Category1'];
-      if (counts1.multi) {
-        warnings.push("Column 'Category1' should not have multiple values in any cell");
-      }
-      if (counts1.total < enabledCount) {
-        warnings.push(
-          `Column 'Category1' is blank for ${enabledCount - counts1.total} cells`
-        );
-      }
-      const smallGroups = [];
-      Object.entries(counts1.grouped).forEach(([cat, size]) => {
-        if (size < 10) {
-          smallGroups.push(cat);
-        }
-      });
-      smallGroups.forEach(cat => {
-        warnings.push(`Fewer than 10 cards have the primary category: ${cat}`);
-      });
-      const gCount = Object.keys(counts1.grouped).length;
-      if (gCount > 10) {
-        warnings.push(
-          `Column 'Category1' has ${gCount} categories - the game customization menu only allows 10`
-        );
+      if (categorySummary.groupCounts.size > 10) {
+        warnings.push({
+          kind: "Warning",
+          message: `There are ${categorySummary.groupCounts.size} different categories - the game customization menu only allows 10`
+        });
       }
     }
     this.setTableData({
-      deck: showCols,
-      length: numRows,
+      columns,
+      deck,
+      indices: [],
+      length: 0,
       warnings,
     });
+    this.setQueryText("disable:false");
   }
 
   async refresh() {
     this.s.refreshEnabled = false;
-    const { controls, errorBox, titleEl, publishContainer } = this.r;
-    titleEl.textContent = "Loading sheet...";
+    const { controls, errorBox, publishContainer } = this.r;
     errorBox.classList.add('hidden');
     controls.classList.add('hidden');
     publishContainer.classList.add('hidden');
@@ -422,28 +395,29 @@ export class SheetPage {
     this.setDeckName(null);
     this.setQuery('');
 
+    let json;
     try {
       const id = new URL(window.location).searchParams.get('id');
       if (id == null) {
         window.location = window.pageRoutes.index;
       }
       const response = await fetch(`${window.apiRoutes.show}${id}`);
-      const json = await response.json();
+      json = await response.json();
       if (json.error) {
         throw new Error(json.error);
       } else {
         controls.classList.remove('hidden');
-        titleEl.textContent = json.title;
-        this.setDeckName(json.decks[0].title);
-        this.setSheetData(json);
       }
     } catch (err) {
       errorBox.classList.remove('hidden');
       titleEl.textContent = 'Error';
       errorBox.textContent = err;
+      return;
     } finally {
       this.s.refreshEnabled = true;
     }
+    this.setDeckName(json[0].deck.title);
+    this.setSheetData(json);
   }
 
   async publish() {

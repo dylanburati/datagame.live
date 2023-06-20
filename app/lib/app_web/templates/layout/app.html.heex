@@ -26,11 +26,12 @@
       deckUpdate: "<%= Routes.url(@conn) <> Routes.deck_path(@conn, :update, "") %>",
     };
     </script>
+    <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
     <script defer type="text/javascript" src={Routes.static_path(@conn, "/js/app.js")}></script>
   </head>
-  <body class="mb-8">
-    <header class="bg-black">
-      <nav class="flex container align-center">
+  <body class={Map.get(assigns, :body_class, "mb-8")}>
+    <header class={Map.get(assigns, :header_class, "") <> " bg-black"}>
+      <nav class="flex container items-center">
         <a href={Routes.page_path(@conn, :index)} style="line-height: 0">
           <img
             style="height: 55px;"
@@ -42,7 +43,7 @@
         <a target="_blank" rel="noreferrer" href="https://dylanburati.github.io">About me</a>
       </nav>
     </header>
-    <main role="main" class="container">
+    <main role="main" class={Map.get(assigns, :main_class, "") <> " container"}>
       <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
       <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
       <%= @inner_content %>
