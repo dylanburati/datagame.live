@@ -4,9 +4,11 @@ use chrono::{NaiveDate, NaiveTime};
 use error_chain::error_chain;
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::{Deserialize};
+use serde::Deserialize;
 
-use crate::types::{Card, CardTable, Deck, StatArray, StatDef, StatUnit, TagDef, Callout, AnnotatedDeck};
+use crate::types::{
+    AnnotatedDeck, Callout, Card, CardTable, Deck, StatArray, StatDef, StatUnit, TagDef,
+};
 
 fn sheet_column_name(index: usize) -> String {
     let chars: Vec<_> = std::iter::successors(Some(index), |x| Some(x / 26).filter(|xn| *xn > 0))
@@ -18,8 +20,14 @@ fn sheet_column_name(index: usize) -> String {
 #[derive(Clone, Copy)]
 struct RawColumn<'a> {
     index: usize,
-    header: &'a String,
+    header: &'a str,
     body: &'a [String],
+}
+
+impl<'a> RawColumn<'a> {
+    fn new(index: usize, header: &'a str, body: &'a [String]) -> Self {
+        Self { index, header, body }
+    }
 }
 
 struct NamedColumns<'a> {
@@ -34,6 +42,7 @@ struct NamedColumns<'a> {
 fn parse_cards(named_columns: NamedColumns<'_>, callouts: &mut Vec<Callout>) -> Vec<Card> {
     let mut cards = vec![];
     let Some(title_column) = named_columns.title else {
+        callouts.push(Callout::Error("Title column is required".into()));
         return cards
     };
     let mut id_set = HashSet::new();
@@ -124,14 +133,14 @@ fn parse_tag_defs(
     let mut tag_defs = vec![];
     let mut labels = HashSet::new();
     for col in tag_columns {
-        if col.body.len() > len {
+        if len > 0 && col.body.len() > len {
             callouts.push(Callout::Warning(format!(
                 "Skipping data below row {} in column {}",
                 len,
                 sheet_column_name(col.index)
             )));
         }
-        if col.body.iter().all(|s| s.is_empty()) {
+        if col.body.iter().take(len).all(|s| s.is_empty()) {
             continue;
         }
         if labels.contains(col.header) {
@@ -142,8 +151,8 @@ fn parse_tag_defs(
             )));
             continue;
         }
-        labels.insert(col.header.clone());
-        let label = col.header.clone();
+        labels.insert(col.header);
+        let label = col.header.to_owned();
 
         let values = col
             .body
@@ -183,9 +192,9 @@ trait StatArrayParser {
 // }
 
 enum StatFormat {
+    Numeric,
     Iso8601,
     DollarAmount,
-    Numeric,
     Coordinates,
 }
 
@@ -196,17 +205,17 @@ impl StatArrayParser for StatFormat {
         }
 
         match self {
-            StatFormat::Iso8601 => {
+            StatFormat::Numeric => {
                 let mut values = vec![];
                 for cell in src {
                     if cell.is_empty() {
                         values.push(None)
                     } else {
-                        let val = NaiveDate::parse_from_str(cell.as_str(), "%Y-%m-%d").ok()?;
-                        values.push(Some(val.and_time(NaiveTime::MIN)))
+                        let val = cell.parse().ok()?;
+                        values.push(Some(val))
                     }
                 }
-                Some(StatArray::Date { values })
+                Some(StatArray::Number { unit: None, values })
             }
             StatFormat::DollarAmount => {
                 let mut values = vec![];
@@ -231,17 +240,17 @@ impl StatArrayParser for StatFormat {
                     values,
                 })
             }
-            StatFormat::Numeric => {
+            StatFormat::Iso8601 => {
                 let mut values = vec![];
                 for cell in src {
                     if cell.is_empty() {
                         values.push(None)
                     } else {
-                        let val = cell.parse().ok()?;
-                        values.push(Some(val))
+                        let val = NaiveDate::parse_from_str(cell.as_str(), "%Y-%m-%d").ok()?;
+                        values.push(Some(val.and_time(NaiveTime::MIN).into()))
                     }
                 }
-                Some(StatArray::Number { unit: None, values })
+                Some(StatArray::Date { values })
             }
             StatFormat::Coordinates => {
                 let mut values = vec![];
@@ -283,20 +292,20 @@ fn parse_stat_defs(
     let mut stat_defs = vec![];
     let mut labels = HashSet::new();
     let value_parsers = [
-        StatFormat::Iso8601,
-        StatFormat::DollarAmount,
         StatFormat::Numeric,
+        StatFormat::DollarAmount,
+        StatFormat::Iso8601,
         StatFormat::Coordinates,
     ];
     for col in stat_columns {
-        if col.body.len() > len {
+        if len > 0 && col.body.len() > len {
             callouts.push(Callout::Warning(format!(
                 "Skipping data below row {} in column {}",
                 len,
                 sheet_column_name(col.index)
             )))
         }
-        if col.body.iter().all(|s| s.is_empty()) {
+        if col.body.iter().take(len).all(|s| s.is_empty()) {
             continue;
         }
         if labels.contains(col.header) {
@@ -307,8 +316,8 @@ fn parse_stat_defs(
             )));
             continue;
         }
-        labels.insert(col.header.clone());
-        let label = col.header.clone();
+        labels.insert(col.header);
+        let label = col.header.to_owned();
 
         let stat_array = value_parsers
             .iter()
@@ -318,6 +327,7 @@ fn parse_stat_defs(
                 values: col
                     .body
                     .iter()
+                    .take(len)
                     .map(|s| {
                         if s.is_empty() {
                             None
@@ -349,14 +359,9 @@ fn parse_value_range(values: Vec<Vec<String>>) -> (CardTable, Vec<Callout>) {
     let mut stat_columns = vec![];
     for (index, col) in values.iter().enumerate() {
         if let Some((header, body)) = col.split_first() {
-            let raw_column = RawColumn {
-                index,
-                header,
-                body,
-            };
             if let Some((_, prev)) = card_columns.iter_mut().find(|(name, _)| header == name) {
                 if prev.is_none() {
-                    let _ = prev.insert(raw_column);
+                    let _ = prev.insert(RawColumn::new(index, header, body));
                 } else {
                     callouts.push(Callout::Warning(format!(
                         "Duplicate column: {} ({})",
@@ -364,10 +369,10 @@ fn parse_value_range(values: Vec<Vec<String>>) -> (CardTable, Vec<Callout>) {
                         sheet_column_name(index)
                     )));
                 }
-            } else if header.starts_with("Tag") {
-                tag_columns.push(raw_column);
+            } else if let Some(label) = header.strip_suffix("[]") {
+                tag_columns.push(RawColumn::new(index, label, body));
             } else if !header.is_empty() {
-                stat_columns.push(raw_column);
+                stat_columns.push(RawColumn::new(index, header, body));
             }
         }
     }
@@ -458,27 +463,27 @@ mod tests {
 
     use crate::{
         importer::parse_value_range,
-        types::{Card, CardTable, StatArray, StatUnit},
+        types::{Callout, Card, CardTable, StatArray, StatUnit},
     };
 
     fn movies_row_major() -> Vec<Vec<String>> {
         let sheet = r#"[
-        [ "Card",                   "ID",                   "Disable?", "Notes", "Popularity", "Category", "TagActors",                                                                                  "TagCharacters",                                                                       "Num Theaters", "Box Office", "Release Date"],
-        [ "The Matrix",             "TheMatrix",            "",         "",      "99",         "Action",   "Keanu Reeves, Carrie-Anne Moss, Laurence Fishburne, Hugo Weaving, Emil Eifrem",              "Neo, Trinity, Morpheus, Agent Smith, Emil",                                           "3084",         "$1,602,000", "1999-06-23"],
-        [ "The Matrix Reloaded",    "TheMatrixReloaded",    "",         "",      "73",         "Action",   "Keanu Reeves, Carrie-Anne Moss, Laurence Fishburne, Hugo Weaving",                           "Neo, Trinity, Morpheus, Agent Smith",                                                 "2794",         "$1,138,000", "2003-01-26"],
-        [ "The Matrix Revolutions", "TheMatrixRevolutions", "y",        "setoN", "62",         "Action",   "Keanu Reeves, Carrie-Anne Moss, Laurence Fishburne, Hugo Weaving",                           "Neo, Trinity, Morpheus, Agent Smith",                                                 "3144",         "$1,282,000", "2003-06-01"],
-        [ "The Devil's Advocate",   "TheDevilsAdvocate",    "",         "",      "16",         "Drama",    "Keanu Reeves, Charlize Theron, Al Pacino",                                                   "Kevin Lomax, Mary Ann Lomax, John Milton",                                            "2905",         "$1,088,000", "1997-09-21"],
-        [ "A Few Good Men",         "AFewGoodMen",          "",         "",      "43",         "Drama",    "Tom Cruise, Jack Nicholson, Demi Moore, Kevin Bacon, Kiefer Sutherland, Noah Wyle",          "Lt. Daniel Kaffee, Col. Nathan R. Jessup, Lt. Cdr. JoAnne Galloway, Capt. Jack Ross", "3123",         "$6,617,000", "1992-06-26"],
-        [ "Top Gun",                "TopGun",               "",         "",      "65",         "Action",   "Tom Cruise, Kelly McGillis, Val Kilmer, Anthony Edwards, Tom Skerritt, Meg Ryan",            "Maverick, Charlie, Iceman, Goose, Viper, Carole",                                     "3060",         "$3,677,000", "1986-07-05"],
-        [ "Jerry Maguire",          "JerryMaguire",         "",         "",      "38",         "Drama",    "Tom Cruise, Cuba Gooding Jr., Renee Zellweger, Kelly Preston, Jerry O'Connell, Jay Mohr",    "Jerry Maguire, Rod Tidwell, Dorothy Boyd, Avery Bishop, Frank Cushman, Bob Sugar",    "3187",         "$1,696,000", "2000-06-23"],
-        [ "Stand By Me",            "StandByMe",            "",         "",      "88",         "Action",   "Wil Wheaton, River Phoenix, Jerry O'Connell, Corey Feldman, John Cusack, Kiefer Sutherland", "Gordie Lachance, Chris Chambers, Vern Tessio, Teddy Duchamp, Denny Lachance",         "2989",         "$5,691,000", "1986-12-22"],
-        [ "As Good as It Gets",     "AsGoodAsItGets",       "",         "",      "57",         "Drama",    "Jack Nicholson, Helen Hunt, Greg Kinnear, Cuba Gooding Jr.",                                 "Melvin Udall, Carol Connelly, Simon Bishop, Frank Sachs",                             "2936",         "$2,005,000", "1997-01-10"],
-        [ "What Dreams May Come",   "WhatDreamsMayCome",    "",         "",      "44",         "Action",   "Robin Williams, Cuba Gooding Jr., Annabella Sciorra, Max von Sydow, Werner Herzog",          "Chris Nielsen, Albert Lewis, Annie Collins-Nielsen, The Tracker, The Face",           "2731",         "$7,036,000", "1998-06-08"],
-        [ "You've Got Mail",        "YouveGotMail",         "",         "",      "34",         "Drama",    "Tom Hanks, Meg Ryan, Greg Kinnear, Parker Posey, Dave Chappelle, Steve Zahn",                "Joe Fox, Kathleen Kelly, Frank Navasky, Patricia Eden, Kevin Jackson, George Pappas", "3026",         "$1,796,000", "1998-08-24"],
-        [ "Sleepless in Seattle",   "SleeplessInSeattle",   "",         "",      "41",         "Action",   "Tom Hanks, Meg Ryan, Rita Wilson, Bill Pullman, Victor Garber, Rosie O'Donnell",             "Sam Baldwin, Annie Reed, Suzy, Walter, Greg, Becky",                                  "2716",         "$9,419,000", "1993-04-14"],
-        [ "Joe Versus the Volcano", "JoeVersustheVolcano",  "",         "",      "44",         "Comedy",   "Tom Hanks, Meg Ryan, Nathan Lane",                                                           "Joe Banks, DeDe, Angelica Graynamore, Patricia Graynamore, Baw",                      "2789",         "$1,597,000", "1990-05-15"],
-        [ "When Harry Met Sally",   "WhenHarryMetSally",    "",         "",      "56",         "Action",   "Billy Crystal, Meg Ryan, Carrie Fisher, Bruno Kirby",                                        "Harry Burns, Sally Albright, Marie, Jess",                                            "2919",         "$5,532,000", "1998-10-15"],
-        [ "Snow Falling on Cedars", "SnowFallingonCedars",  "n",        "",      "82",         "",         "",                                                                                           "",                                                                                    "",             "",           ""]
+        [ "Card",                   "ID",                   "Disable?", "Notes", "Popularity", "Category", "Actors[]",                                                                                   "Characters[]",                                                                        "Num Theaters", "Box Office", "Release Date", "Setting",     "Tagline" ],
+        [ "The Matrix",             "TheMatrix",            "",         "",      "99",         "Action",   "Keanu Reeves, Carrie-Anne Moss, Laurence Fishburne, Hugo Weaving, Emil Eifrem",              "Neo, Trinity, Morpheus, Agent Smith, Emil",                                           "3084",         "$1,602,000", "1999-06-23",   "",            "Welcome to the Real World" ],
+        [ "The Matrix Reloaded",    "TheMatrixReloaded",    "",         "",      "73",         "Action",   "Keanu Reeves, Carrie-Anne Moss, Laurence Fishburne, Hugo Weaving",                           "Neo, Trinity, Morpheus, Agent Smith",                                                 "2794",         "$1,138,000", "2003-01-26",   "",            "Free your mind" ],
+        [ "The Matrix Revolutions", "TheMatrixRevolutions", "y",        "setoN", "62",         "Action",   "Keanu Reeves, Carrie-Anne Moss, Laurence Fishburne, Hugo Weaving",                           "Neo, Trinity, Morpheus, Agent Smith",                                                 "3144",         "$1,282,000", "2003-06-01",   "",            "Everything that has a beginning has an end" ],
+        [ "The Devil's Advocate",   "TheDevilsAdvocate",    "",         "",      "16",         "Drama",    "Keanu Reeves, Charlize Theron, Al Pacino",                                                   "Kevin Lomax, Mary Ann Lomax, John Milton",                                            "2905",         "$1,088,000", "1997-09-21",   "",            "Evil has its winning ways" ],
+        [ "A Few Good Men",         "AFewGoodMen",          "",         "",      "43",         "Drama",    "Tom Cruise, Jack Nicholson, Demi Moore, Kevin Bacon, Kiefer Sutherland, Noah Wyle",          "Lt. Daniel Kaffee, Col. Nathan R. Jessup, Lt. Cdr. JoAnne Galloway, Capt. Jack Ross", "3123",         "$6,617,000", "1992-06-26",   "",            "In the heart of the nation's capital, in a courthouse of the U.S. government, one man will stop at nothing to keep his honor, and one will stop at nothing to find the truth." ],
+        [ "Top Gun",                "TopGun",               "",         "",      "65",         "Action",   "Tom Cruise, Kelly McGillis, Val Kilmer, Anthony Edwards, Tom Skerritt, Meg Ryan",            "Maverick, Charlie, Iceman, Goose, Viper, Carole",                                     "3060",         "$3,677,000", "1986-07-05",   "",            "I feel the need, the need for speed." ],
+        [ "Jerry Maguire",          "JerryMaguire",         "",         "",      "38",         "Drama",    "Tom Cruise, Cuba Gooding Jr., Renee Zellweger, Kelly Preston, Jerry O'Connell, Jay Mohr",    "Jerry Maguire, Rod Tidwell, Dorothy Boyd, Avery Bishop, Frank Cushman, Bob Sugar",    "3187",         "$1,696,000", "2000-06-23",   "",            "The rest of his life begins now." ],
+        [ "Stand By Me",            "StandByMe",            "",         "",      "88",         "Action",   "Wil Wheaton, River Phoenix, Jerry O'Connell, Corey Feldman, John Cusack, Kiefer Sutherland", "Gordie Lachance, Chris Chambers, Vern Tessio, Teddy Duchamp, Denny Lachance",         "2989",         "$5,691,000", "1986-12-22",   "",            "For some, it's the last real taste of innocence, and the first real taste of life. But for everyone, it's the time that memories are made of." ],
+        [ "As Good as It Gets",     "AsGoodAsItGets",       "",         "",      "57",         "Drama",    "Jack Nicholson, Helen Hunt, Greg Kinnear, Cuba Gooding Jr.",                                 "Melvin Udall, Carol Connelly, Simon Bishop, Frank Sachs",                             "2936",         "$2,005,000", "1997-01-10",   "",            "A comedy from the heart that goes for the throat." ],
+        [ "What Dreams May Come",   "WhatDreamsMayCome",    "",         "",      "44",         "Action",   "Robin Williams, Cuba Gooding Jr., Annabella Sciorra, Max von Sydow, Werner Herzog",          "Chris Nielsen, Albert Lewis, Annie Collins-Nielsen, The Tracker, The Face",           "2731",         "$7,036,000", "1998-06-08",   "",            "After life there is more. The end is just the beginning." ],
+        [ "You've Got Mail",        "YouveGotMail",         "",         "",      "34",         "Drama",    "Tom Hanks, Meg Ryan, Greg Kinnear, Parker Posey, Dave Chappelle, Steve Zahn",                "Joe Fox, Kathleen Kelly, Frank Navasky, Patricia Eden, Kevin Jackson, George Pappas", "3026",         "$1,796,000", "1998-08-24",   "",            "At odds in life... in love on-line." ],
+        [ "Joe Versus the Volcano", "JoeVersustheVolcano",  "",         "",      "44",         "Comedy",   "Tom Hanks, Meg Ryan, Nathan Lane",                                                           "Joe Banks, DeDe, Angelica Graynamore, Patricia Graynamore, Baw",                      "2789",         "$1,597,000", "1990-05-15",   "",            "A story of love, lava and burning desire." ],
+        [ "When Harry Met Sally",   "WhenHarryMetSally",    "",         "",      "56",         "Action",   "Billy Crystal, Meg Ryan, Carrie Fisher, Bruno Kirby",                                        "Harry Burns, Sally Albright, Marie, Jess",                                            "2919",         "$5,532,000", "1998-10-15",   "",            "" ],
+        [ "Sleepless in Seattle",   "SleeplessInSeattle",   "",         "",      "41",         "Action",   "Tom Hanks, Meg Ryan, Rita Wilson, Bill Pullman, Victor Garber, Rosie O'Donnell",             "Sam Baldwin, Annie Reed, Suzy, Walter, Greg, Becky",                                  "2716",         "$9,419,000", "1993-04-14",   "47.6,-122.3", "What if someone you never met, someone you never saw, someone you never knew was the only someone for you?" ],
+        [ "Snow Falling on Cedars", "SnowFallingonCedars",  "n",        "",      "82",         "",         "",                                                                                           "",                                                                                    "",             "",           "",             "",            "" ]
         ]"#;
         // Snow Falling on Cedars", "SnowFallingonCedars",  "",        "",      "82",         "",         "Ethan Hawke, Rick Yune, Max von Sydow, James Cromwell",                                      "Ishmael Chambers, Kazuo Miyamoto, Nels Gudmundsson, Judge Fielding",                  "2718",         "$7,829,000", "1999-11-14"]
         serde_json::from_str(sheet).unwrap()
@@ -503,7 +508,9 @@ mod tests {
 
     #[test]
     fn test_parse_value_range_empty_input() {
-        assert_eq!(parse_value_range(vec![]), (CardTable::default(), vec![]))
+        let (card_table, callouts) = parse_value_range(vec![]);
+        assert_eq!(card_table, CardTable::default());
+        assert!(matches!(callouts.first(), Some(Callout::Error(_))));
     }
 
     #[test]
@@ -554,8 +561,8 @@ mod tests {
         );
 
         assert_eq!(card_table.tag_defs.len(), 2);
-        assert_eq!(card_table.tag_defs[0].label, "TagActors");
-        assert_eq!(card_table.tag_defs[1].label, "TagCharacters");
+        assert_eq!(card_table.tag_defs[0].label, "Actors");
+        assert_eq!(card_table.tag_defs[1].label, "Characters");
         assert_eq!(
             card_table.tag_defs[0].values[0][..],
             [
@@ -574,10 +581,8 @@ mod tests {
         );
         assert_eq!(card_table.tag_defs[1].values[14][..], nothing);
 
-        assert_eq!(card_table.stat_defs.len(), 3);
+        assert_eq!(card_table.stat_defs.len(), 5);
         assert_eq!(card_table.stat_defs[0].label, "Num Theaters");
-        assert_eq!(card_table.stat_defs[1].label, "Box Office");
-        assert_eq!(card_table.stat_defs[2].label, "Release Date");
         match &card_table.stat_defs[0].data {
             StatArray::Number { unit: None, values } => {
                 assert_eq!(values[0], Some(3084.0));
@@ -585,13 +590,18 @@ mod tests {
             }
             other => assert!(false, "unexpected stat type: {:?}", other),
         };
+        assert_eq!(card_table.stat_defs[1].label, "Box Office");
         match &card_table.stat_defs[1].data {
-            StatArray::Number { unit: Some(StatUnit::Dollar), values } => {
+            StatArray::Number {
+                unit: Some(StatUnit::Dollar),
+                values,
+            } => {
                 assert_eq!(values[0], Some(1_602_000.0));
                 assert_eq!(values[14], None);
             }
             other => assert!(false, "unexpected stat type: {:?}", other),
         };
+        assert_eq!(card_table.stat_defs[2].label, "Release Date");
         match &card_table.stat_defs[2].data {
             StatArray::Date { values } => {
                 assert_eq!(
@@ -601,11 +611,56 @@ mod tests {
                             .unwrap()
                             .and_hms_micro_opt(0, 0, 0, 0)
                             .unwrap()
+                            .into()
                     )
                 );
                 assert_eq!(values[14], None);
             }
             other => assert!(false, "unexpected stat type: {:?}", other),
         };
+        assert_eq!(card_table.stat_defs[3].label, "Setting");
+        match &card_table.stat_defs[3].data {
+            StatArray::LatLng { values } => {
+                assert_eq!(values[0], None);
+                assert_eq!(values[13], Some((47.6, -122.3)));
+                assert_eq!(values[14], None);
+            }
+            other => assert!(false, "unexpected stat type: {:?}", other),
+        };
+        assert_eq!(card_table.stat_defs[4].label, "Tagline");
+        match &card_table.stat_defs[4].data {
+            StatArray::String { values } => {
+                assert_eq!(values[0], Some("Welcome to the Real World".into()));
+                assert_eq!(values[14], None);
+            }
+            other => assert!(false, "unexpected stat type: {:?}", other),
+        };
+        // serde_json::to_writer(std::io::stderr(), &card_table).unwrap();
+    }
+
+    #[test]
+    fn test_parse_value_range_of_movies_missing_title_column() {
+        let mut frame = movies_row_major();
+        frame[0][0].clear();
+        let input = transpose(frame);
+        let (card_table, callouts) = parse_value_range(input);
+        assert_eq!(card_table, CardTable::default());
+        let warnings: Vec<_> = callouts
+            .iter()
+            .filter_map(|c| match c {
+                Callout::Warning(s) => Some(s),
+                Callout::Error(_) => None,
+            })
+            .collect();
+        let nothing: Vec<&str> = vec![];
+        assert_eq!(warnings, nothing);
+        let errors: Vec<_> = callouts
+            .iter()
+            .filter_map(|c| match c {
+                Callout::Warning(_) => None,
+                Callout::Error(s) => Some(s),
+            })
+            .collect();
+        assert_eq!(errors.len(), 1);
     }
 }

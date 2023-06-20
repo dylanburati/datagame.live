@@ -5,20 +5,15 @@ use rustler::{Encoder, Env, Error, NifResult, Term};
 
 use importer::ErrorKind;
 
-// mod atoms {
-//     rustler::atoms! {
-//         ok,
-//         error,
-//     }
-// }
+mod atoms {
+    rustler::atoms! {
+        ok,
+    }
+}
 
 #[rustler::nif]
-fn parse_spreadsheet(
-    env: Env<'_>,
-    sheet_names: Vec<String>,
-    json: String,
-) -> NifResult<Term<'_>> {
-    // let prefix = SystemTime::UNIX_EPOCH
+fn parse_spreadsheet(env: Env<'_>, sheet_names: Vec<String>, json: String) -> NifResult<Term<'_>> {
+    // let prefix = std::time::SystemTime::UNIX_EPOCH
     //     .elapsed()
     //     .expect("2038")
     //     .as_micros()
@@ -35,7 +30,7 @@ fn parse_spreadsheet(
         }
     })?;
     // for ad in decks.iter() {
-    //     let file = OpenOptions::new()
+    //     let file = std::fs::OpenOptions::new()
     //         .write(true)
     //         .create_new(true)
     //         .open(format!("{}_{}.json", prefix, ad.deck.id))
@@ -43,7 +38,10 @@ fn parse_spreadsheet(
     //     serde_json::to_writer_pretty(file, ad)
     //         .map_err(|_| Error::Term(Box::new("IO error")))?;
     // }
-    Ok(decks.encode(env))
+    Ok(rustler::types::tuple::make_tuple(
+        env,
+        &[atoms::ok().encode(env), decks.encode(env)],
+    ))
 }
 
 rustler::init!("Elixir.App.Native", [parse_spreadsheet]);
