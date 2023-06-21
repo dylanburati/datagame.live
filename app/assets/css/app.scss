@@ -48,6 +48,7 @@ code, .font-mono {
 
 :root {
   --color-pen: #ecf0f1;
+  --color-pen-fainter: #9ea4a9;
   --color-pen-faint: #9ea4a9;
   --color-link: #3B92F1;
   --color-link-visited: #7f60f6;
@@ -120,8 +121,16 @@ a {
   }
 }
 
+.items-start {
+  align-items: flex-start;
+}
+
 .items-center {
   align-items: center;
+}
+
+.items-stretch {
+  align-items: stretch;
 }
 
 .justify-start {
@@ -132,8 +141,12 @@ a {
   justify-content: center;
 }
 
-.justify-space-between {
+.justify-between {
   justify-content: space-between;
+}
+
+.justify-around {
+  justify-content: space-around;
 }
 
 .flex-grow {
@@ -284,14 +297,29 @@ a {
   padding: 1.25rem;
 }
 
+.px-2 {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 .px-3 {
   padding-left: 0.75rem;
   padding-right: 0.75rem;
 }
 
+.px-4 {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 .px-5 {
   padding-left: 1.25rem;
   padding-right: 1.25rem;
+}
+
+.py-1 {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
 }
 
 .py-2 {
@@ -367,6 +395,11 @@ a {
   margin-right: 0.5rem;
 }
 
+.mx-4 {
+  margin-left: 1rem;
+  margin-right: 1rem;
+}
+
 .h-full {
   height: 100%;
 }
@@ -375,16 +408,16 @@ a {
   width: 100%;
 }
 
+.w-4 {
+  width: 1rem;
+}
+
+.w-5 {
+  width: 1.25rem;
+}
+
 .w-16 {
   width: 16rem;
-}
-
-.max-w-4 {
-  max-width: 1rem;
-}
-
-.max-w-6 {
-  max-width: 1.25rem;
 }
 
 /* custom */
@@ -452,6 +485,26 @@ select {
   }
 }
 
+#tablist a {
+  width: 100%;
+  text-align: center;
+  color: var(--color-pen-faint);
+  border-color: rgba(36, 131, 191, 1);
+  text-decoration: inherit;
+  box-sizing: content-box;
+
+  &.active {
+    border-bottom-width: 1px;
+    color: white;
+  }
+
+  &.interactable:hover,
+  &.interactable:focus {
+    background-color: var(--color-surface);
+    color: white;
+  }
+}
+
 table {
   width: 100%;
 }
@@ -515,6 +568,21 @@ button {
     border-top-right-radius: 0.25rem;
     border-bottom-right-radius: 0.25rem;
   }
+}
+
+#top-controls [role="tabpanel"] {
+  scroll-margin-top: 100px;
+}
+
+.visuallyhidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
 }
 
 /* Alerts and form errors */

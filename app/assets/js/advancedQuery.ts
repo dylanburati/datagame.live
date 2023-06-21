@@ -112,18 +112,22 @@ export function toNumber(input: string): Result<number> {
 
 export function toDateAndPrecision(
   input: string
-): Result<[dayjs.Dayjs, "year" | "month" | "day"]> {
-  let d = dayjs(input, "YYYY");
+): Result<[dayjs.Dayjs, "year" | "month" | "day" | "day-of-year"]> {
+  let d = dayjs(input, "YYYY", true);
   if (d.isValid()) {
     return new Result.Ok([d, "year"]);
   }
-  d = dayjs(input, ["YYYY-MM", "MMM YYYY"]);
+  d = dayjs(input, ["YYYY-MM", "MMM YYYY"], true);
   if (d.isValid()) {
     return new Result.Ok([d, "month"]);
   }
-  d = dayjs(input, ["YYYY-MM-DD", "MM/DD/YYYY"]);
+  d = dayjs(input, ["YYYY-MM-DD", "MM/DD/YYYY"], true);
   if (d.isValid()) {
     return new Result.Ok([d, "day"]);
+  }
+  d = dayjs(input, ["MM-DD", "MM/DD", "MMM DD"], true);
+  if (d.isValid()) {
+    return new Result.Ok([d, "day-of-year"]);
   }
   return new Result.Err("Not a date: " + input);
 }
@@ -186,9 +190,15 @@ export function toPredicate(fragment: QueryFragment): PredicateTypes {
               if (cmpIso == null) {
                 return false;
               }
-              const dMin = dValue.startOf(dPrecision);
-              const dMax = dValue.endOf(dPrecision);
               const cmp = dayjs(cmpIso);
+              const dMin =
+                dPrecision === "day-of-year"
+                  ? dValue.set("year", cmp.year()).startOf("day")
+                  : dValue.startOf(dPrecision);
+              const dMax =
+                dPrecision === "day-of-year"
+                  ? dValue.set("year", cmp.year()).endOf("day")
+                  : dValue.endOf(dPrecision);
               return cmp.isValid() && !cmp.isBefore(dMin) && !cmp.isAfter(dMax);
             }
         ),
@@ -215,8 +225,11 @@ export function toPredicate(fragment: QueryFragment): PredicateTypes {
               if (cmpIso == null) {
                 return false;
               }
-              const dMin = dValue.startOf(dPrecision);
               const cmp = dayjs(cmpIso);
+              const dMin =
+                dPrecision === "day-of-year"
+                  ? dValue.set("year", cmp.year()).startOf("day")
+                  : dValue.startOf(dPrecision);
               return cmp.isValid() && cmp.isBefore(dMin);
             }
         ),
@@ -241,8 +254,11 @@ export function toPredicate(fragment: QueryFragment): PredicateTypes {
               if (cmpIso == null) {
                 return false;
               }
-              const dMax = dValue.endOf(dPrecision);
               const cmp = dayjs(cmpIso);
+              const dMax =
+                dPrecision === "day-of-year"
+                  ? dValue.set("year", cmp.year()).endOf("day")
+                  : dValue.endOf(dPrecision);
               return cmp.isValid() && cmp.isAfter(dMax);
             }
         ),

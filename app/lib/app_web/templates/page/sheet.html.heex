@@ -1,54 +1,78 @@
-<div class="flex flex-row py-2">
-  <span class="flex-grow" style="width: 1rem;"></span>
-  <button id="refresh" class="bg-blue interactable mr-2 leading-none">
-    <svg viewBox="0 0 32 32" focusable="false" class="max-w-4">
-      <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-refresh" fill="currentColor"></use>
-    </svg>
-  </button>
-  <button id="publish" class="bg-green interactable">Publish</button>
+<div id="scroll-container" style="overflow-y: auto">
+  <div id="top-controls">
+    <ul id="tablist" role="tablist" class="flex flex-row container border-t bg-black">
+      <li role="presentation" class="block mx-4">
+        <a role="tab" href="#filter-view" id="tab1" aria-selected="true" class="block interactable text-sm px-2 py-1">FILTER</a>
+      </li>
+      <li role="presentation" class="block mx-4">
+        <a role="tab" href="#review" id="tab2" class="block interactable active text-sm px-2 py-1">REVIEW</a>
+      </li>
+    </ul>
+    <section role="tabpanel" id="filter-view" aria-labelledby="tab1" class="container py-2 bg-black">
+      <div class="flex flex-row">
+        <label id="filter-input-label" class="visuallyhidden">Filter expression</label>
+        <input id="filter-input" aria-labelledby="filter-input-label" type="text" style="flex-grow: 100;" placeholder="Search">
+      </div>
+    </section>
+    <section role="tabpanel" id="review" aria-labelledby="tab2" class="container hidden py-2 bg-black">
+      <div class="flex flex-row items-start">
+        <div>
+          <ul id="warning-list" class="hidden list-disc list-inside px-5 py-2 border rounded border-yellow-400">
+          </ul>
+        </div>
+        <span class="flex-grow" style="width: 1rem;"></span>
+        <button id="refresh" class="bg-blue interactable mr-2">
+          <label class="visuallyhidden">Refresh</label>
+          <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-4">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-refresh" fill="currentColor"></use>
+          </svg>
+        </button>
+        <button id="publish" class="bg-green interactable">Publish</button>
+      </div>
+      <div id="publish-container" class="hidden">
+        <pre class="bg-surface p-3 text-sm leading-tight"></pre>
+      </div>
+    </section>
+  </div>
+  <p id="error-box" class="text-red hidden"></p>
+  <div class="px-4 pb-2" style="overflow-x: auto">
+    <table id="sheet-table">
+      <caption>Loading...</caption>
+    </table>
+  </div>
 </div>
-<div id="control-container" class="hidden flex flex-row items-center flex-wrap mb-5">
-  <input type="text" class="mb-2 mr-4" style="flex-grow: 100;" placeholder="Search">
-</div>
-<p id="error-box" class="text-red hidden"></p>
-<ul id="warning-list" class="hidden list-disc list-inside mb-5 px-5 py-2 border rounded border-yellow-400">
-</ul>
-<div id="publish-container" class="mb-5 hidden">
-  <pre class="bg-surface p-3 text-sm leading-tight"></pre>
-</div>
-<div class="flex-grow" style="overflow-x: auto; overflow-y: auto">
-  <table id="sheet-table">
-    <caption>Loading...</caption>
-  </table>
-</div>
-<nav id="bottom-controls" class="py-2 card bg-black">
+<nav id="bottom-controls" class="py-2 bg-black">
   <div class="container flex">
     <select class="interactable py-1-5" style="max-width: calc(max(50px, 50vw - 120px))" aria-label="Deck Picker"></select>
     <span class="flex-grow" style="width: 1rem;"></span>
     <nav role="navigation" aria-label="Pagination Navigation">
       <ul id="pagination" class="pagination flex items-center">
         <li>
-          <button class="interactable leading-none">
-            <svg viewBox="0 0 32 32" focusable="false" class="max-w-6">
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">First</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
               <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-first" fill="currentColor"></use>
             </svg>
           </button>
         </li><li>
-          <button class="disabled interactable leading-none">
-            <svg viewBox="0 0 32 32" focusable="false" class="max-w-6">
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">Previous</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
               <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-previous" fill="currentColor"></use>
             </svg>
           </button>
         </li><li id="pagination-readout" class="leading-none pt-1 mx-2">
         </li><li>
-          <button class="disabled interactable leading-none">
-            <svg viewBox="0 0 32 32" focusable="false" class="max-w-6">
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">Next</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
               <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-next" fill="currentColor"></use>
             </svg>
           </button>
         </li><li>
-          <button class="interactable leading-none">
-            <svg viewBox="0 0 32 32" focusable="false" class="max-w-6">
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">Last</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
               <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-last" fill="currentColor"></use>
             </svg>
           </button>

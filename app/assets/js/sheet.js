@@ -5,9 +5,9 @@ import { EffectList, h, modify, prettyPrint } from "./utils";
 export class SheetPage {
   constructor() {
     this.r = {
-      titleEl: document.getElementById('sheet-title'),
-      controls: document.getElementById('control-container'),
-      searchInput: document.querySelector('#control-container input'),
+      scrollContainer: document.getElementById('scroll-container'),
+      tablist: document.getElementById('tablist'),
+      searchInput: document.getElementById('filter-input'),
       deckPicker: document.querySelector('#bottom-controls select'),
       pagination: document.getElementById('pagination'),
       paginationReadout: document.getElementById('pagination-readout'),
@@ -68,11 +68,39 @@ export class SheetPage {
 
   setupListeners() {
     const {
+      tablist,
       refreshBtn,
       publishBtn,
       deckPicker,
-      searchInput
+      searchInput,
     } = this.r;
+
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    const tabPanels = [...document.querySelectorAll('#top-controls [role="tabpanel"]')];
+
+    for (let i = 0; i < tabs.length && i < tabPanels.length; i++) {
+      const tab = tabs[i];
+      const tabPanel = tabPanels[i];
+      const otherTabs = [...tabs.slice(0, i), ...tabs.slice(i + 1)];
+      const otherTabPanels = [...tabPanels.slice(0, i), ...tabPanels.slice(i + 1)];
+      const activate = () => {
+        otherTabs.forEach((other) => {
+          other.classList.remove('active');
+          other.ariaSelected = "false";
+        });
+        otherTabPanels.forEach((other) => {
+          other.classList.add('hidden');
+        })
+        tab.classList.add('active');
+        tab.ariaSelected = "true";
+        tabPanel.classList.remove('hidden');
+      };
+      tab.addEventListener('click', activate);
+      if (window.location.hash === new URL(tab.href).hash) {
+        activate();
+      }
+    }
+
     refreshBtn.addEventListener('click', () => {
       if (this.s.refreshEnabled) {
         this.refresh();
@@ -118,6 +146,7 @@ export class SheetPage {
         const dest = destinations[index];
         if (dest === null) {
           el.classList.add("disabled");
+          el.ariaDisabled = "true";
           el.classList.remove("interactable");
           el.setAttribute("tabindex", -1);
           if (typeof el.dataset.to !== "undefined") {
@@ -125,12 +154,20 @@ export class SheetPage {
           }
         } else {
           el.classList.remove("disabled");
+          el.ariaDisabled = "false";
           el.classList.add("interactable");
           el.removeAttribute("tabindex");
           if (el.dataset.to !== String(dest)) {
             el.dataset.to = String(dest);
             el.onclick = () => {
               this.setCurrentPage(dest);
+              if (dest > currentPage) {
+                const scrollTop = this.r.scrollContainer.scrollTop;
+                const tableScroll = this.r.table.offsetTop - this.r.scrollContainer.offsetTop;
+                if (scrollTop > tableScroll) {
+                  setTimeout(() => this.r.scrollContainer.scrollBy(0, tableScroll - scrollTop), 0);
+                }
+              }
             }
           }
         }
@@ -145,7 +182,7 @@ export class SheetPage {
 
   populateTable() {
     const { warningList, table } = this.r;
-    const { deckName, tableData, currentPage, pageSize } = this.s;
+    const { tableData, currentPage, pageSize } = this.s;
     if (tableData == null) {
       modify(table, true, {}, [
         h("caption", {}, "Loading...")
@@ -154,7 +191,7 @@ export class SheetPage {
       return;
     }
 
-    const { columns, indices, length, warnings } = tableData;
+    const { columns, indices, length, warnings, widthEstimate } = tableData;
     if (warnings.length) {
       warningList.classList.remove('hidden');
       modify(warningList, true, {},
@@ -169,7 +206,7 @@ export class SheetPage {
       .map(n => indices[n]);
     const numWidth = Math.ceil(Math.log10(1 + Math.max(1, ...rowNums)));
     const showCols = columns.filter(col => col.show);
-    modify(table, true, {}, [
+    modify(table, true, { style: { "min-width": `${widthEstimate * 3}px` } }, [
       h('thead', {}, [
         h('tr', {},
           showCols.map((col, i) =>
@@ -201,7 +238,7 @@ export class SheetPage {
     if (tableData == null) {
       return;
     }
-    const { deck } = tableData;
+    const { columns, deck } = tableData;
 
     const mask = query.reduce(
       (acc, { accessor, test }) =>
@@ -216,11 +253,15 @@ export class SheetPage {
         lengthFiltered += 1;
       }
     }
+    const widths = indices.slice(0, lengthFiltered)
+      .map((i) => columns.reduce((acc, col) => acc + Math.max(col.label.length, col.formatter(col.get(i)).length), 0))
+      .sort();
 
     this.setTableData({
       ...tableData,
       indices,
       length: lengthFiltered,
+      widthEstimate: widths.length ? widths[Math.floor(0.9 * widths.length)] : 0,
     })
   }
 
@@ -241,6 +282,7 @@ export class SheetPage {
         );
         if (column === undefined) {
           console.log('Field not found: ' + field);
+          return;
         }
         let type = column.type;
         let accessor = column.get;
@@ -265,12 +307,12 @@ export class SheetPage {
             console.log("Field does not exist")
           }
         }
-        const testOrErr = toPredicate(qpart)[column.type];
+        const testOrErr = toPredicate(qpart)[type];
         if (testOrErr.kind === Result.ERR) {
           console.log(testOrErr.msg);
           return;
         }
-        query.push({ accessor: column.get, test: testOrErr.val });
+        query.push({ accessor, test: testOrErr.val });
       }
       this.setQuery(query);
     } else {
@@ -379,6 +421,7 @@ export class SheetPage {
       deck,
       indices: [],
       length: 0,
+      widthEstimate: 0,
       warnings,
     });
     this.setQueryText("disable:false");
@@ -386,9 +429,8 @@ export class SheetPage {
 
   async refresh() {
     this.s.refreshEnabled = false;
-    const { controls, errorBox, publishContainer } = this.r;
+    const { errorBox, publishContainer } = this.r;
     errorBox.classList.add('hidden');
-    controls.classList.add('hidden');
     publishContainer.classList.add('hidden');
     this.setSheetData(null);
     this.setCurrentPage(1);
@@ -405,12 +447,9 @@ export class SheetPage {
       json = await response.json();
       if (json.error) {
         throw new Error(json.error);
-      } else {
-        controls.classList.remove('hidden');
       }
     } catch (err) {
       errorBox.classList.remove('hidden');
-      titleEl.textContent = 'Error';
       errorBox.textContent = err;
       return;
     } finally {
