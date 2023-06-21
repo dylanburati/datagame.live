@@ -155,6 +155,28 @@ defmodule App.Utils do
     hex_random(num_chars, "0123456789abcdef")
   end
 
+  def image_url(%{id: id, title: title}) do
+    svg = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 50">
+      <defs>
+        <linearGradient id="gradient-#{Integer.to_string(id)}" gradientTransform="rotate(90)">
+          <stop offset="5%" stop-color="#{hash_color(title)}" />
+          <stop offset="95%" stop-color="#{hash_color(title <> "x")}" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="30" height="50" rx="4" fill="url(#gradient-#{Integer.to_string(id)})" />
+    </svg>
+    """
+    "data:image/svg+xml,#{URI.encode(svg, &(&1 not in ~C"#<>"))}"
+  end
+
+  defp hash_color(str) do
+    [r, g, b] = :crypto.hash(:md5, str)
+    |> :binary.bin_to_list()
+    |> Enum.take(3)
+    "rgb(#{r}, #{g}, #{b})"
+  end
+
   @spec find_last([elem], default, (elem -> boolean)) :: elem | default when elem: var, default: var
   def find_last(lst, default \\ nil, pred) do
     {_, result} = List.foldr(lst, {false, default}, fn el, acc ->

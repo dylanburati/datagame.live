@@ -1,9 +1,9 @@
 <header class={Map.get(assigns, :header_class, "") <> " bg-black"}>
   <nav class="flex container items-center">
-    <a href={Routes.live_path(@conn, AppWeb.IndexLive)} style="line-height: 0">
+    <a href={Routes.live_path(@socket, AppWeb.IndexLive)} style="line-height: 0">
       <img
         style="height: 55px;"
-        src={Routes.static_path(@conn, "/images/logo1.png")}
+        src={Routes.static_path(@socket, "/images/logo1.png")}
         alt="Datagame"
       >
     </a>
@@ -12,7 +12,13 @@
   </nav>
 </header>
 <main role="main" class={Map.get(assigns, :main_class, "container")}>
-  <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
-  <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
+  <p class="alert alert-info" role="alert"
+    phx-click="lv:clear-flash"
+    phx-value-key="info"><%= live_flash(@flash, :info) %></p>
+
+  <p class="alert alert-danger" role="alert"
+    phx-click="lv:clear-flash"
+    phx-value-key="error"><%= live_flash(@flash, :error) %></p>
+
   <%= @inner_content %>
 </main>

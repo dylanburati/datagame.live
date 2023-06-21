@@ -1,13 +1,16 @@
 defmodule AppWeb.Router do
   use AppWeb, :router
 
+  import AppWeb.UserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
+    plug :put_root_layout, {AppWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-    plug :put_root_layout, {AppWeb.LayoutView, :root}
+    plug :fetch_current_user
   end
 
   pipeline :api do
@@ -18,9 +21,22 @@ defmodule AppWeb.Router do
   scope "/", AppWeb do
     pipe_through :browser
 
-    get "/", PageController, :index
+    live "/", IndexLive
     get "/sheet", PageController, :sheet
     get "/sheet-advanced", PageController, :sheet_advanced
+    live "/explore", ExplorerLive
+    post "/user", UserController, :create
+    post "/user/login", UserController, :login
+  end
+
+  pipeline :require_admin do
+    plug :require_authenticated_user, role: "admin"
+  end
+
+  scope "/", AppWeb do
+    pipe_through [:browser, :require_admin]
+
+    live "/sheet_/:id", SheetLive
   end
 
   scope "/api", AppWeb do

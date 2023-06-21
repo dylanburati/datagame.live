@@ -18,6 +18,14 @@ code, .font-mono {
     monospace;
 }
 
+.font-extralight {
+  font-weight: 200;
+}
+
+.font-light {
+  font-weight: 300;
+}
+
 .container, .fluid .container {
   max-width: 100%
 }
@@ -361,6 +369,10 @@ a {
   margin-top: 0.5rem;
 }
 
+.mt-6 {
+  margin-top: 1.5rem;
+}
+
 .mt-8 {
   margin-top: 2rem;
 }
@@ -570,6 +582,27 @@ button {
   }
 }
 
+.deck-grid {
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 150px);
+  gap: 20px;
+  justify-content: center;
+}
+
+.deck-link {
+  img {
+    z-index: 0;
+    width: 100%;
+    opacity: 0.8;
+    transition: opacity 150ms linear;
+
+    &:hover, &:focus {
+      opacity: 1;
+    }
+  }
+}
+
 #top-controls [role="tabpanel"] {
   scroll-margin-top: 100px;
 }
@@ -616,7 +649,7 @@ button {
 .invalid-feedback {
   color: #a94442;
   display: block;
-  margin: -1rem 0 2rem;
+  margin: 0.25rem 0;
 }
 button.active {
   border: rgba(36, 131, 191, 1) solid 1px;
