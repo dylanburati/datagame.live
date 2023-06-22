@@ -7,7 +7,8 @@ use regex::Regex;
 use serde::Deserialize;
 
 use crate::types::{
-    AnnotatedDeck, Callout, Card, CardTable, Deck, StatArray, StatDef, StatUnit, TagDef,
+    AnnotatedDeck, Callout, Card, CardTable, Deck, NaiveDateTimeExt, StatArray, StatDef, StatUnit,
+    TagDef,
 };
 
 fn sheet_column_name(index: usize) -> String {
@@ -18,30 +19,25 @@ fn sheet_column_name(index: usize) -> String {
 }
 
 #[derive(Clone, Copy)]
-struct RawColumn<'a> {
+struct Column<'a> {
     index: usize,
     header: &'a str,
     body: &'a [String],
 }
 
-impl<'a> RawColumn<'a> {
+impl<'a> Column<'a> {
     fn new(index: usize, header: &'a str, body: &'a [String]) -> Self {
-        Self { index, header, body }
+        Self {
+            index,
+            header,
+            body,
+        }
     }
 }
 
-struct NamedColumns<'a> {
-    title: Option<RawColumn<'a>>,
-    unique_id: Option<RawColumn<'a>>,
-    is_disabled: Option<RawColumn<'a>>,
-    notes: Option<RawColumn<'a>>,
-    popularity: Option<RawColumn<'a>>,
-    category: Option<RawColumn<'a>>,
-}
-
-fn parse_cards(named_columns: NamedColumns<'_>, callouts: &mut Vec<Callout>) -> Vec<Card> {
+fn convert_cards(card_columns: CardColumns<'_>, callouts: &mut Vec<Callout>) -> Vec<Card> {
     let mut cards = vec![];
-    let Some(title_column) = named_columns.title else {
+    let Some(title_column) = card_columns.title else {
         callouts.push(Callout::Error("Title column is required".into()));
         return cards
     };
@@ -57,12 +53,12 @@ fn parse_cards(named_columns: NamedColumns<'_>, callouts: &mut Vec<Callout>) -> 
             )))
         }
 
-        let unique_id = named_columns
+        let unique_id = card_columns
             .unique_id
             .and_then(|col| col.body.get(row_index))
             .filter(|s| !s.is_empty())
             .cloned();
-        let is_disabled = named_columns
+        let is_disabled = card_columns
             .is_disabled
             .and_then(|col| col.body.get(row_index))
             .map(|s| {
@@ -72,12 +68,12 @@ fn parse_cards(named_columns: NamedColumns<'_>, callouts: &mut Vec<Callout>) -> 
                 )
             })
             .unwrap_or(false);
-        let notes = named_columns
+        let notes = card_columns
             .notes
             .and_then(|col| col.body.get(row_index))
             .filter(|s| !s.is_empty())
             .cloned();
-        let popularity = match named_columns.popularity {
+        let popularity = match card_columns.popularity {
             Some(col) => {
                 match col
                     .body
@@ -98,7 +94,7 @@ fn parse_cards(named_columns: NamedColumns<'_>, callouts: &mut Vec<Callout>) -> 
             }
             None => 0.0,
         };
-        let category = named_columns
+        let category = card_columns
             .category
             .and_then(|col| col.body.get(row_index))
             .filter(|s| !s.is_empty())
@@ -108,7 +104,7 @@ fn parse_cards(named_columns: NamedColumns<'_>, callouts: &mut Vec<Callout>) -> 
             if !id_set.insert(id) {
                 callouts.push(Callout::Error(format!(
                     "Duplicate ID ({}{})",
-                    sheet_column_name(named_columns.unique_id.unwrap().index),
+                    sheet_column_name(card_columns.unique_id.unwrap().index),
                     row_index + 1
                 )));
             }
@@ -125,8 +121,8 @@ fn parse_cards(named_columns: NamedColumns<'_>, callouts: &mut Vec<Callout>) -> 
     cards
 }
 
-fn parse_tag_defs(
-    tag_columns: Vec<RawColumn<'_>>,
+fn convert_tag_defs(
+    tag_columns: Vec<Column<'_>>,
     len: usize,
     callouts: &mut Vec<Callout>,
 ) -> Vec<TagDef> {
@@ -171,131 +167,132 @@ fn parse_tag_defs(
     tag_defs
 }
 
-trait StatArrayParser {
-    fn parse(&self, src: &[String]) -> Option<StatArray>;
+trait StatArrayConverter {
+    type Item;
+    fn convert_one(&self, src: &String) -> Option<Self::Item>;
+    fn finalize(&self, values: Vec<Option<Self::Item>>) -> StatArray;
 }
 
-// impl<F> StatArrayParser for F
-// where F: Fn(&String) -> ParseResult<NaiveDateTime> {
-//     fn parse(self, src: &[String]) -> Option<StatArray> {
-//         let mut values = vec![];
-//         for cell in src {
-//             if cell.is_empty() {
-//                 values.push(None)
-//             } else {
-//                 let val = (self)(cell).ok()?;
-//                 values.push(Some(val))
-//             }
-//         }
-//         Some(StatArray::Date { values })
-//     }
-// }
-
-enum StatFormat {
-    Numeric,
-    Iso8601,
-    DollarAmount,
-    Coordinates,
+trait StatArrayConvert {
+    fn convert(&self, src: &[String]) -> Option<StatArray>;
 }
 
-impl StatArrayParser for StatFormat {
-    fn parse(&self, src: &[String]) -> Option<StatArray> {
+impl<A> StatArrayConvert for A
+where
+    A: StatArrayConverter,
+{
+    fn convert(&self, src: &[String]) -> Option<StatArray> {
+        let mut values = vec![];
+        for cell in src {
+            if cell.is_empty() {
+                values.push(None)
+            } else {
+                let val = self.convert_one(cell)?;
+                values.push(Some(val))
+            }
+        }
+        Some(self.finalize(values))
+    }
+}
+
+mod formats {
+    pub struct Numeric {}
+    pub struct Iso8601 {}
+    pub struct DollarAmount {}
+    pub struct Coordinates {}
+}
+
+impl StatArrayConverter for formats::Numeric {
+    type Item = f64;
+
+    fn convert_one(&self, src: &String) -> Option<f64> {
+        src.parse().ok()
+    }
+
+    fn finalize(&self, values: Vec<Option<f64>>) -> StatArray {
+        StatArray::Number { unit: None, values }
+    }
+}
+
+impl StatArrayConverter for formats::DollarAmount {
+    type Item = f64;
+
+    fn convert_one(&self, src: &String) -> Option<f64> {
         lazy_static! {
             static ref RE: Regex = Regex::new(r",([0-9]{3})").unwrap();
         }
+        let cell1 = src.as_str();
+        let (minus, cell2) = cell1
+            .strip_prefix('-')
+            .map_or((false, cell1), |s| (true, s));
+        cell2
+            .strip_prefix('$')
+            .map(|s| RE.replace_all(s, "$1"))
+            .and_then(|s| s.parse().ok())
+            .map(|x: f64| if minus { -x } else { x })
+    }
 
-        match self {
-            StatFormat::Numeric => {
-                let mut values = vec![];
-                for cell in src {
-                    if cell.is_empty() {
-                        values.push(None)
-                    } else {
-                        let val = cell.parse().ok()?;
-                        values.push(Some(val))
-                    }
-                }
-                Some(StatArray::Number { unit: None, values })
-            }
-            StatFormat::DollarAmount => {
-                let mut values = vec![];
-                for cell in src {
-                    if cell.is_empty() {
-                        values.push(None)
-                    } else {
-                        let cell1 = cell.as_str();
-                        let (minus, cell2) = cell1
-                            .strip_prefix('-')
-                            .map_or((false, cell1), |s| (true, s));
-                        let val = cell2
-                            .strip_prefix('$')
-                            .map(|s| RE.replace_all(s, "$1"))
-                            .and_then(|s| s.parse().ok())
-                            .map(|x: f64| if minus { -x } else { x })?;
-                        values.push(Some(val))
-                    }
-                }
-                Some(StatArray::Number {
-                    unit: Some(StatUnit::Dollar),
-                    values,
-                })
-            }
-            StatFormat::Iso8601 => {
-                let mut values = vec![];
-                for cell in src {
-                    if cell.is_empty() {
-                        values.push(None)
-                    } else {
-                        let val = NaiveDate::parse_from_str(cell.as_str(), "%Y-%m-%d").ok()?;
-                        values.push(Some(val.and_time(NaiveTime::MIN).into()))
-                    }
-                }
-                Some(StatArray::Date { values })
-            }
-            StatFormat::Coordinates => {
-                let mut values = vec![];
-                for cell in src {
-                    if cell.is_empty() {
-                        values.push(None)
-                    } else {
-                        let parts: Vec<_> = cell.split(',').collect();
-                        let val = match parts[..] {
-                            [p1, p2] => {
-                                let latitude = p1
-                                    .trim()
-                                    .parse()
-                                    .ok()
-                                    .filter(|x| *x >= -90.0 && *x <= 90.0)?;
-                                let longitude = p2
-                                    .trim()
-                                    .parse()
-                                    .ok()
-                                    .filter(|x| *x >= -180.0 && *x <= 180.0)?;
-                                Some((latitude, longitude))
-                            }
-                            _ => None,
-                        }?;
-                        values.push(Some(val))
-                    }
-                }
-                Some(StatArray::LatLng { values })
-            }
+    fn finalize(&self, values: Vec<Option<f64>>) -> StatArray {
+        StatArray::Number {
+            unit: Some(StatUnit::Dollar),
+            values,
         }
     }
 }
 
-fn parse_stat_defs(
-    stat_columns: Vec<RawColumn<'_>>,
+impl StatArrayConverter for formats::Iso8601 {
+    type Item = NaiveDateTimeExt;
+
+    fn convert_one(&self, src: &String) -> Option<NaiveDateTimeExt> {
+        let date = NaiveDate::parse_from_str(src.as_str(), "%Y-%m-%d").ok()?;
+        Some(date.and_time(NaiveTime::MIN).into())
+    }
+
+    fn finalize(&self, values: Vec<Option<NaiveDateTimeExt>>) -> StatArray {
+        StatArray::Date { values }
+    }
+}
+
+impl StatArrayConverter for formats::Coordinates {
+    type Item = (f64, f64);
+
+    fn convert_one(&self, src: &String) -> Option<(f64, f64)> {
+        let parts: Vec<_> = src.split(',').collect();
+        match parts[..] {
+            [p1, p2] => {
+                let latitude = p1
+                    .trim()
+                    .parse()
+                    .ok()
+                    .filter(|x| *x >= -90.0 && *x <= 90.0)?;
+                let longitude = p2
+                    .trim()
+                    .parse()
+                    .ok()
+                    .filter(|x| *x >= -180.0 && *x <= 180.0)?;
+                Some((latitude, longitude))
+            }
+            _ => None,
+        }
+    }
+
+    fn finalize(&self, values: Vec<Option<(f64, f64)>>) -> StatArray {
+        StatArray::LatLng { values }
+    }
+}
+
+fn convert_stat_defs(
+    stat_columns: Vec<Column<'_>>,
     len: usize,
     callouts: &mut Vec<Callout>,
 ) -> Vec<StatDef> {
     let mut stat_defs = vec![];
     let mut labels = HashSet::new();
-    let value_parsers = [
-        StatFormat::Numeric,
-        StatFormat::DollarAmount,
-        StatFormat::Iso8601,
-        StatFormat::Coordinates,
+    let value_parsers: [Box<dyn StatArrayConvert>; 4] = [
+        Box::new(formats::Numeric {}),
+        Box::new(formats::DollarAmount {}),
+        Box::new(formats::Iso8601 {}),
+        Box::new(formats::Coordinates {}),
     ];
     for col in stat_columns {
         if len > 0 && col.body.len() > len {
@@ -321,7 +318,7 @@ fn parse_stat_defs(
 
         let stat_array = value_parsers
             .iter()
-            .filter_map(|p| p.parse(col.body))
+            .filter_map(|p| p.convert(col.body))
             .next()
             .unwrap_or_else(|| StatArray::String {
                 values: col
@@ -345,52 +342,364 @@ fn parse_stat_defs(
     stat_defs
 }
 
-fn parse_value_range(values: Vec<Vec<String>>) -> (CardTable, Vec<Callout>) {
-    let mut callouts = vec![];
-    let mut card_columns: [(&str, Option<RawColumn>); 6] = [
-        ("Card", None),
-        ("ID", None),
-        ("Disable?", None),
-        ("Notes", None),
-        ("Popularity", None),
-        ("Category", None),
-    ];
-    let mut tag_columns = vec![];
-    let mut stat_columns = vec![];
-    for (index, col) in values.iter().enumerate() {
-        if let Some((header, body)) = col.split_first() {
-            if let Some((_, prev)) = card_columns.iter_mut().find(|(name, _)| header == name) {
-                if prev.is_none() {
-                    let _ = prev.insert(RawColumn::new(index, header, body));
-                } else {
-                    callouts.push(Callout::Warning(format!(
-                        "Duplicate column: {} ({})",
-                        header,
-                        sheet_column_name(index)
-                    )));
-                }
-            } else if let Some(label) = header.strip_suffix("[]") {
-                tag_columns.push(RawColumn::new(index, label, body));
-            } else if !header.is_empty() {
-                stat_columns.push(RawColumn::new(index, header, body));
+struct PairingReferenceColumns<'a> {
+    left: Column<'a>,
+    right: Column<'a>,
+    is_symmetric: bool,
+    info: Option<Column<'a>>,
+}
+
+impl PairingReferenceColumns<'_> {
+    fn end_index(&self) -> usize {
+        match self.info {
+            None => self.right.index,
+            Some(col) => col.index,
+        }
+    }
+}
+
+struct PairingColumns<'a> {
+    reference_columns: Option<PairingReferenceColumns<'a>>,
+    criteria_for_all: Column<'a>,
+    criteria_common: Option<Column<'a>>,
+}
+
+#[derive(Default)]
+struct CardColumns<'a> {
+    title: Option<Column<'a>>,
+    unique_id: Option<Column<'a>>,
+    is_disabled: Option<Column<'a>>,
+    notes: Option<Column<'a>>,
+    popularity: Option<Column<'a>>,
+    category: Option<Column<'a>>,
+}
+
+#[derive(Default)]
+struct StructuredColumns<'a> {
+    card_columns: CardColumns<'a>,
+    stat_columns: Vec<Column<'a>>,
+    tag_columns: Vec<Column<'a>>,
+    pairings: Vec<PairingColumns<'a>>,
+}
+
+enum IError<I> {
+    Cont(I),
+    Halt((I, Callout)),
+}
+
+type IResult<I> = std::result::Result<I, IError<I>>;
+type IResult2<I, O> = std::result::Result<(I, O), IError<I>>;
+
+trait InsertNew<T> {
+    fn insert_new<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce() -> T;
+}
+
+impl<T> InsertNew<T> for Option<T> {
+    fn insert_new<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce() -> T,
+    {
+        match self {
+            Some(_) => false,
+            None => {
+                let _ = self.insert(f());
+                true
             }
         }
     }
-    let named_columns = NamedColumns {
-        title: card_columns[0].1,
-        unique_id: card_columns[1].1,
-        is_disabled: card_columns[2].1,
-        notes: card_columns[3].1,
-        popularity: card_columns[4].1,
-        category: card_columns[5].1,
+}
+
+fn parse_empty_column<'a>(
+    _out: &mut StructuredColumns<'a>,
+    input: &'a [Option<Column<'a>>],
+) -> IResult<&'a [Option<Column<'a>>]> {
+    if let Some((None, rest)) = input.split_first() {
+        Ok(rest)
+    } else {
+        Err(IError::Cont(input))
+    }
+}
+
+fn parse_card_column<'a>(
+    out: &mut StructuredColumns<'a>,
+    input: &'a [Option<Column<'a>>],
+) -> IResult<&'a [Option<Column<'a>>]> {
+    let Some((Some(col), rest)) = input.split_first() else {
+        return Err(IError::Cont(input))
     };
-    let cards = parse_cards(named_columns, &mut callouts);
-    let tag_defs = parse_tag_defs(tag_columns, cards.len(), &mut callouts);
-    let stat_defs = parse_stat_defs(stat_columns, cards.len(), &mut callouts);
+    let receiver = match col.header {
+        "Card" => &mut out.card_columns.title,
+        "ID" => &mut out.card_columns.unique_id,
+        "Disable?" => &mut out.card_columns.is_disabled,
+        "Notes" => &mut out.card_columns.notes,
+        "Popularity" => &mut out.card_columns.popularity,
+        "Category" => &mut out.card_columns.category,
+        _ => return Err(IError::Cont(input)),
+    };
+    if receiver.insert_new(|| col.clone()) {
+        Ok(rest)
+    } else {
+        let callout = Callout::Warning(format!(
+            "Duplicate column: {} ({})",
+            col.header,
+            sheet_column_name(col.index)
+        ));
+        Err(IError::Halt((rest, callout)))
+    }
+}
+
+fn parse_tag_column<'a>(
+    out: &mut StructuredColumns<'a>,
+    input: &'a [Option<Column<'a>>],
+) -> IResult<&'a [Option<Column<'a>>]> {
+    let Some((Some(col), rest)) = input.split_first() else {
+        return Err(IError::Cont(input))
+    };
+    if let Some(label) = col.header.strip_suffix("[]") {
+        if label.is_empty() {
+            let callout = Callout::Warning(format!(
+                "Invalid column name '[]' ({})",
+                sheet_column_name(col.index)
+            ));
+            return Err(IError::Halt((rest, callout)));
+        }
+        out.tag_columns
+            .push(Column::new(col.index, label, col.body));
+        Ok(rest)
+    } else {
+        Err(IError::Cont(input))
+    }
+}
+
+fn parse_pairing_colgroup_refs<'a>(
+    input: &'a [Option<Column<'a>>],
+) -> IResult2<&'a [Option<Column<'a>>], PairingReferenceColumns> {
+    let Some((Some(lcol), rest1)) = input.split_first() else {
+        return Err(IError::Cont(input))
+    };
+    let Some(label) = lcol.header.strip_suffix("->") else {
+        return Err(IError::Cont(input))
+    };
+    if label.is_empty() {
+        let callout = Callout::Error(format!(
+            "Pairing name is required ({})",
+            sheet_column_name(lcol.index)
+        ));
+        return Err(IError::Halt((rest1, callout)));
+    }
+    let Some((Some(rcol), rest2)) = rest1.split_first() else {
+        let callout = Callout::Error(format!("Incomplete pairing {} ({1}-{1})",
+            label, sheet_column_name(lcol.index)
+        ));
+        return Err(IError::Halt((rest1, callout)))
+    };
+    let is_symmetric = match rcol.header.strip_prefix("->") {
+        Some(s) if s == label => false,
+        Some(_) => {
+            let callout = Callout::Error(format!(
+                "Right side of pairing must match name of left ({}, {})",
+                label,
+                sheet_column_name(rcol.index)
+            ));
+            return Err(IError::Halt((rest2, callout)));
+        }
+        None => match rcol.header.strip_prefix("<-") {
+            Some(s) if s == label => false,
+            Some(_) => {
+                let callout = Callout::Error(format!(
+                    "Right side of pairing must match name of left ({}, {})",
+                    label,
+                    sheet_column_name(rcol.index)
+                ));
+                return Err(IError::Halt((rest2, callout)));
+            }
+            None => {
+                let callout = Callout::Error(format!(
+                    "Incomplete pairing {} ({1}-{1})",
+                    label,
+                    sheet_column_name(lcol.index)
+                ));
+                return Err(IError::Halt((rest2, callout)));
+            }
+        },
+    };
+    let (icol, rest3) = match rest2.split_first() {
+        Some((Some(c), r)) if c.header == "Info" => (Some(c), r),
+        _ => (None, rest2),
+    };
+    let refs = PairingReferenceColumns {
+        left: Column::new(lcol.index, label, lcol.body),
+        right: Column::new(rcol.index, label, rcol.body),
+        is_symmetric,
+        info: icol.cloned(),
+    };
+    Ok((rest3, refs))
+}
+
+fn parse_pairing_criteria_cols<'a>(
+    input: &'a [Option<Column<'a>>],
+) -> IResult2<&'a [Option<Column<'a>>], (&'a str, &'a Column<'a>, Option<&'a Column<'a>>)> {
+    let Some((Some(acol), rest1)) = input.split_first() else {
+        return Err(IError::Cont(input))
+    };
+    let Some(label) = acol.header.strip_prefix("∀") else {
+        return Err(IError::Cont(input))
+    };
+    let (ccol, rest2) = match rest1.split_first() {
+        Some((Some(c), r)) if c.header == "🚀" => (Some(c), r),
+        _ => (None, rest1),
+    };
+    Ok((rest2, (label, acol, ccol)))
+}
+
+fn parse_pairing_colgroup<'a>(
+    out: &mut StructuredColumns<'a>,
+    input: &'a [Option<Column<'a>>],
+) -> IResult<&'a [Option<Column<'a>>]> {
+    let (rest1, reference_columns): (&[Option<Column<'_>>], Option<PairingReferenceColumns<'_>>) =
+        parse_pairing_colgroup_refs(input)
+            .map(|(in2, rc)| (in2, Some(rc)))
+            .or_else(|e| match e {
+                IError::Cont(in2) => Ok((in2, None)),
+                e_halt => Err(e_halt),
+            })?;
+    let (rest2, criteria_columns) =
+        parse_pairing_criteria_cols(rest1).or_else(|e| match (e, &reference_columns) {
+            (IError::Cont(nxt), None) => Err(IError::Cont(nxt)),
+            (IError::Cont(nxt), Some(rc)) => {
+                let callout = Callout::Error(format!(
+                    "Incomplete pairing {} ({}-{})",
+                    rc.left.header,
+                    sheet_column_name(rc.left.index),
+                    sheet_column_name(rc.end_index())
+                ));
+                Err(IError::Halt((nxt, callout)))
+            }
+            (e_halt, _) => Err(e_halt),
+        })?;
+
+    let (alabel, acol, ccol) = criteria_columns;
+    let label = match &reference_columns {
+        None => {
+            if alabel.is_empty() {
+                let callout = Callout::Error(format!(
+                    "Pairing name is required ({})",
+                    sheet_column_name(acol.index)
+                ));
+                return Err(IError::Halt((rest2, callout)));
+            } else {
+                alabel
+            }
+        }
+        Some(rc) => {
+            if !alabel.is_empty() && alabel != rc.left.header {
+                let callout = Callout::Error(format!(
+                    "Pairing name mismatch ({}-{})",
+                    sheet_column_name(rc.left.index),
+                    sheet_column_name(acol.index)
+                ));
+                return Err(IError::Halt((rest2, callout)));
+            }
+            rc.left.header
+        }
+    };
+    out.pairings.push(PairingColumns {
+        reference_columns,
+        criteria_for_all: Column::new(acol.index, label, acol.body),
+        criteria_common: ccol.cloned(),
+    });
+    Ok(rest2)
+}
+
+fn parse_stat_column<'a>(
+    out: &mut StructuredColumns<'a>,
+    input: &'a [Option<Column<'a>>],
+) -> IResult<&'a [Option<Column<'a>>]> {
+    let Some((Some(col), rest)) = input.split_first() else {
+        return Err(IError::Cont(input))
+    };
+    out.stat_columns.push(col.clone());
+    Ok(rest)
+}
+
+fn parse_anything<'a>(
+    out: &mut StructuredColumns<'a>,
+    input: &'a [Option<Column<'a>>],
+) -> (&'a [Option<Column<'a>>], Option<Callout>) {
+    let input = match parse_empty_column(out, input) {
+        Ok(nxt) => return (nxt, None),
+        Err(IError::Cont(in2)) => in2,
+        Err(IError::Halt((nxt, callout))) => return (nxt, Some(callout)),
+    };
+    let input = match parse_card_column(out, input) {
+        Ok(nxt) => return (nxt, None),
+        Err(IError::Cont(in2)) => in2,
+        Err(IError::Halt((nxt, callout))) => return (nxt, Some(callout)),
+    };
+    let input = match parse_tag_column(out, input) {
+        Ok(nxt) => return (nxt, None),
+        Err(IError::Cont(in2)) => in2,
+        Err(IError::Halt((nxt, callout))) => return (nxt, Some(callout)),
+    };
+    let input = match parse_pairing_colgroup(out, input) {
+        Ok(nxt) => return (nxt, None),
+        Err(IError::Cont(in2)) => in2,
+        Err(IError::Halt((nxt, callout))) => return (nxt, Some(callout)),
+    };
+    let input = match parse_stat_column(out, input) {
+        Ok(nxt) => return (nxt, None),
+        Err(IError::Cont(in2)) => in2,
+        Err(IError::Halt((nxt, callout))) => return (nxt, Some(callout)),
+    };
+    let (first, rest) = input.split_first().unwrap();
+    (
+        rest,
+        Some(Callout::Warning(format!(
+            "Skipped column {}",
+            first
+                .map(|c| sheet_column_name(c.index))
+                .unwrap_or("?".to_owned())
+        ))),
+    )
+}
+
+fn group_columns<'a>(
+    columns: &'a [Option<Column<'a>>],
+    callouts: &mut Vec<Callout>,
+) -> StructuredColumns<'a> {
+    let mut result = StructuredColumns::default();
+    let mut remaining = columns;
+    while !remaining.is_empty() {
+        let (next, maybe_callout) = parse_anything(&mut result, remaining);
+        if let Some(callout) = maybe_callout {
+            callouts.push(callout);
+        }
+        remaining = next;
+    }
+    result
+}
+
+fn parse_value_range(values: Vec<Vec<String>>) -> (CardTable, Vec<Callout>) {
+    let mut callouts = vec![];
+    let columns: Vec<_> = values
+        .iter()
+        .enumerate()
+        .map(|(index, col)| {
+            col.split_first()
+                .map(|(header, body)| Column::new(index, header, body))
+        })
+        .collect();
+    let structured_columns = group_columns(&columns, &mut callouts);
+    let cards = convert_cards(structured_columns.card_columns, &mut callouts);
+    let tag_defs = convert_tag_defs(structured_columns.tag_columns, cards.len(), &mut callouts);
+    let stat_defs = convert_stat_defs(structured_columns.stat_columns, cards.len(), &mut callouts);
     let card_table = CardTable {
         cards,
         tag_defs,
         stat_defs,
+        pairings: vec![],
     };
     (card_table, callouts)
 }

@@ -27,20 +27,6 @@ rustler::atoms! {
     atom_string = "string",
     atom_lat_lng = "lat_lng",
     atom_unit = "unit",
-
-    atom_data = "data",
-
-    atom_cards = "cards",
-    atom_tag_defs = "tag_defs",
-    atom_stat_defs = "stat_defs",
-
-    atom_id = "id",
-    atom_revision = "revision",
-    atom_title = "title",
-    atom_spreadsheet_id = "spreadsheet_id",
-
-    atom_deck = "deck",
-    atom_callouts = "callouts",
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,7 +116,7 @@ impl Encoder for NaiveDateTimeExt {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, NifTaggedEnum)]
 #[serde(tag = "kind")]
 pub enum StatArray {
     Number {
@@ -148,62 +134,62 @@ pub enum StatArray {
     },
 }
 
-impl<'b> Decoder<'b> for StatArray {
-    fn decode(term: Term<'b>) -> NifResult<Self> {
-        if let Ok(tuple) = rustler::types::tuple::get_tuple(term) {
-            let name = tuple
-                .get(0)
-                .and_then(|&first| rustler::types::atom::Atom::from_term(first).ok())
-                .ok_or(rustler::Error::RaiseAtom("invalid_variant"))?;
-            if tuple.len() == 2 && name == atom_string() {
-                let unit = try_decode_field(tuple[1], atom_unit())?;
-                let values = try_decode_field(tuple[1], atom_values())?;
-                return Ok(StatArray::Number { unit, values });
-            }
-            if tuple.len() == 2 && name == atom_date() {
-                let values = try_decode_field(tuple[1], atom_values())?;
-                return Ok(StatArray::Date { values });
-            }
-            if tuple.len() == 2 && name == atom_string() {
-                let values = try_decode_field(tuple[1], atom_values())?;
-                return Ok(StatArray::String { values });
-            }
-            if tuple.len() == 2 && name == atom_lat_lng() {
-                let values = try_decode_field(tuple[1], atom_values())?;
-                return Ok(StatArray::LatLng { values });
-            }
-        }
-        Err(rustler::Error::RaiseAtom("invalid_variant"))
-    }
-}
+// impl<'b> Decoder<'b> for StatArray {
+//     fn decode(term: Term<'b>) -> NifResult<Self> {
+//         if let Ok(tuple) = rustler::types::tuple::get_tuple(term) {
+//             let name = tuple
+//                 .get(0)
+//                 .and_then(|&first| rustler::types::atom::Atom::from_term(first).ok())
+//                 .ok_or(rustler::Error::RaiseAtom("invalid_variant"))?;
+//             if tuple.len() == 2 && name == atom_string() {
+//                 let unit = try_decode_field(tuple[1], atom_unit())?;
+//                 let values = try_decode_field(tuple[1], atom_values())?;
+//                 return Ok(StatArray::Number { unit, values });
+//             }
+//             if tuple.len() == 2 && name == atom_date() {
+//                 let values = try_decode_field(tuple[1], atom_values())?;
+//                 return Ok(StatArray::Date { values });
+//             }
+//             if tuple.len() == 2 && name == atom_string() {
+//                 let values = try_decode_field(tuple[1], atom_values())?;
+//                 return Ok(StatArray::String { values });
+//             }
+//             if tuple.len() == 2 && name == atom_lat_lng() {
+//                 let values = try_decode_field(tuple[1], atom_values())?;
+//                 return Ok(StatArray::LatLng { values });
+//             }
+//         }
+//         Err(rustler::Error::RaiseAtom("invalid_variant"))
+//     }
+// }
 
-impl Encoder for StatArray {
-    fn encode<'a>(&self, env: Env<'a>) -> Term<'a> {
-        match self {
-            StatArray::Number { unit, values } => {
-                let mut map = rustler::types::map::map_new(env);
-                map = map.map_put(atom_unit(), unit).unwrap();
-                map = map.map_put(atom_values(), values).unwrap();
-                rustler::types::tuple::make_tuple(env, &[atom_number().encode(env), map])
-            }
-            StatArray::Date { values } => {
-                let map = Term::map_from_arrays(env, &[atom_values()], &[values])
-                    .expect("Failed to create map");
-                rustler::types::tuple::make_tuple(env, &[atom_date().encode(env), map])
-            }
-            StatArray::String { values } => {
-                let map = Term::map_from_arrays(env, &[atom_values()], &[values])
-                    .expect("Failed to create map");
-                rustler::types::tuple::make_tuple(env, &[atom_string().encode(env), map])
-            }
-            StatArray::LatLng { values } => {
-                let map = Term::map_from_arrays(env, &[atom_values()], &[values])
-                    .expect("Failed to create map");
-                rustler::types::tuple::make_tuple(env, &[atom_lat_lng().encode(env), map])
-            }
-        }
-    }
-}
+// impl Encoder for StatArray {
+//     fn encode<'a>(&self, env: Env<'a>) -> Term<'a> {
+//         match self {
+//             StatArray::Number { unit, values } => {
+//                 let mut map = rustler::types::map::map_new(env);
+//                 map = map.map_put(atom_unit(), unit).unwrap();
+//                 map = map.map_put(atom_values(), values).unwrap();
+//                 rustler::types::tuple::make_tuple(env, &[atom_number().encode(env), map])
+//             }
+//             StatArray::Date { values } => {
+//                 let map = Term::map_from_arrays(env, &[atom_values()], &[values])
+//                     .expect("Failed to create map");
+//                 rustler::types::tuple::make_tuple(env, &[atom_date().encode(env), map])
+//             }
+//             StatArray::String { values } => {
+//                 let map = Term::map_from_arrays(env, &[atom_values()], &[values])
+//                     .expect("Failed to create map");
+//                 rustler::types::tuple::make_tuple(env, &[atom_string().encode(env), map])
+//             }
+//             StatArray::LatLng { values } => {
+//                 let map = Term::map_from_arrays(env, &[atom_values()], &[values])
+//                     .expect("Failed to create map");
+//                 rustler::types::tuple::make_tuple(env, &[atom_lat_lng().encode(env), map])
+//             }
+//         }
+//     }
+// }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct StatDef {
@@ -221,11 +207,114 @@ pub struct Card {
     pub(crate) category: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
+pub struct Edge {
+    pub(crate) left: u64,
+    pub(crate) right: u64,
+    pub(crate) info: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, NifUnitEnum)]
+pub enum EdgeSide {
+    Left,
+    Right,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, NifUnitEnum)]
+pub enum UnOp {
+    Bool,
+    Add,
+    Sub,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, NifUnitEnum)]
+pub enum BinOp {
+    Eq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    And,
+    Or,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Pow,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, NifTaggedEnum)]
+pub enum Expression {
+    Number {
+        value: f64,
+    },
+    Date {
+        value: NaiveDateTimeExt,
+    },
+    Variable {
+        side: EdgeSide,
+        key: String,
+    },
+    Unary {
+        op: UnOp,
+        child: BoxedExpression,
+    },
+    Binary {
+        op: BinOp,
+        lhs: BoxedExpression,
+        rhs: BoxedExpression,
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BoxedExpression(Box<Expression>);
+
+impl Serialize for BoxedExpression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'b> Deserialize<'b> for BoxedExpression {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'b>,
+    {
+        Deserialize::deserialize(deserializer).map(|e| BoxedExpression(Box::new(e)))
+    }
+}
+
+impl<'b> Decoder<'b> for BoxedExpression {
+    fn decode(term: Term<'b>) -> NifResult<Self> {
+        let e = term.decode()?;
+        Ok(Self(Box::new(e)))
+    }
+}
+
+impl Encoder for BoxedExpression {
+    fn encode<'a>(&self, env: Env<'a>) -> Term<'a> {
+        self.0.encode(env)
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
+pub struct Pairing {
+    pub(crate) label: String,
+    pub(crate) is_symmetric: bool,
+    pub(crate) requirements: Expression,
+    pub(crate) boosts: Expression,
+    pub(crate) data: Vec<Edge>,
+}
+
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct CardTable {
     pub(crate) cards: Vec<Card>,
     pub(crate) tag_defs: Vec<TagDef>,
     pub(crate) stat_defs: Vec<StatDef>,
+    pub(crate) pairings: Vec<Pairing>,
 }
 
 #[derive(PartialEq, Serialize, Deserialize, NifMap)]
