@@ -18,9 +18,22 @@ let liveSocket = new LiveSocket("/live", Socket, {
 liveSocket.connect();
 window.liveSocket = liveSocket;
 
-const url = new URL(window.location);
-if (url.pathname === window.pageRoutes.sheet) {
+const matcher = (pattern) => (input) => {
+  const path1 = pattern.split('/');
+  const path2 = input.split('/');
+  return (
+    path1.length === path2.length &&
+    path2.every((part, i) =>
+      path1[i] === '__PARAM__' || path1[i] === part
+    )
+  );
+}
+const matchers = Object.fromEntries(
+  Object.entries(window.pageRoutes).map(([k, v]) => [k, matcher(v)])
+);
+const pathname = window.location.pathname.slice();
+if (matchers.sheet(pathname) || matchers.sheetLive(pathname)) {
   window.vm = new SheetPage();
-} else if (url.pathname === window.pageRoutes.sheetAdvanced) {
+} else if (matchers.sheetAdvanced(pathname)) {
   window.vm = new SheetAdvancedPage();
 }

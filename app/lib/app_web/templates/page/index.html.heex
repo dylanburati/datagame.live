@@ -2,7 +2,7 @@
   <h1 class="text-center font-extralight" style="font-size: 2rem">Explore</h1>
   <div class="deck-grid">
     <%= for deck <- @decks do %>
-      <a class="deck-link interactable" href={Routes.live_path(@socket, AppWeb.ExplorerLive)}>
+      <a class="deck-link interactable" href={Routes.explorer_path(@conn, :index)}>
         <img alt={deck.title} src={deck.image_url || App.Utils.image_url(deck)} />
       </a>
     <% end %>
@@ -10,26 +10,7 @@
 </section>
 
 <%= if @current_user == nil do %>
-<section class="mt-8">
-  <h1 class="text-center font-light">Register or <a href="#">log in</a></h1>
-  <div class="flex justify-center mt-6">
-    <.form let={f} for={@changeset} phx-change="validate" phx-submit="save" class="flex flex-col items-stretch" style="row-gap: 0.5rem">
-      <div>
-        <%= label f, :username %>
-        <%= text_input f, :username, required: true, class: "interactable w-full" %>
-        <%= error_tag f, :username %>
-      </div>
-
-      <div>
-        <%= label f, :password %>
-        <%= password_input f, :password, required: true, class: "interactable w-full" %>
-        <%= error_tag f, :password %>
-      </div>
-
-      <%= submit "Register", class: "bg-green text-white interactable" %>
-    </.form>
-  </div>
-</section>
+<%= render AppWeb.UserView, "form.html", Map.put(assigns, :action, :create) %>
 <% end %>
 
 <script type="text/javascript">

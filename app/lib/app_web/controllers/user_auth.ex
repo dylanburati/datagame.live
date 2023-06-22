@@ -35,7 +35,7 @@ defmodule AppWeb.UserAuth do
     |> put_session(:user_token, token)
     # |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
     |> maybe_write_remember_me_cookie(token, params)
-    |> redirect(to: Routes.live_path(conn, AppWeb.IndexLive))
+    |> redirect(to: Routes.page_path(conn, :index))
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do
@@ -84,7 +84,7 @@ defmodule AppWeb.UserAuth do
     conn
     |> renew_session()
     |> delete_resp_cookie(@remember_me_cookie)
-    |> redirect(to: Routes.live_path(conn, AppWeb.IndexLive))
+    |> redirect(to: Routes.page_path(conn, :index))
   end
 
   @doc """
@@ -124,13 +124,13 @@ defmodule AppWeb.UserAuth do
         _ ->
           conn
           |> put_flash(:error, "You don't have clearance to access this page.")
-          |> redirect(to: Routes.live_path(conn, AppWeb.IndexLive))
+          |> redirect(to: Routes.page_path(conn, :index))
           |> halt()
       end
     else
       conn
       |> put_flash(:error, "You must log in to access this page.")
-      |> redirect(to: Routes.live_path(conn, AppWeb.IndexLive))
+      |> redirect(to: Routes.page_path(conn, :index))
       |> halt()
     end
   end

@@ -14,12 +14,11 @@ defmodule App.Entities.UserService do
     |> Repo.insert()
   end
 
-  @spec login(%{:password => String.t, :username => String.t, optional(any) => any}) ::
-          {:ok, User.t} | :error
+  @spec login(map) :: {:ok, User.t} | :error
   @doc """
   Gets the user with the given username and verifies the given password.
   """
-  def login(%{username: username, password: pw}) do
+  def login(%{"username" => username, "password" => pw}) do
     user = Repo.get_by(User, username: username)
     if User.verify_password(user, pw) do
       {:ok, user}
@@ -28,7 +27,7 @@ defmodule App.Entities.UserService do
     end
   end
 
-  # def login(_), do: :error
+  def login(_), do: :error
 
   @spec get_by_token(any) :: User.t | nil
   @doc """

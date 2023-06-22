@@ -21,22 +21,22 @@ defmodule AppWeb.Router do
   scope "/", AppWeb do
     pipe_through :browser
 
-    live "/", IndexLive
+    get "/", PageController, :index
     get "/sheet", PageController, :sheet
     get "/sheet-advanced", PageController, :sheet_advanced
-    live "/explore", ExplorerLive
-    post "/user", UserController, :create
-    post "/user/login", UserController, :login
-  end
+    get "/user/register", UserController, :new
+    post "/user/register", UserController, :create
+    get "/user/login", UserController, :login
+    post "/user/login", UserController, :verify
+    get "/user/logout", UserController, :logout
 
-  pipeline :require_admin do
-    plug :require_authenticated_user, role: "admin"
-  end
+    live_session :default do
+      live "/explore", ExplorerLive, :index
+    end
 
-  scope "/", AppWeb do
-    pipe_through [:browser, :require_admin]
-
-    live "/sheet_/:id", SheetLive
+    live_session :admin, on_mount: {AppWeb.LiveAuth, :require_admin} do
+      live "/sheet_/:id", SheetLive, :index
+    end
   end
 
   scope "/api", AppWeb do

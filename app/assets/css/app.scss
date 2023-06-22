@@ -596,10 +596,9 @@ button {
     width: 100%;
     opacity: 0.8;
     transition: opacity 150ms linear;
-
-    &:hover, &:focus {
-      opacity: 1;
-    }
+  }
+  &:hover img, &:focus img {
+    opacity: 1;
   }
 }
 

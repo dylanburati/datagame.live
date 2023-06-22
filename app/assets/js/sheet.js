@@ -21,8 +21,6 @@ export class SheetPage {
     };
 
     this.s = {
-      refreshEnabled: true,
-      publishEnabled: true,
       sheetData: null,
       tableData: null,
       currentPage: 1,
@@ -62,15 +60,14 @@ export class SheetPage {
       );
     }, () => [this.s.sheetData]);
 
-    this.setupListeners();
-    this.refresh();
+    window.addEventListener("phx:mount", () => this.setupListeners());
+    // this.refresh();
   }
 
   setupListeners() {
     const {
       tablist,
       refreshBtn,
-      publishBtn,
       deckPicker,
       searchInput,
     } = this.r;
@@ -97,20 +94,18 @@ export class SheetPage {
       };
       tab.addEventListener('click', activate);
       if (window.location.hash === new URL(tab.href).hash) {
+        console.log(97, i);
         activate();
       }
     }
 
     refreshBtn.addEventListener('click', () => {
-      if (this.s.refreshEnabled) {
-        this.refresh();
-      }
-    });
-
-    publishBtn.addEventListener('click', () => {
-      if (this.s.publishEnabled) {
-        this.publish();
-      }
+      const { errorBox, publishContainer } = this.r;
+      errorBox.classList.add('hidden');
+      publishContainer.classList.add('hidden');
+      this.setCurrentPage(1);
+      this.setSheetData(null);
+      this.setDeckName(null);
     });
 
     deckPicker.addEventListener('change', evt => {
@@ -122,6 +117,8 @@ export class SheetPage {
       this.setQueryText(evt.target.value);
       this.setCurrentPage(1);
     });
+
+    window.addEventListener('phx:load', this.handleLoad.bind(this));
   }
 
   repaginate() {
@@ -427,60 +424,17 @@ export class SheetPage {
     this.setQueryText("disable:false");
   }
 
-  async refresh() {
-    this.s.refreshEnabled = false;
-    const { errorBox, publishContainer } = this.r;
-    errorBox.classList.add('hidden');
-    publishContainer.classList.add('hidden');
-    this.setSheetData(null);
-    this.setCurrentPage(1);
-    this.setDeckName(null);
-    this.setQuery('');
-
-    let json;
-    try {
-      const id = new URL(window.location).searchParams.get('id');
-      if (id == null) {
-        window.location = window.pageRoutes.index;
-      }
-      const response = await fetch(`${window.apiRoutes.show}${id}`);
-      json = await response.json();
-      if (json.error) {
-        throw new Error(json.error);
-      }
-    } catch (err) {
+  handleLoad(evt) {
+    const json = evt.detail;
+    const { errorBox } = this.r;
+    if (json.ok) {
+      this.setDeckName(json.ok[0].deck.title);
+      this.setSheetData(json.ok);
+    } else {
+      const errorMessage = json.error || "Unknown error";
+      console.error('handleLoad', errorMessage);
       errorBox.classList.remove('hidden');
-      errorBox.textContent = err;
-      return;
-    } finally {
-      this.s.refreshEnabled = true;
-    }
-    this.setDeckName(json[0].deck.title);
-    this.setSheetData(json);
-  }
-
-  async publish() {
-    const { publishCodeblock, publishContainer } = this.r;
-    const { sheetData } = this.s;
-    if (sheetData == null) return;
-
-    try {
-      this.s.publishEnabled = false;
-      const resp = await fetch(window.apiRoutes.create, {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(sheetData),
-      });
-      const json = await resp.json();
-      console.log(json);
-      publishContainer.classList.remove('hidden');
-      publishCodeblock.textContent = prettyPrint(json);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      this.s.publishEnabled = true;
+      errorBox.textContent = errorMessage;
     }
   }
 }

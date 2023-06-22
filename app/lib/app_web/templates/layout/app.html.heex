@@ -1,6 +1,6 @@
 <header class={Map.get(assigns, :header_class, "") <> " bg-black"}>
   <nav class="flex container items-center">
-    <a href={Routes.live_path(@conn, AppWeb.IndexLive)} style="line-height: 0">
+    <a href={Routes.page_path(@conn, :index)} style="line-height: 0">
       <img
         style="height: 55px;"
         src={Routes.static_path(@conn, "/images/logo1.png")}
@@ -8,6 +8,9 @@
       >
     </a>
     <span class="flex-grow"></span>
+    <%= if @current_user do %>
+      <a class="mr-2" href={Routes.user_path(@conn, :logout)}>Log out</a>
+    <% end %>
     <a target="_blank" rel="noreferrer" href="https://dylanburati.github.io">About me</a>
   </nav>
 </header>
