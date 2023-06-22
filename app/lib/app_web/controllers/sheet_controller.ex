@@ -4,16 +4,9 @@ defmodule AppWeb.SheetController do
   alias App.Entities.DeckService
 
   def show(conn, %{"id" => id}) do
-    if id == "dev" do
-      case App.Native.parse_spreadsheet(["Movies", "Animals", "Music:Billboard US", "The Rich and Famous", "Places", "Characters"], File.read!("1687079970025835_in.json")) do
-        {:ok, decks_plus} -> render(conn, "sheet_.json", %{data: decks_plus})
-        {:error, err} -> json(conn, %{"error" => to_string(err)})
-      end
-    else
-      case SheetService.get_spreadsheet(id) do
-        {:ok, sheet_data} -> json(conn, sheet_data)
-        {:error, err} -> json(conn, %{"error" => to_string(err)})
-      end
+    case SheetService.get_spreadsheet(id) do
+      {:ok, sheet_data} -> json(conn, sheet_data)
+      {:error, err} -> json(conn, %{"error" => to_string(err)})
     end
   end
 

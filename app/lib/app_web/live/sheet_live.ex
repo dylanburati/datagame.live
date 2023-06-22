@@ -63,7 +63,7 @@ defmodule AppWeb.SheetLive do
 
   def handle_info({:load, id}, socket) do
     {socket, payload} = if id == "dev" do
-      case App.Native.parse_spreadsheet(["Movies", "Animals", "Music:Billboard US", "The Rich and Famous", "Places", "Characters"], File.read!("1687079970025835_in.json")) do
+      case App.Native.parse_spreadsheet(["Movies", "Animals", "Music:Billboard US", "The Rich and Famous", "Places", "Characters"], File.read!("1687456135278600_in.json")) do
         {:ok, decks_plus} ->
           {assign(socket, decks: publishable_recur(decks_plus)),
             %{"ok" => Phoenix.View.render(AppWeb.SheetView, "sheet_.json", %{data: decks_plus})}}

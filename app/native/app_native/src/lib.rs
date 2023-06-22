@@ -1,4 +1,5 @@
 mod importer;
+mod tinylang;
 mod types;
 
 use rustler::{Encoder, Env, Error, NifResult, Term};
@@ -48,11 +49,11 @@ rustler::init!("Elixir.App.Native", [parse_spreadsheet]);
 
 // #[cfg(test)]
 // mod tests {
-//     use crate::importer;
+//     use crate::{importer, tinylang::{expr, ExprType, ExprValue}};
 
 //     #[test]
 //     fn test_speed() -> Result<(), Box<dyn std::error::Error>> {
-//         let json_bytes = std::fs::read("../../1687079970025835_in.json")?;
+//         let json_bytes = std::fs::read("../../1687456135278600_in.json")?;
 //         let json = String::from_utf8(json_bytes)?;
 //         let decks = importer::parse_spreadsheet(
 //             vec![
@@ -66,6 +67,16 @@ rustler::init!("Elixir.App.Native", [parse_spreadsheet]);
 //             json,
 //         )?;
 //         assert_eq!(decks.len(), 6);
+//         let card_table = &decks[2].deck.data;
+//         let expr = expr("(L\"Spotify plays\" / R\"Spotify plays\")").unwrap();
+//         let expr = expr.optimize(card_table, card_table).unwrap();
+//         assert_eq!(expr.get_type().unwrap(), ExprType::Number);
+//         for i in 0..card_table.cards.len() {
+//             for j in 0..card_table.cards.len() {
+//                 let ev = expr.get_value(i, j).unwrap();
+//                 assert!(matches!(ev, None | Some(ExprValue::Number(_))), "{:?}", ev)
+//             }
+//         }
 //         Ok(())
 //     }
 // }

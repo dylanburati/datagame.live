@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+};
 
 use chrono::{NaiveDate, NaiveTime};
 use error_chain::error_chain;
@@ -6,9 +9,12 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
 
-use crate::types::{
-    AnnotatedDeck, Callout, Card, CardTable, Deck, NaiveDateTimeExt, StatArray, StatDef, StatUnit,
-    TagDef,
+use crate::{
+    tinylang::{expr, ExprType, Expression},
+    types::{
+        AnnotatedDeck, Callout, Card, CardTable, Deck, Edge, NaiveDateTimeExt, Pairing, StatArray,
+        StatDef, StatUnit, TagDef,
+    },
 };
 
 fn sheet_column_name(index: usize) -> String {
@@ -33,313 +39,6 @@ impl<'a> Column<'a> {
             body,
         }
     }
-}
-
-fn convert_cards(card_columns: CardColumns<'_>, callouts: &mut Vec<Callout>) -> Vec<Card> {
-    let mut cards = vec![];
-    let Some(title_column) = card_columns.title else {
-        callouts.push(Callout::Error("Title column is required".into()));
-        return cards
-    };
-    let mut id_set = HashSet::new();
-
-    for (row_index, cell) in title_column.body.iter().enumerate() {
-        if cell.is_empty() {
-            // TODO stop after 10 errors of same type
-            callouts.push(Callout::Error(format!(
-                "Title can not be empty ({}{})",
-                sheet_column_name(title_column.index),
-                row_index + 1
-            )))
-        }
-
-        let unique_id = card_columns
-            .unique_id
-            .and_then(|col| col.body.get(row_index))
-            .filter(|s| !s.is_empty())
-            .cloned();
-        let is_disabled = card_columns
-            .is_disabled
-            .and_then(|col| col.body.get(row_index))
-            .map(|s| {
-                !matches!(
-                    s.as_str(),
-                    "" | "0" | "n" | "N" | "no" | "No" | "NO" | "false" | "False" | "FALSE"
-                )
-            })
-            .unwrap_or(false);
-        let notes = card_columns
-            .notes
-            .and_then(|col| col.body.get(row_index))
-            .filter(|s| !s.is_empty())
-            .cloned();
-        let popularity = match card_columns.popularity {
-            Some(col) => {
-                match col
-                    .body
-                    .get(row_index)
-                    .map(|s: &String| -> std::result::Result<f64, _> { s.parse() })
-                {
-                    Some(Ok(val)) => val,
-                    Some(Err(_)) => {
-                        callouts.push(Callout::Error(format!(
-                            "Expected a number for popularity ({}{})",
-                            sheet_column_name(col.index),
-                            row_index + 1
-                        )));
-                        0.0
-                    }
-                    None => 0.0,
-                }
-            }
-            None => 0.0,
-        };
-        let category = card_columns
-            .category
-            .and_then(|col| col.body.get(row_index))
-            .filter(|s| !s.is_empty())
-            .cloned();
-
-        if let Some(id) = unique_id.clone() {
-            if !id_set.insert(id) {
-                callouts.push(Callout::Error(format!(
-                    "Duplicate ID ({}{})",
-                    sheet_column_name(card_columns.unique_id.unwrap().index),
-                    row_index + 1
-                )));
-            }
-        }
-        cards.push(Card {
-            title: cell.to_owned(),
-            unique_id,
-            is_disabled,
-            notes,
-            popularity,
-            category,
-        });
-    }
-    cards
-}
-
-fn convert_tag_defs(
-    tag_columns: Vec<Column<'_>>,
-    len: usize,
-    callouts: &mut Vec<Callout>,
-) -> Vec<TagDef> {
-    let mut tag_defs = vec![];
-    let mut labels = HashSet::new();
-    for col in tag_columns {
-        if len > 0 && col.body.len() > len {
-            callouts.push(Callout::Warning(format!(
-                "Skipping data below row {} in column {}",
-                len,
-                sheet_column_name(col.index)
-            )));
-        }
-        if col.body.iter().take(len).all(|s| s.is_empty()) {
-            continue;
-        }
-        if labels.contains(col.header) {
-            callouts.push(Callout::Warning(format!(
-                "Skipping tag column with duplicate label: {} ({})",
-                col.header,
-                sheet_column_name(col.index)
-            )));
-            continue;
-        }
-        labels.insert(col.header);
-        let label = col.header.to_owned();
-
-        let values = col
-            .body
-            .iter()
-            .take(len)
-            .map(|s| {
-                s.split(',')
-                    .map(|tag| tag.trim())
-                    .filter(|tag| !tag.is_empty())
-                    .map(|tag| tag.to_owned())
-                    .collect()
-            })
-            .collect();
-        tag_defs.push(TagDef { label, values });
-    }
-    tag_defs
-}
-
-trait StatArrayConverter {
-    type Item;
-    fn convert_one(&self, src: &String) -> Option<Self::Item>;
-    fn finalize(&self, values: Vec<Option<Self::Item>>) -> StatArray;
-}
-
-trait StatArrayConvert {
-    fn convert(&self, src: &[String]) -> Option<StatArray>;
-}
-
-impl<A> StatArrayConvert for A
-where
-    A: StatArrayConverter,
-{
-    fn convert(&self, src: &[String]) -> Option<StatArray> {
-        let mut values = vec![];
-        for cell in src {
-            if cell.is_empty() {
-                values.push(None)
-            } else {
-                let val = self.convert_one(cell)?;
-                values.push(Some(val))
-            }
-        }
-        Some(self.finalize(values))
-    }
-}
-
-mod formats {
-    pub struct Numeric {}
-    pub struct Iso8601 {}
-    pub struct DollarAmount {}
-    pub struct Coordinates {}
-}
-
-impl StatArrayConverter for formats::Numeric {
-    type Item = f64;
-
-    fn convert_one(&self, src: &String) -> Option<f64> {
-        src.parse().ok()
-    }
-
-    fn finalize(&self, values: Vec<Option<f64>>) -> StatArray {
-        StatArray::Number { unit: None, values }
-    }
-}
-
-impl StatArrayConverter for formats::DollarAmount {
-    type Item = f64;
-
-    fn convert_one(&self, src: &String) -> Option<f64> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r",([0-9]{3})").unwrap();
-        }
-        let cell1 = src.as_str();
-        let (minus, cell2) = cell1
-            .strip_prefix('-')
-            .map_or((false, cell1), |s| (true, s));
-        cell2
-            .strip_prefix('$')
-            .map(|s| RE.replace_all(s, "$1"))
-            .and_then(|s| s.parse().ok())
-            .map(|x: f64| if minus { -x } else { x })
-    }
-
-    fn finalize(&self, values: Vec<Option<f64>>) -> StatArray {
-        StatArray::Number {
-            unit: Some(StatUnit::Dollar),
-            values,
-        }
-    }
-}
-
-impl StatArrayConverter for formats::Iso8601 {
-    type Item = NaiveDateTimeExt;
-
-    fn convert_one(&self, src: &String) -> Option<NaiveDateTimeExt> {
-        let date = NaiveDate::parse_from_str(src.as_str(), "%Y-%m-%d").ok()?;
-        Some(date.and_time(NaiveTime::MIN).into())
-    }
-
-    fn finalize(&self, values: Vec<Option<NaiveDateTimeExt>>) -> StatArray {
-        StatArray::Date { values }
-    }
-}
-
-impl StatArrayConverter for formats::Coordinates {
-    type Item = (f64, f64);
-
-    fn convert_one(&self, src: &String) -> Option<(f64, f64)> {
-        let parts: Vec<_> = src.split(',').collect();
-        match parts[..] {
-            [p1, p2] => {
-                let latitude = p1
-                    .trim()
-                    .parse()
-                    .ok()
-                    .filter(|x| *x >= -90.0 && *x <= 90.0)?;
-                let longitude = p2
-                    .trim()
-                    .parse()
-                    .ok()
-                    .filter(|x| *x >= -180.0 && *x <= 180.0)?;
-                Some((latitude, longitude))
-            }
-            _ => None,
-        }
-    }
-
-    fn finalize(&self, values: Vec<Option<(f64, f64)>>) -> StatArray {
-        StatArray::LatLng { values }
-    }
-}
-
-fn convert_stat_defs(
-    stat_columns: Vec<Column<'_>>,
-    len: usize,
-    callouts: &mut Vec<Callout>,
-) -> Vec<StatDef> {
-    let mut stat_defs = vec![];
-    let mut labels = HashSet::new();
-    let value_parsers: [Box<dyn StatArrayConvert>; 4] = [
-        Box::new(formats::Numeric {}),
-        Box::new(formats::DollarAmount {}),
-        Box::new(formats::Iso8601 {}),
-        Box::new(formats::Coordinates {}),
-    ];
-    for col in stat_columns {
-        if len > 0 && col.body.len() > len {
-            callouts.push(Callout::Warning(format!(
-                "Skipping data below row {} in column {}",
-                len,
-                sheet_column_name(col.index)
-            )))
-        }
-        if col.body.iter().take(len).all(|s| s.is_empty()) {
-            continue;
-        }
-        if labels.contains(col.header) {
-            callouts.push(Callout::Warning(format!(
-                "Skipping stat column with duplicate label: {} ({})",
-                col.header,
-                sheet_column_name(col.index)
-            )));
-            continue;
-        }
-        labels.insert(col.header);
-        let label = col.header.to_owned();
-
-        let stat_array = value_parsers
-            .iter()
-            .filter_map(|p| p.convert(col.body))
-            .next()
-            .unwrap_or_else(|| StatArray::String {
-                values: col
-                    .body
-                    .iter()
-                    .take(len)
-                    .map(|s| {
-                        if s.is_empty() {
-                            None
-                        } else {
-                            Some(s.to_owned())
-                        }
-                    })
-                    .collect(),
-            });
-        stat_defs.push(StatDef {
-            label,
-            data: stat_array,
-        });
-    }
-    stat_defs
 }
 
 struct PairingReferenceColumns<'a> {
@@ -438,7 +137,7 @@ fn parse_card_column<'a>(
         "Category" => &mut out.card_columns.category,
         _ => return Err(IError::Cont(input)),
     };
-    if receiver.insert_new(|| col.clone()) {
+    if receiver.insert_new(|| *col) {
         Ok(rest)
     } else {
         let callout = Callout::Warning(format!(
@@ -538,13 +237,15 @@ fn parse_pairing_colgroup_refs<'a>(
     Ok((rest3, refs))
 }
 
+type PairingCriteriaColumns<'a> = (&'a str, &'a Column<'a>, Option<&'a Column<'a>>);
+
 fn parse_pairing_criteria_cols<'a>(
     input: &'a [Option<Column<'a>>],
-) -> IResult2<&'a [Option<Column<'a>>], (&'a str, &'a Column<'a>, Option<&'a Column<'a>>)> {
+) -> IResult2<&'a [Option<Column<'a>>], PairingCriteriaColumns<'a>> {
     let Some((Some(acol), rest1)) = input.split_first() else {
         return Err(IError::Cont(input))
     };
-    let Some(label) = acol.header.strip_prefix("∀") else {
+    let Some(label) = acol.header.strip_prefix('∀') else {
         return Err(IError::Cont(input))
     };
     let (ccol, rest2) = match rest1.split_first() {
@@ -566,8 +267,8 @@ fn parse_pairing_colgroup<'a>(
                 e_halt => Err(e_halt),
             })?;
     let (rest2, criteria_columns) =
-        parse_pairing_criteria_cols(rest1).or_else(|e| match (e, &reference_columns) {
-            (IError::Cont(nxt), None) => Err(IError::Cont(nxt)),
+        parse_pairing_criteria_cols(rest1).map_err(|e| match (e, &reference_columns) {
+            (IError::Cont(nxt), None) => IError::Cont(nxt),
             (IError::Cont(nxt), Some(rc)) => {
                 let callout = Callout::Error(format!(
                     "Incomplete pairing {} ({}-{})",
@@ -575,9 +276,9 @@ fn parse_pairing_colgroup<'a>(
                     sheet_column_name(rc.left.index),
                     sheet_column_name(rc.end_index())
                 ));
-                Err(IError::Halt((nxt, callout)))
+                IError::Halt((nxt, callout))
             }
-            (e_halt, _) => Err(e_halt),
+            (e_halt, _) => e_halt,
         })?;
 
     let (alabel, acol, ccol) = criteria_columns;
@@ -620,7 +321,7 @@ fn parse_stat_column<'a>(
     let Some((Some(col), rest)) = input.split_first() else {
         return Err(IError::Cont(input))
     };
-    out.stat_columns.push(col.clone());
+    out.stat_columns.push(*col);
     Ok(rest)
 }
 
@@ -681,6 +382,495 @@ fn group_columns<'a>(
     result
 }
 
+fn convert_cards(card_columns: CardColumns<'_>, callouts: &mut Vec<Callout>) -> Vec<Card> {
+    let mut cards = vec![];
+    let Some(title_column) = card_columns.title else {
+        callouts.push(Callout::Error("Title column is required".into()));
+        return cards
+    };
+    let mut id_set = HashSet::new();
+
+    for (row_index, cell) in title_column.body.iter().enumerate() {
+        if cell.is_empty() {
+            // TODO stop after 10 errors of same type
+            callouts.push(Callout::Error(format!(
+                "Title can not be empty ({}{})",
+                sheet_column_name(title_column.index),
+                row_index + 2
+            )))
+        }
+
+        let unique_id = card_columns
+            .unique_id
+            .and_then(|col| col.body.get(row_index))
+            .filter(|s| !s.is_empty())
+            .cloned();
+        let is_disabled = card_columns
+            .is_disabled
+            .and_then(|col| col.body.get(row_index))
+            .map(|s| {
+                !matches!(
+                    s.as_str(),
+                    "" | "0" | "n" | "N" | "no" | "No" | "NO" | "false" | "False" | "FALSE"
+                )
+            })
+            .unwrap_or(false);
+        let notes = card_columns
+            .notes
+            .and_then(|col| col.body.get(row_index))
+            .filter(|s| !s.is_empty())
+            .cloned();
+        let popularity = match card_columns.popularity {
+            Some(col) => {
+                match col
+                    .body
+                    .get(row_index)
+                    .map(|s: &String| -> std::result::Result<f64, _> { s.parse() })
+                {
+                    Some(Ok(val)) => val,
+                    Some(Err(_)) => {
+                        callouts.push(Callout::Error(format!(
+                            "Expected a number for popularity ({}{})",
+                            sheet_column_name(col.index),
+                            row_index + 2
+                        )));
+                        0.0
+                    }
+                    None => 0.0,
+                }
+            }
+            None => 0.0,
+        };
+        let category = card_columns
+            .category
+            .and_then(|col| col.body.get(row_index))
+            .filter(|s| !s.is_empty())
+            .cloned();
+
+        if let Some(id) = unique_id.clone() {
+            if !id_set.insert(id) {
+                callouts.push(Callout::Error(format!(
+                    "Duplicate ID ({}{})",
+                    sheet_column_name(card_columns.unique_id.unwrap().index),
+                    row_index + 2
+                )));
+            }
+        }
+        cards.push(Card {
+            title: cell.to_owned(),
+            unique_id,
+            is_disabled,
+            notes,
+            popularity,
+            category,
+        });
+    }
+    cards
+}
+
+fn convert_tag_defs(
+    tag_columns: Vec<Column<'_>>,
+    len: usize,
+    callouts: &mut Vec<Callout>,
+) -> Vec<TagDef> {
+    let mut tag_defs = vec![];
+    let mut labels = HashSet::new();
+    for col in tag_columns {
+        if len > 0 && col.body.len() > len {
+            callouts.push(Callout::Warning(format!(
+                "Skipping data below row {} in column {}",
+                len + 1,
+                sheet_column_name(col.index)
+            )));
+        }
+        if col.body.iter().take(len).all(|s| s.is_empty()) {
+            continue;
+        }
+        if labels.contains(col.header) {
+            callouts.push(Callout::Warning(format!(
+                "Skipping tag column with duplicate label: {} ({})",
+                col.header,
+                sheet_column_name(col.index)
+            )));
+            continue;
+        }
+        labels.insert(col.header);
+        let label = col.header.to_owned();
+
+        let values = col
+            .body
+            .iter()
+            .take(len)
+            .map(|s| {
+                s.split(',')
+                    .map(|tag| tag.trim())
+                    .filter(|tag| !tag.is_empty())
+                    .map(|tag| tag.to_owned())
+                    .collect()
+            })
+            .collect();
+        tag_defs.push(TagDef { label, values });
+    }
+    tag_defs
+}
+
+trait StatArrayConverter {
+    type Item;
+    fn convert_one(&self, src: &str) -> Option<Self::Item>;
+    fn finalize(&self, values: Vec<Option<Self::Item>>) -> StatArray;
+}
+
+trait StatArrayConvert {
+    fn convert(&self, src: &[String]) -> Option<StatArray>;
+}
+
+impl<A> StatArrayConvert for A
+where
+    A: StatArrayConverter,
+{
+    fn convert(&self, src: &[String]) -> Option<StatArray> {
+        let mut values = vec![];
+        for cell in src {
+            if cell.is_empty() {
+                values.push(None)
+            } else {
+                let val = self.convert_one(cell)?;
+                values.push(Some(val))
+            }
+        }
+        Some(self.finalize(values))
+    }
+}
+
+mod formats {
+    pub struct Numeric {}
+    pub struct Iso8601 {}
+    pub struct DollarAmount {}
+    pub struct Coordinates {}
+}
+
+impl StatArrayConverter for formats::Numeric {
+    type Item = f64;
+
+    fn convert_one(&self, src: &str) -> Option<f64> {
+        src.parse().ok()
+    }
+
+    fn finalize(&self, values: Vec<Option<f64>>) -> StatArray {
+        StatArray::Number { unit: None, values }
+    }
+}
+
+impl StatArrayConverter for formats::DollarAmount {
+    type Item = f64;
+
+    fn convert_one(&self, src: &str) -> Option<f64> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r",([0-9]{3})").unwrap();
+        }
+        let (minus, cell2) = src.strip_prefix('-').map_or((false, src), |s| (true, s));
+        cell2
+            .strip_prefix('$')
+            .map(|s| RE.replace_all(s, "$1"))
+            .and_then(|s| s.parse().ok())
+            .map(|x: f64| if minus { -x } else { x })
+    }
+
+    fn finalize(&self, values: Vec<Option<f64>>) -> StatArray {
+        StatArray::Number {
+            unit: Some(StatUnit::Dollar),
+            values,
+        }
+    }
+}
+
+impl StatArrayConverter for formats::Iso8601 {
+    type Item = NaiveDateTimeExt;
+
+    fn convert_one(&self, src: &str) -> Option<NaiveDateTimeExt> {
+        let date = NaiveDate::parse_from_str(src, "%Y-%m-%d").ok()?;
+        Some(date.and_time(NaiveTime::MIN).into())
+    }
+
+    fn finalize(&self, values: Vec<Option<NaiveDateTimeExt>>) -> StatArray {
+        StatArray::Date { values }
+    }
+}
+
+impl StatArrayConverter for formats::Coordinates {
+    type Item = (f64, f64);
+
+    fn convert_one(&self, src: &str) -> Option<(f64, f64)> {
+        let parts: Vec<_> = src.split(',').collect();
+        match parts[..] {
+            [p1, p2] => {
+                let latitude = p1
+                    .trim()
+                    .parse()
+                    .ok()
+                    .filter(|x| *x >= -90.0 && *x <= 90.0)?;
+                let longitude = p2
+                    .trim()
+                    .parse()
+                    .ok()
+                    .filter(|x| *x >= -180.0 && *x <= 180.0)?;
+                Some((latitude, longitude))
+            }
+            _ => None,
+        }
+    }
+
+    fn finalize(&self, values: Vec<Option<(f64, f64)>>) -> StatArray {
+        StatArray::LatLng { values }
+    }
+}
+
+fn convert_stat_defs(
+    stat_columns: Vec<Column<'_>>,
+    len: usize,
+    callouts: &mut Vec<Callout>,
+) -> Vec<StatDef> {
+    let mut stat_defs = vec![];
+    let mut labels = HashSet::new();
+    let value_parsers: [Box<dyn StatArrayConvert>; 4] = [
+        Box::new(formats::Numeric {}),
+        Box::new(formats::DollarAmount {}),
+        Box::new(formats::Iso8601 {}),
+        Box::new(formats::Coordinates {}),
+    ];
+    for col in stat_columns {
+        if len > 0 && col.body.len() > len {
+            callouts.push(Callout::Warning(format!(
+                "Skipping data below row {} in column {}",
+                len + 1,
+                sheet_column_name(col.index)
+            )))
+        }
+        if col.body.iter().take(len).all(|s| s.is_empty()) {
+            continue;
+        }
+        if labels.contains(col.header) {
+            callouts.push(Callout::Warning(format!(
+                "Skipping stat column with duplicate label: {} ({})",
+                col.header,
+                sheet_column_name(col.index)
+            )));
+            continue;
+        }
+        labels.insert(col.header);
+        let label = col.header.to_owned();
+
+        let stat_array = value_parsers
+            .iter()
+            .filter_map(|p| p.convert(col.body))
+            .next()
+            .unwrap_or_else(|| StatArray::String {
+                values: col
+                    .body
+                    .iter()
+                    .take(len)
+                    .map(|s| {
+                        if s.is_empty() {
+                            None
+                        } else {
+                            Some(s.to_owned())
+                        }
+                    })
+                    .collect(),
+            });
+        stat_defs.push(StatDef {
+            label,
+            data: stat_array,
+        });
+    }
+    stat_defs
+}
+
+fn check_expression(
+    input: &str,
+    card_table: &CardTable,
+    return_type: ExprType,
+    location: String,
+    callouts: &mut Vec<Callout>,
+) -> Option<Expression> {
+    let expr = match expr(input) {
+        Ok(e) => e,
+        Err(msg) => {
+            callouts.push(Callout::Error(format!(
+                "Syntax error: {} ({})",
+                msg, location
+            )));
+            return None;
+        }
+    };
+    let expr2 = match expr.optimize(card_table, card_table) {
+        Ok(e) => e,
+        Err(msg) => {
+            callouts.push(Callout::Error(format!(
+                "Name error: {} ({})",
+                msg, location
+            )));
+            return None;
+        }
+    };
+    match expr2.get_type() {
+        Ok(typ) => {
+            if typ == return_type {
+                Some(expr)
+            } else {
+                callouts.push(Callout::Error(format!(
+                    "Type error: outer expression must be {:?}, not {:?} ({})",
+                    return_type, typ, location
+                )));
+                None
+            }
+        }
+        Err(msg) => {
+            callouts.push(Callout::Error(format!(
+                "Type error: {} ({})",
+                msg, location
+            )));
+            None
+        }
+    }
+}
+
+fn convert_pairing(
+    pairing_columns: PairingColumns<'_>,
+    card_table: &CardTable,
+    index_map: &HashMap<String, u64>,
+    callouts: &mut Vec<Callout>,
+) -> Option<Pairing> {
+    let mut requirements_text = &mut String::new();
+    requirements_text =
+        pairing_columns
+            .criteria_for_all
+            .body
+            .iter()
+            .fold(requirements_text, |acc, cell| {
+                if !cell.is_empty() {
+                    if acc.is_empty() {
+                        acc.push_str(format!("({})", cell).as_str())
+                    } else {
+                        acc.push_str(format!(" and ({})", cell).as_str())
+                    }
+                }
+                acc
+            });
+    let requirements = if requirements_text.is_empty() {
+        None
+    } else {
+        check_expression(
+            requirements_text,
+            card_table,
+            ExprType::Bool,
+            sheet_column_name(pairing_columns.criteria_for_all.index),
+            callouts,
+        )
+    };
+    let mut boosts = vec![];
+    if let Some(col) = pairing_columns.criteria_common {
+        for (row_index, boost_text) in col.body.iter().enumerate() {
+            if boost_text.is_empty() {
+                continue;
+            }
+            let maybe_boost_expr = check_expression(
+                boost_text,
+                card_table,
+                ExprType::Number,
+                format!("{}{}", sheet_column_name(col.index), row_index + 2),
+                callouts,
+            );
+            if let Some(boost_expr) = maybe_boost_expr {
+                boosts.push(boost_expr);
+            }
+        }
+    }
+    let mut edges = vec![];
+    let mut is_symmetric = None;
+    if let Some(refs) = pairing_columns.reference_columns {
+        is_symmetric = Some(refs.is_symmetric);
+        match refs.left.body.len().cmp(&refs.right.body.len()) {
+            Ordering::Equal => (),
+            Ordering::Greater => {
+                callouts.push(Callout::Warning(format!(
+                    "Skipping data below row {} in column {}",
+                    refs.right.body.len() + 1,
+                    sheet_column_name(refs.left.index)
+                )));
+            }
+            Ordering::Less => {
+                callouts.push(Callout::Warning(format!(
+                    "Skipping data below row {} in column {}",
+                    refs.left.body.len() + 1,
+                    sheet_column_name(refs.right.index)
+                )));
+            }
+        }
+        let mut info_iter = refs.info.map(|c| c.body.iter()).unwrap_or([].iter());
+        for (row_index, (id1, id2)) in refs.left.body.iter().zip(refs.right.body).enumerate() {
+            let info = info_iter.next().filter(|s| !s.is_empty());
+            if id1.is_empty() || id2.is_empty() {
+                callouts.push(Callout::Warning(format!(
+                    "Skipping row {} in pairing {} because of blank",
+                    row_index + 2,
+                    refs.left.header
+                )));
+                continue;
+            }
+            let Some(index1) = index_map.get(id1) else {
+                callouts.push(Callout::Error(format!(
+                    "Invalid ID in pairing {} ({}{})",
+                    refs.left.header,
+                    sheet_column_name(refs.left.index),
+                    row_index + 2,
+                )));
+                continue
+            };
+            let Some(index2) = index_map.get(id2) else {
+                callouts.push(Callout::Error(format!(
+                    "Invalid ID in pairing {} ({}{})",
+                    refs.left.header,
+                    sheet_column_name(refs.right.index),
+                    row_index + 2,
+                )));
+                continue
+            };
+            edges.push(Edge::new(*index1, *index2, info.cloned()));
+        }
+    }
+    Some(Pairing {
+        label: pairing_columns.criteria_for_all.header.to_owned(),
+        is_symmetric,
+        requirements,
+        boosts,
+        data: edges,
+    })
+}
+
+fn convert_pairings(
+    pairing_columns_list: Vec<PairingColumns<'_>>,
+    card_table: &CardTable,
+    callouts: &mut Vec<Callout>,
+) -> Vec<Pairing> {
+    let mut result = vec![];
+    let mut index_map = HashMap::new();
+    if card_table.cards.iter().all(|c| c.unique_id.is_some()) {
+        for (idx, c) in card_table.cards.iter().enumerate() {
+            let _ = index_map.insert(c.unique_id.as_ref().cloned().unwrap(), idx as u64);
+        }
+    } else {
+        callouts.push(Callout::Error("Pairings require a full ID column".into()));
+        return result;
+    }
+    for pairing_columns in pairing_columns_list {
+        if let Some(pairing) = convert_pairing(pairing_columns, card_table, &index_map, callouts) {
+            result.push(pairing);
+        }
+    }
+    result
+}
+
 fn parse_value_range(values: Vec<Vec<String>>) -> (CardTable, Vec<Callout>) {
     let mut callouts = vec![];
     let columns: Vec<_> = values
@@ -695,12 +885,14 @@ fn parse_value_range(values: Vec<Vec<String>>) -> (CardTable, Vec<Callout>) {
     let cards = convert_cards(structured_columns.card_columns, &mut callouts);
     let tag_defs = convert_tag_defs(structured_columns.tag_columns, cards.len(), &mut callouts);
     let stat_defs = convert_stat_defs(structured_columns.stat_columns, cards.len(), &mut callouts);
-    let card_table = CardTable {
+    let mut card_table = CardTable {
         cards,
         tag_defs,
         stat_defs,
         pairings: vec![],
     };
+    let pairings = convert_pairings(structured_columns.pairings, &card_table, &mut callouts);
+    card_table.pairings = pairings;
     (card_table, callouts)
 }
 
@@ -772,6 +964,7 @@ mod tests {
 
     use crate::{
         importer::parse_value_range,
+        tinylang::{expr, ExprType},
         types::{Callout, Card, CardTable, StatArray, StatUnit},
     };
 
@@ -897,7 +1090,7 @@ mod tests {
                 assert_eq!(values[0], Some(3084.0));
                 assert_eq!(values[14], None);
             }
-            other => assert!(false, "unexpected stat type: {:?}", other),
+            other => panic!("unexpected stat type: {:?}", other),
         };
         assert_eq!(card_table.stat_defs[1].label, "Box Office");
         match &card_table.stat_defs[1].data {
@@ -908,7 +1101,7 @@ mod tests {
                 assert_eq!(values[0], Some(1_602_000.0));
                 assert_eq!(values[14], None);
             }
-            other => assert!(false, "unexpected stat type: {:?}", other),
+            other => panic!("unexpected stat type: {:?}", other),
         };
         assert_eq!(card_table.stat_defs[2].label, "Release Date");
         match &card_table.stat_defs[2].data {
@@ -925,7 +1118,7 @@ mod tests {
                 );
                 assert_eq!(values[14], None);
             }
-            other => assert!(false, "unexpected stat type: {:?}", other),
+            other => panic!("unexpected stat type: {:?}", other),
         };
         assert_eq!(card_table.stat_defs[3].label, "Setting");
         match &card_table.stat_defs[3].data {
@@ -934,7 +1127,7 @@ mod tests {
                 assert_eq!(values[13], Some((47.6, -122.3)));
                 assert_eq!(values[14], None);
             }
-            other => assert!(false, "unexpected stat type: {:?}", other),
+            other => panic!("unexpected stat type: {:?}", other),
         };
         assert_eq!(card_table.stat_defs[4].label, "Tagline");
         match &card_table.stat_defs[4].data {
@@ -942,7 +1135,7 @@ mod tests {
                 assert_eq!(values[0], Some("Welcome to the Real World".into()));
                 assert_eq!(values[14], None);
             }
-            other => assert!(false, "unexpected stat type: {:?}", other),
+            other => panic!("unexpected stat type: {:?}", other),
         };
         // serde_json::to_writer(std::io::stderr(), &card_table).unwrap();
     }
@@ -971,5 +1164,38 @@ mod tests {
             })
             .collect();
         assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn test_expression_eval() {
+        let (card_table, _) = parse_value_range(movies());
+        let expr = expr("(L\"Release Date\" - R\"Release Date\")").unwrap();
+        let expr = expr.optimize(&card_table, &card_table).unwrap();
+        assert_eq!(expr.get_type().unwrap(), ExprType::Number);
+        assert_eq!(
+            expr.get_value(0, 13)
+                .unwrap()
+                .map(|r| *r.get_number().unwrap()),
+            Some(2261.0)
+        );
+        assert_eq!(
+            expr.get_value(0, 14)
+                .unwrap()
+                .map(|r| *r.get_number().unwrap()),
+            None
+        );
+        for i in 0..14 {
+            for j in 0..14 {
+                let ltr = expr
+                    .get_value(i, j)
+                    .unwrap()
+                    .map(|r| *r.get_number().unwrap());
+                let rtl = expr
+                    .get_value(j, i)
+                    .unwrap()
+                    .map(|r| *r.get_number().unwrap());
+                assert_eq!(ltr.map(|x| -x), rtl);
+            }
+        }
     }
 }

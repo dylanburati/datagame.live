@@ -30,9 +30,15 @@ defmodule AppWeb.SheetView do
   end
 
   defp card_table_json(card_table) do
-    Map.update!(card_table, :stat_defs, fn lst ->
+    card_table
+    |> Map.update!(:stat_defs, fn lst ->
       Enum.map(lst, fn sd ->
         Map.update!(sd, :data, &stat_array_json/1)
+      end)
+    end)
+    |> Map.update!(:pairings, fn lst ->
+      Enum.map(lst, fn pairing ->
+        Map.drop(pairing, [:requirements, :boosts])
       end)
     end)
   end
