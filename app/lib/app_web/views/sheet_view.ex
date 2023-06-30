@@ -1,8 +1,6 @@
 defmodule AppWeb.SheetView do
   use AppWeb, :view
 
-  alias AppWeb.DeckView
-
   defp callout_json({:warning, msg}) do
     %{kind: "Warning", message: msg}
   end
@@ -43,22 +41,12 @@ defmodule AppWeb.SheetView do
     end)
   end
 
-  def render("sheet_.json", %{data: lst}) do
+  def render("sheet.json", %{data: lst}) do
     Enum.map(lst, fn %{callouts: callouts, deck: deck} ->
       %{
         callouts: Enum.map(callouts, &callout_json/1),
         deck: Map.update!(deck, :data, &card_table_json/1)
       }
     end)
-  end
-
-  def render("sheet.json", %{decks: decks, fails: fails}) do
-    %{
-      data: Enum.map(decks, &DeckView.deck_json/1),
-      errors: fails |>
-      Enum.map(fn {id, nm, msg} ->
-        %{spreadsheetId: id, title: nm, message: msg}
-      end)
-    }
   end
 end

@@ -23,18 +23,13 @@ defmodule AppWeb.SheetLive do
   def handle_event("publish", _event_params, socket) do
     case Map.get(socket.assigns, :decks) do
       {:ok, decks} ->
-        App.Native.persist_decks(decks)
+        {:ok, _} = SheetService.insert(decks)
         {:noreply, push_event(socket, "publish-result", %{ok: true})}
       {:error, titles} ->
         {:noreply, push_event(socket, "publish-result", %{error: "Fixes needed in: #{Enum.join(titles, ", ")}"})}
       _ ->
         {:noreply, push_event(socket, "publish-result", %{error: "Not loaded"})}
     end
-  end
-
-  def handle_event("refresh", _event_params, socket) do
-    Process.send(self(), {:load, socket.assigns.params["id"]}, [])
-    {:noreply, socket}
   end
 
   defp publishable_recur([]), do: {:ok, []}
@@ -66,16 +61,16 @@ defmodule AppWeb.SheetLive do
       case App.Native.parse_spreadsheet(["Movies", "Animals", "Music:Billboard US", "The Rich and Famous", "Places", "Characters"], File.read!("1687456135278600_in.json")) do
         {:ok, decks_plus} ->
           {assign(socket, decks: publishable_recur(decks_plus)),
-            %{"ok" => Phoenix.View.render(AppWeb.SheetView, "sheet_.json", %{data: decks_plus})}}
+            %{"ok" => Phoenix.View.render(AppWeb.SheetView, "sheet.json", %{data: decks_plus})}}
         {:error, err} ->
           {socket,
             %{"error" => to_string(err)}}
       end
     else
-      case SheetService.get_spreadsheet_(id) do
+      case SheetService.get_spreadsheet(id) do
         {:ok, decks_plus} ->
           {assign(socket, decks: publishable_recur(decks_plus)),
-            %{"ok" => Phoenix.View.render(AppWeb.SheetView, "sheet_.json", %{data: decks_plus})}}
+            %{"ok" => Phoenix.View.render(AppWeb.SheetView, "sheet.json", %{data: decks_plus})}}
         {:error, err} ->
           {socket,
             %{"error" => to_string(err)}}

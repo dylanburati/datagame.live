@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use chrono::NaiveDateTime;
-use rustler::{Atom, Decoder, Encoder, Env, NifMap, NifResult, NifTaggedEnum, NifUnitEnum, Term};
+use rustler::{Atom, Decoder, Encoder, Env, NifMap, NifResult, NifTaggedEnum, NifUnitEnum, Term, NifStruct};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -138,25 +138,25 @@ pub enum StatArray {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct StatDef {
-    pub(crate) label: String,
-    pub(crate) data: StatArray,
+    pub label: String,
+    pub data: StatArray,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct Card {
-    pub(crate) title: String,
-    pub(crate) unique_id: Option<String>,
-    pub(crate) is_disabled: bool,
-    pub(crate) notes: Option<String>,
-    pub(crate) popularity: f64,
-    pub(crate) category: Option<String>,
+    pub title: String,
+    pub unique_id: Option<String>,
+    pub is_disabled: bool,
+    pub notes: Option<String>,
+    pub popularity: f64,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct Edge {
-    pub(crate) left: u64,
-    pub(crate) right: u64,
-    pub(crate) info: Option<String>,
+    pub left: u64,
+    pub right: u64,
+    pub info: Option<String>,
 }
 
 impl Edge {
@@ -173,39 +173,79 @@ pub enum EdgeSide {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct Pairing {
-    pub(crate) label: String,
-    pub(crate) is_symmetric: Option<bool>,
-    pub(crate) requirements: Option<Expression>,
-    pub(crate) boosts: Vec<Expression>,
-    pub(crate) data: Vec<Edge>,
+    pub label: String,
+    pub is_symmetric: bool,
+    pub requirements: Option<Expression>,
+    pub boosts: Vec<Expression>,
+    pub data: Vec<Edge>,
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct CardTable {
-    pub(crate) cards: Vec<Card>,
-    pub(crate) tag_defs: Vec<TagDef>,
-    pub(crate) stat_defs: Vec<StatDef>,
-    pub(crate) pairings: Vec<Pairing>,
+    pub cards: Vec<Card>,
+    pub tag_defs: Vec<TagDef>,
+    pub stat_defs: Vec<StatDef>,
+    pub pairings: Vec<Pairing>,
 }
 
-#[derive(PartialEq, Serialize, Deserialize, NifMap)]
+#[derive(PartialEq, NifMap)]
 pub struct Deck {
-    pub(crate) id: u64,
-    pub(crate) revision: u64,
-    pub(crate) title: String,
-    pub(crate) spreadsheet_id: String,
-    pub(crate) data: CardTable,
+    pub id: u64,
+    pub revision: u64,
+    pub title: String,
+    pub spreadsheet_id: String,
+    pub image_url: Option<String>,
+    pub data: CardTable,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, NifTaggedEnum)]
-#[serde(tag = "kind", content = "message")]
+#[derive(PartialEq, NifStruct)]
+#[module = "App.Entities.Deck"]
+pub struct ExDeck {
+    id: u64,
+    revision: u64,
+    title: String,
+    spreadsheet_id: String,
+    image_url: Option<String>,
+    data: String,
+}
+
+impl TryFrom<ExDeck> for Deck {
+    type Error = serde_json::Error;
+
+    fn try_from(value: ExDeck) -> Result<Self, Self::Error> {
+        let data: CardTable = serde_json::from_str(&value.data)?;
+        Ok(Deck {
+            id: value.id,
+            revision: value.revision,
+            title: value.title,
+            spreadsheet_id: value.spreadsheet_id,
+            image_url: value.image_url,
+            data,
+        })
+    }
+}
+
+impl From<Deck> for ExDeck {
+    fn from(value: Deck) -> Self {
+        ExDeck {
+            id: value.id,
+            revision: value.revision,
+            title: value.title,
+            spreadsheet_id: value.spreadsheet_id,
+            image_url: value.image_url,
+            data: serde_json::to_string(&value.data).unwrap(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, NifTaggedEnum)]
 pub enum Callout {
     Warning(String),
     Error(String),
 }
 
-#[derive(Serialize, Deserialize, NifMap)]
+#[derive(NifMap)]
 pub struct AnnotatedDeck {
-    pub(crate) deck: Deck,
-    pub(crate) callouts: Vec<Callout>,
+    pub deck: Deck,
+    pub callouts: Vec<Callout>,
 }

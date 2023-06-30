@@ -1,10 +1,14 @@
 mod importer;
+mod probability;
 mod tinylang;
+mod trivia;
 mod types;
 
 use rustler::{Encoder, Env, Error, NifResult, Term};
 
 use importer::ErrorKind;
+
+use crate::types::{Deck, ExDeck};
 
 mod atoms {
     rustler::atoms! {
@@ -45,11 +49,21 @@ fn parse_spreadsheet(env: Env<'_>, sheet_names: Vec<String>, json: String) -> Ni
     ))
 }
 
-rustler::init!("Elixir.App.Native", [parse_spreadsheet]);
+#[rustler::nif]
+fn prepare_decks(env: Env<'_>, decks: Vec<Deck>) -> Term<'_> {
+    let mut res = vec![];
+    for mut deck in decks {
+        trivia::scale_popularity(&mut deck);
+        res.push(ExDeck::from(deck));
+    }
+    res.encode(env)
+}
+
+rustler::init!("Elixir.App.Native", [parse_spreadsheet, prepare_decks]);
 
 // #[cfg(test)]
 // mod tests {
-//     use crate::{importer, tinylang::{expr, ExprType, ExprValue}};
+//     use crate::{importer, tinylang::{expr, ExprType, ExprValue}, types::{StatDef, StatArray}};
 
 //     #[test]
 //     fn test_speed() -> Result<(), Box<dyn std::error::Error>> {
@@ -71,10 +85,18 @@ rustler::init!("Elixir.App.Native", [parse_spreadsheet]);
 //         let expr = expr("(L\"Spotify plays\" / R\"Spotify plays\")").unwrap();
 //         let expr = expr.optimize(card_table, card_table).unwrap();
 //         assert_eq!(expr.get_type().unwrap(), ExprType::Number);
+//         // let numbers = match &card_table.stat_defs[0].data {
+//         //     StatArray::Number { unit: _, values } => values,
+//         //     _ => panic!(),
+//         // };
 //         for i in 0..card_table.cards.len() {
 //             for j in 0..card_table.cards.len() {
 //                 let ev = expr.get_value(i, j).unwrap();
 //                 assert!(matches!(ev, None | Some(ExprValue::Number(_))), "{:?}", ev)
+//                 // match numbers[i].and_then(|x| numbers[j].map(|y| x / y)) {
+//                 //     None => (),
+//                 //     Some(q) => assert!(q < 1e9),
+//                 // }
 //             }
 //         }
 //         Ok(())

@@ -2,6 +2,7 @@
 // https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
 
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     fmt::{self, Display},
     num::ParseFloatError,
@@ -112,7 +113,7 @@ impl Display for BinOp {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, NifTaggedEnum)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, NifTaggedEnum)]
 #[serde(tag = "kind")]
 pub enum Expression {
     Number {
@@ -136,7 +137,7 @@ pub enum Expression {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BoxedExpression(Box<Expression>);
 
 impl From<Expression> for BoxedExpression {
@@ -255,13 +256,10 @@ fn op(inp: &str) -> IResult<&str, Token> {
 fn error_token(inp: &str) -> IResult<&str, Token> {
     match inp.chars().next() {
         None => fail(inp),
-        Some('.' | '0'..='9') => {
-            map(take_while1(|c: char| c.is_ascii_digit()), Token::Error)(inp)
+        Some('.' | '0'..='9') => map(take_while1(|c: char| c.is_ascii_digit()), Token::Error)(inp),
+        Some('a'..='z' | 'A'..='Z') => {
+            map(take_while1(|c: char| c.is_alphabetic()), Token::Error)(inp)
         }
-        Some('a'..='z' | 'A'..='Z') => map(
-            take_while1(|c: char| c.is_alphabetic()),
-            Token::Error,
-        )(inp),
         Some('"') => Ok(("", Token::Error(inp))),
         Some(_) => map(
             take_till1(|c: char| {
@@ -301,6 +299,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
+#[allow(clippy::let_and_return)]
 pub fn expr(input: &str) -> Result<Expression, String> {
     let mut lexer = Lexer::new(input);
     // println!("\n{}", input);
@@ -443,6 +442,7 @@ fn infix_binding_power(op: &str) -> Option<(u8, u8)> {
     Some(res)
 }
 
+#[cfg(test)]
 mod tests {
     use crate::tinylang::expr;
 
@@ -604,14 +604,14 @@ impl TryOps for ExprType {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ExprValue {
+pub enum ExprValue<'a> {
     Bool(bool),
     Number(f64),
     Date(NaiveDateTimeExt),
-    String(String),
+    String(Cow<'a, str>),
 }
 
-impl ExprValue {
+impl<'a> ExprValue<'a> {
     pub fn get_bool(&self) -> Option<&bool> {
         match self {
             ExprValue::Bool(v) => Some(v),
@@ -633,7 +633,7 @@ impl ExprValue {
         }
     }
 
-    pub fn get_string(&self) -> Option<&String> {
+    pub fn get_string(&self) -> Option<&str> {
         match self {
             ExprValue::String(v) => Some(v),
             _ => None,
@@ -645,7 +645,7 @@ impl ExprValue {
             ExprValue::Bool(lhs) => rhs.get_bool().map(|v| lhs == v),
             ExprValue::Number(lhs) => rhs.get_number().map(|v| lhs == v),
             ExprValue::Date(lhs) => rhs.get_date().map(|v| lhs == v),
-            ExprValue::String(lhs) => rhs.get_string().map(|v| lhs == v),
+            ExprValue::String(lhs) => rhs.get_string().map(|v| *lhs == v),
         }
     }
 
@@ -659,7 +659,7 @@ impl ExprValue {
 }
 
 #[rustfmt::skip]
-impl TryOps for ExprValue {
+impl<'a> TryOps for ExprValue<'a> {
     type Error = ();
 
     fn bool(self) -> Result<Self, Self::Error> where Self: Sized {
@@ -750,6 +750,7 @@ impl TryOps for ExprValue {
             .and_then(|lhs| { rhs.get_number().map(|x| (lhs, x)) })
             .ok_or(())
             .map(|(x, y)| x / y)
+            .and_then(|q| if q.is_finite() { Ok(q) } else { Err(()) })
             .map(ExprValue::Number)
     }
     fn pow(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
@@ -882,6 +883,52 @@ impl<'a> IntermediateExpr<'a> {
         }
     }
 
+    pub fn has_vars(&self, left_idx: Option<usize>, right_idx: Option<usize>) -> bool {
+        match self {
+            IntermediateExpr::NumberVariable { side, values } => {
+                let maybe_index = if matches!(side, EdgeSide::Left) {
+                    left_idx
+                } else {
+                    right_idx
+                };
+                if let Some(index) = maybe_index {
+                    values.get(index).is_some()
+                } else {
+                    true
+                }
+            }
+            IntermediateExpr::DateVariable { side, values } => {
+                let maybe_index = if matches!(side, EdgeSide::Left) {
+                    left_idx
+                } else {
+                    right_idx
+                };
+                if let Some(index) = maybe_index {
+                    values.get(index).is_some()
+                } else {
+                    true
+                }
+            }
+            IntermediateExpr::StringVariable { side, values } => {
+                let maybe_index = if matches!(side, EdgeSide::Left) {
+                    left_idx
+                } else {
+                    right_idx
+                };
+                if let Some(index) = maybe_index {
+                    values.get(index).is_some()
+                } else {
+                    true
+                }
+            }
+            IntermediateExpr::Unary { op: _, child } => child.has_vars(left_idx, right_idx),
+            IntermediateExpr::Binary { op: _, lhs, rhs } => {
+                lhs.has_vars(left_idx, right_idx) && rhs.has_vars(left_idx, right_idx)
+            }
+            _ => true,
+        }
+    }
+
     pub fn get_value(&self, left_idx: usize, right_idx: usize) -> Result<Option<ExprValue>, ()> {
         match self {
             IntermediateExpr::Number { value } => Ok(Some(ExprValue::Number(*value))),
@@ -910,7 +957,10 @@ impl<'a> IntermediateExpr<'a> {
                 } else {
                     right_idx
                 };
-                let ev = values.get(index).cloned().flatten().map(ExprValue::String);
+                let ev = values
+                    .get(index)
+                    .and_then(Option::as_ref)
+                    .map(|s| ExprValue::String(s.into()));
                 Ok(ev)
             }
             IntermediateExpr::Unary { op, child } => {

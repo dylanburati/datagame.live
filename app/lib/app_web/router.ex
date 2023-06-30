@@ -30,12 +30,12 @@ defmodule AppWeb.Router do
     post "/user/login", UserController, :verify
     get "/user/logout", UserController, :logout
 
-    live_session :default do
+    live_session :default, on_mount: {AppWeb.LiveAuth, :assign_current_user} do
       live "/explore", ExplorerLive, :index
     end
 
     live_session :admin, on_mount: {AppWeb.LiveAuth, :require_admin} do
-      live "/sheet_/:id", SheetLive, :index
+      live "/sheet/:id", SheetLive, :index
     end
   end
 

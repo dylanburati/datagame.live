@@ -58,9 +58,26 @@ impl PairingReferenceColumns<'_> {
 }
 
 struct PairingColumns<'a> {
+    label: String,
     reference_columns: Option<PairingReferenceColumns<'a>>,
     criteria_for_all: Column<'a>,
     criteria_common: Option<Column<'a>>,
+}
+
+impl PairingColumns<'_> {
+    fn start_index(&self) -> usize {
+        match &self.reference_columns {
+            None => self.criteria_for_all.index,
+            Some(rc) => rc.left.index,
+        }
+    }
+    
+    fn end_index(&self) -> usize {
+        match &self.criteria_common {
+            None => self.criteria_for_all.index,
+            Some(col) => col.index,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -307,9 +324,10 @@ fn parse_pairing_colgroup<'a>(
         }
     };
     out.pairings.push(PairingColumns {
+        label: label.to_owned(),
         reference_columns,
-        criteria_for_all: Column::new(acol.index, label, acol.body),
-        criteria_common: ccol.cloned(),
+        criteria_for_all: *acol,
+        criteria_common: ccol.copied(),
     });
     Ok(rest2)
 }
@@ -739,8 +757,20 @@ fn convert_pairing(
     pairing_columns: PairingColumns<'_>,
     card_table: &CardTable,
     index_map: &HashMap<String, u64>,
+    pairing_name_set: &HashSet<String>,
     callouts: &mut Vec<Callout>,
 ) -> Option<Pairing> {
+    if pairing_name_set.contains(pairing_columns.label.as_str()) {
+        let callout = Callout::Warning(format!(
+            "Duplicate pairing: {} ({}-{})",
+            pairing_columns.label,
+            sheet_column_name(pairing_columns.start_index()),
+            sheet_column_name(pairing_columns.end_index()),
+        ));
+        callouts.push(callout);
+        return None
+    }
+
     let mut requirements_text = &mut String::new();
     requirements_text =
         pairing_columns
@@ -841,7 +871,7 @@ fn convert_pairing(
     }
     Some(Pairing {
         label: pairing_columns.criteria_for_all.header.to_owned(),
-        is_symmetric,
+        is_symmetric: is_symmetric.unwrap_or(false),
         requirements,
         boosts,
         data: edges,
@@ -855,6 +885,7 @@ fn convert_pairings(
 ) -> Vec<Pairing> {
     let mut result = vec![];
     let mut index_map = HashMap::new();
+    let mut pairing_name_set = HashSet::new();
     if card_table.cards.iter().all(|c| c.unique_id.is_some()) {
         for (idx, c) in card_table.cards.iter().enumerate() {
             let _ = index_map.insert(c.unique_id.as_ref().cloned().unwrap(), idx as u64);
@@ -864,7 +895,8 @@ fn convert_pairings(
         return result;
     }
     for pairing_columns in pairing_columns_list {
-        if let Some(pairing) = convert_pairing(pairing_columns, card_table, &index_map, callouts) {
+        if let Some(pairing) = convert_pairing(pairing_columns, card_table, &index_map, &pairing_name_set, callouts) {
+            pairing_name_set.insert(pairing.label.clone());
             result.push(pairing);
         }
     }
@@ -951,6 +983,7 @@ pub fn parse_spreadsheet(sheet_names: Vec<String>, json: String) -> Result<Vec<A
             revision: 0,
             title: nm,
             spreadsheet_id: spreadsheet.spreadsheet_id.clone(),
+            image_url: None,
             data: card_table,
         };
         annotated_decks.push(AnnotatedDeck { deck, callouts });

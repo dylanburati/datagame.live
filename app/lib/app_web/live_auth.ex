@@ -6,6 +6,10 @@ defmodule AppWeb.LiveAuth do
 
   # Adapted from https://github.com/elixircastsio/148-live-view-auth-pt-2
 
+  def on_mount(:assign_current_user, _, session, socket) do
+    {:cont, assign_current_user(socket, session)}
+  end
+
   def on_mount(:require_auth, _, session, socket) do
     require_user(socket, session)
   end
@@ -34,7 +38,7 @@ defmodule AppWeb.LiveAuth do
     end
   end
 
-  def assign_current_user(socket, session) do
+  defp assign_current_user(socket, session) do
     case session do
       %{"user_token" => user_token} ->
         assign_new(socket, :current_user, fn ->

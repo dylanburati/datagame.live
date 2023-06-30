@@ -6,5 +6,5 @@ defmodule App.Native do
 
   def parse_spreadsheet(_sheet_names, _json), do: :erlang.nif_error(:nif_not_loaded)
 
-  def persist_decks(_decks), do: :erlang.nif_error(:nif_not_loaded)
+  def prepare_decks(_decks), do: :erlang.nif_error(:nif_not_loaded)
 end
