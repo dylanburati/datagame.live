@@ -73,14 +73,15 @@ where
 /// A sampling mechanism designed as a binary search tree over subintervals of
 /// [0, total). Construction is *O*(*n*), and taking a sample of size *k* is *O*(*k log n*).
 ///
-/// The tree automatically samples without replacement, and replacing *k* samples is also
-/// *O*(*k log n*). It is not possible to insert or delete an element from the distribution
+/// The tree automatically samples without replacement until reset() is called.
+/// It is not possible to insert or delete an element from the distribution
 /// after constructing the tree.
 #[derive(Debug)]
 pub struct SampleTree<T: Copy> {
     data: Vec<SampleNode<T>>,
-    pending: Vec<(usize, f64)>,
     total: f64,
+    frozen_data: Vec<SampleNode<T>>,
+    frozen_total: f64,
 }
 
 impl<T: Copy> SampleTree<T> {
@@ -91,102 +92,108 @@ impl<T: Copy> SampleTree<T> {
         let data = vec![];
         let (total, mut data) = initial
             .into_iter()
-            .map(|(w, k)| SampleNode::new(0.0, w, k))
+            .map(|(w, k)| SampleNode::new(w, k, [0.0; B - 1]))
             .fold((0.0, data), |(x, mut a), node| {
                 a.push(node);
-                (x + node.mid_weight, a)
+                (x + node.weight, a)
             });
         if data.len() > 0 {
             let _ = Self::set_left_weight(&mut data, 0);
         }
+        let frozen_data = data.clone();
         Self {
             data,
-            pending: vec![],
             total,
+            frozen_data,
+            frozen_total: total,
         }
     }
 
     fn set_left_weight<K: Copy>(data: &mut Vec<SampleNode<K>>, index: usize) -> f64 {
-        let left_child_idx = index * 2 + 1;
-        let right_child_idx = index * 2 + 2;
-        let (left_total, res) = if right_child_idx < data.len() {
-            let lsubw = Self::set_left_weight(data, left_child_idx);
-            let rsubw = Self::set_left_weight(data, right_child_idx);
-            (lsubw, data[index].mid_weight + lsubw + rsubw)
-        } else if left_child_idx < data.len() {
-            // can't have another row if right child is first blank
-            let lcw = data[left_child_idx].mid_weight;
-            (lcw, data[index].mid_weight + lcw)
-        } else {
-            (0.0, data[index].mid_weight)
-        };
-        data[index] = data[index].change_left_weight(left_total);
-        res
+        let first_child_index = index * B + 1;
+        if first_child_index >= data.len() {
+            return data[index].weight;
+        }
+        let mut total = data[index].weight;
+        let mut subweights = data[index].subweights.clone();
+        for which in 0..B {
+            let child_index = first_child_index + which;
+            if child_index >= data.len() {
+                break;
+            }
+            let child_weight = Self::set_left_weight(data, child_index);
+            total += child_weight;
+            if which < B - 1 {
+                subweights[which] = child_weight;
+            }
+        }
+        data[index].subweights = subweights;
+        total
     }
 
     pub fn sample(&mut self) -> Option<T> {
-        let mut w = rand::random::<f64>() * self.total;
+        if self.total == 0.0 {
+            return None;
+        }
+        let mut rand_weight = rand::random::<f64>() * self.total;
         let mut index = 0;
         while index < self.data.len() {
             let node = self.data[index];
-            if w < node.left_weight {
-                index = 2 * index + 1;
-            } else if w < node.left_weight + node.mid_weight {
+            rand_weight -= node.weight;
+            if rand_weight <= 0.0 {
                 self.set(index, 0.0);
-                self.pending.push((index, node.mid_weight));
                 return Some(node.key);
-            } else {
-                index = 2 * index + 2;
-                w -= node.left_weight + node.mid_weight;
             }
+            let mut index_next = B * index + B;
+            for which in 0..B - 1 {
+                if rand_weight <= node.subweights[which] {
+                    index_next = B * index + which + 1;
+                    break;
+                } else {
+                    rand_weight -= node.subweights[which];
+                }
+            }
+            index = index_next;
         }
         None
     }
 
     pub fn reset(&mut self) {
-        let lst: Vec<_> = self.pending.drain(..).collect();
-        for (index, new_weight) in lst {
-            self.set(index, new_weight);
-        }
+        self.data = self.frozen_data.clone();
+        self.total = self.frozen_total;
     }
 
     fn set(&mut self, index: usize, new_weight: f64) {
-        let delta = new_weight - self.data[index].mid_weight;
-        self.data[index] = self.data[index].replace_mid_weight(new_weight);
+        let delta = new_weight - self.data[index].weight;
+        self.data[index].weight = new_weight;
         let mut curr = index;
         while curr > 0 {
-            let is_left_child = curr % 2 == 1;
-            curr = (curr - 1) / 2;
-            if is_left_child {
-                self.data[curr] = self.data[curr].change_left_weight(delta);
+            let which = (curr - 1) % B;
+            curr = (curr - 1) / B;
+            if which < B - 1 {
+                self.data[curr].subweights[which] += delta;
             }
         }
         self.total += delta;
     }
 }
 
+const B: usize = 4;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct SampleNode<T: Copy> {
-    left_weight: f64,
-    mid_weight: f64,
+    weight: f64,
     key: T,
+    subweights: [f64; B - 1],
 }
 
 impl<T: Copy> SampleNode<T> {
-    fn new(left_weight: f64, mid_weight: f64, key: T) -> Self {
+    fn new(weight: f64, key: T, subweights: [f64; B - 1]) -> Self {
         Self {
-            left_weight,
-            mid_weight,
+            weight,
             key,
+            subweights,
         }
-    }
-
-    fn change_left_weight(self, delta: f64) -> Self {
-        Self::new(self.left_weight + delta, self.mid_weight, self.key)
-    }
-
-    fn replace_mid_weight(self, new_mid_weight: f64) -> Self {
-        Self::new(self.left_weight, new_mid_weight, self.key)
     }
 }
 
@@ -217,7 +224,14 @@ mod tests {
                 let actual = *counts.get(&sk).unwrap();
                 let min = 6000.0 * p - 6.0 * variance.sqrt();
                 let max = 6000.0 * p + 6.0 * variance.sqrt();
-                assert!(min < actual as f64 && (actual as f64) < max, "{:?} < counts[{:?}] = {:?} < {:?}", min, sk, actual, max);
+                assert!(
+                    min < actual as f64 && (actual as f64) < max,
+                    "{:?} < counts[{:?}] = {:?} < {:?}",
+                    min,
+                    sk,
+                    actual,
+                    max
+                );
             }
         }
     }
@@ -229,14 +243,14 @@ mod tests {
 
         let mut tree1 = SampleTree::new([(0.5, 1)]);
         assert_eq!(tree1.total, 0.5);
-        assert_eq!(tree1.data, vec![SampleNode::new(0.0, 0.5, 1)]);
+        assert_eq!(tree1.data, vec![SampleNode::new(0.5, 1, [0.0; 3])]);
         assert_eq!(tree1.sample(), Some(1));
-        assert_eq!(tree1.data, vec![SampleNode::new(0.0, 0.0, 1)]);
+        assert_eq!(tree1.data, vec![SampleNode::new(0.0, 1, [0.0; 3])]);
         assert_eq!(tree1.total, 0.0);
         assert_eq!(tree1.sample(), None);
         tree1.reset();
         assert_eq!(tree1.total, 0.5);
-        assert_eq!(tree1.data, vec![SampleNode::new(0.0, 0.5, 1)]);
+        assert_eq!(tree1.data, vec![SampleNode::new(0.5, 1, [0.0; 3])]);
 
         let mut tree6 =
             SampleTree::new([(0.5, 1), (0.5, 2), (0.5, 3), (0.5, 4), (0.5, 5), (0.5, 6)]);
@@ -244,12 +258,12 @@ mod tests {
         assert_eq!(
             tree6.data,
             vec![
-                SampleNode::new(1.5, 0.5, 1),
-                SampleNode::new(0.5, 0.5, 2),
-                SampleNode::new(0.5, 0.5, 3),
-                SampleNode::new(0.0, 0.5, 4),
-                SampleNode::new(0.0, 0.5, 5),
-                SampleNode::new(0.0, 0.5, 6)
+                SampleNode::new(0.5, 1, [1.0, 0.5, 0.5]),
+                SampleNode::new(0.5, 2, [0.5, 0.0, 0.0]), // parent=1
+                SampleNode::new(0.5, 3, [0.0; 3]),        // parent=1
+                SampleNode::new(0.5, 4, [0.0; 3]),        // parent=1
+                SampleNode::new(0.5, 5, [0.0; 3]),        // parent=1
+                SampleNode::new(0.5, 6, [0.0; 3]),        // parent=2
             ]
         );
         let mut tree6_sample = std::iter::from_fn(|| tree6.sample()).collect::<Vec<_>>();

@@ -284,14 +284,14 @@ impl Select for selectors::Card {
                             f64::exp(-self.difficulty * deck.data.cards[*i].popularity)
                         });
                     return indices.into_iter().map(instances::Card).collect();
-                },
+                }
                 CardCond::NoEdge(instances::Card(left), which) => {
                     let indices = deck.pairings[*which]
                         .edge_infos
                         .range((*left, 0)..(left + 1, 0))
                         .map(|((_, i), _)| *i);
                     prohibited.extend(indices);
-                },
+                }
                 _ => (),
             }
         }
@@ -477,21 +477,21 @@ mod tests {
                 .next()
                 .expect("10th attempt");
             pairs.push(pair2);
-            // let &[(c00, c01), (c10, c11), (c20, c21), (c30, c31)] = &pairs[..] else {
-            //     panic!("{:?}", pairs);
-            // };
-            // writeln!(
-            //     std::io::stderr(),
-            //     "{} + {}\n{} + {}\n{} + {}\n{} + {}\n\n",
-            //     &decks[3].data.cards[c00].title,
-            //     &decks[3].data.cards[c01].title,
-            //     &decks[3].data.cards[c10].title,
-            //     &decks[3].data.cards[c11].title,
-            //     &decks[3].data.cards[c20].title,
-            //     &decks[3].data.cards[c21].title,
-            //     &decks[3].data.cards[c30].title,
-            //     &decks[3].data.cards[c31].title,
-            // )?;
+            let &[(c00, c01), (c10, c11), (c20, c21), (c30, c31)] = &pairs[..] else {
+                panic!("{:?}", pairs);
+            };
+            writeln!(
+                std::io::stderr(),
+                "{} + {}\n{} + {}\n{} + {}\n{} + {}\n\n",
+                &decks[3].data.cards[c00].title,
+                &decks[3].data.cards[c01].title,
+                &decks[3].data.cards[c10].title,
+                &decks[3].data.cards[c11].title,
+                &decks[3].data.cards[c20].title,
+                &decks[3].data.cards[c21].title,
+                &decks[3].data.cards[c30].title,
+                &decks[3].data.cards[c31].title,
+            )?;
         }
         Ok(())
     }
