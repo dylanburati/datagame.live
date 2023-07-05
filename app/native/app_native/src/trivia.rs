@@ -354,7 +354,7 @@ impl Select for selectors::Tag {
                         which: self.which,
                         value: s.clone(),
                     })
-                    .collect()
+                    .sample(n)
             }
             [TagCond::NoEdge(instances::Card(i))] => {
                 Some(&deck.data.tag_defs[self.which].values[*i])

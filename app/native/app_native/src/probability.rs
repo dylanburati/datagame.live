@@ -4,6 +4,10 @@ use std::collections::BinaryHeap;
 pub trait ReservoirSample {
     type Item;
 
+    /// Takes an unweighted sample from the source. The elements are returned in
+    /// arbitrary order, unless stated otherwise.
+    fn sample(&mut self, count: usize) -> Vec<Self::Item>;
+
     /// Takes a weighted sample from the source. The weight function must always
     /// return a non-negative finite float. The elements are returned in arbitrary
     /// order, unless stated otherwise.
@@ -40,6 +44,39 @@ where
     I: Iterator<Item = E>,
 {
     type Item = E;
+
+    fn sample(&mut self, count: usize) -> Vec<Self::Item> {
+        // https://richardstartin.github.io/posts/reservoir-sampling#algorithm-l
+        let mut res = vec![];
+        while res.len() < count {
+            if let Some(v) = self.next() {
+                res.push(v);
+            } else {
+                return res;
+            }
+        }
+
+        let invcount = 1.0 / (count as f64);
+        let mut w = rand::random::<f64>().powf(invcount);
+        loop {
+            let jump_len = f64::ln(rand::random()) / f64::ln(1.0 - w);
+            // Safety: random and 1-w are in [0, 1), both args to the product are negative
+            let jump_len: usize = unsafe { jump_len.to_int_unchecked() };
+            for _ in 0..jump_len {
+                if matches!(self.next(), None) {
+                    return res;
+                }
+            }
+            let Some(v) = self.next() else {
+                return res;
+            };
+            // Safety: random is never NaN or infinite, and both args to the product are non-negative
+            let replace_idx: usize = unsafe { (rand::random::<f64>() * (count as f64)).to_int_unchecked() };
+            res[replace_idx] = v;
+
+            w *= rand::random::<f64>().powf(invcount);
+        }
+    }
 
     fn sample_weighted<F>(&mut self, count: usize, weight_fun: F) -> Vec<Self::Item>
     where
@@ -204,7 +241,38 @@ mod tests {
     use super::{ReservoirSample, SampleNode, SampleTree};
 
     #[test]
-    fn test_reservoir_sample() {
+    fn test_sample() {
+        let data = vec![1, 2, 3, 4];
+        let mut counts = HashMap::new();
+        for _ in 0..6000 {
+            let sample = data.clone().into_iter().sample(2);
+            assert_eq!(sample.len(), 2);
+            let sk = sample[0].min(sample[1]) * 10 + sample[0].max(sample[1]);
+            let ct = counts.entry(sk).or_insert(0u32);
+            *ct += 1;
+        }
+        let p = 1.0 / 6.0;
+        for (i, a) in data.iter().copied().enumerate() {
+            for b in data.iter().skip(i + 1).copied() {
+                let sk = a * 10 + b;
+                let variance: f64 = 6000.0 * p * (1.0 - p);
+                let actual = *counts.get(&sk).unwrap_or(&0);
+                let min = 6000.0 * p - 6.0 * variance.sqrt();
+                let max = 6000.0 * p + 6.0 * variance.sqrt();
+                assert!(
+                    min < actual as f64 && (actual as f64) < max,
+                    "{:?} < counts[{:?}] = {:?} < {:?}",
+                    min,
+                    sk,
+                    actual,
+                    max
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_sample_weighted() {
         let data = vec![1, 2, 3];
         let mut counts = HashMap::new();
         for _ in 0..6000 {
