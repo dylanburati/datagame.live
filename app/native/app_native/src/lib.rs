@@ -59,7 +59,20 @@ fn prepare_decks(env: Env<'_>, decks: Vec<Deck>) -> Term<'_> {
     res.encode(env)
 }
 
-rustler::init!("Elixir.App.Native", [parse_spreadsheet, prepare_decks]);
+#[rustler::nif]
+fn deserialize_deck(env: Env<'_>, stored: ExDeck) -> NifResult<Term<'_>> {
+    let deck = Deck::try_from(stored)
+        .map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
+    Ok(rustler::types::tuple::make_tuple(
+        env,
+        &[atoms::ok().encode(env), deck.encode(env)],
+    ))
+}
+
+rustler::init!(
+    "Elixir.App.Native",
+    [parse_spreadsheet, prepare_decks, deserialize_deck]
+);
 
 // #[cfg(test)]
 // mod tests {

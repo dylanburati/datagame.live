@@ -41,6 +41,10 @@ defmodule AppWeb.SheetView do
     end)
   end
 
+  def render("deck.json", %{data: deck}) do
+    Map.update!(deck, :data, &card_table_json/1)
+  end
+
   def render("sheet.json", %{data: lst}) do
     Enum.map(lst, fn %{callouts: callouts, deck: deck} ->
       %{

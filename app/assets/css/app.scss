@@ -26,6 +26,10 @@ code, .font-mono {
   font-weight: 300;
 }
 
+.font-bold {
+  font-weight: 700;
+}
+
 .container, .fluid .container {
   max-width: 100%
 }
@@ -263,6 +267,10 @@ a {
 
 .text-sm {
   font-size: 0.875rem;
+}
+
+.text-lg {
+  font-size: 1.125rem;
 }
 
 .text-center {

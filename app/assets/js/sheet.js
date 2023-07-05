@@ -2,8 +2,40 @@ import { queryParser, toInteger, toPredicate } from "./advancedQuery";
 import { Result } from "./attoparsec";
 import { EffectList, h, modify, prettyPrint } from "./utils";
 
-export class SheetPage {
-  constructor() {
+/**
+ * @typedef {Object} Column
+ * @property {string} label
+ * @property {string} type
+ * @property {boolean} show
+ * @property {(i: number) => any} get
+ * @property {(v: any) => string} formatter
+ */
+/**
+ * @typedef {Object} TableData
+ * @property {Column[]} columns
+ * @property {any} deck
+ * @property {number[]} indices
+ * @property {number} length
+ * @property {number} widthEstimate
+ * @property {{ kind: "Warning" | "Error"; message: string }[]} warnings
+ */
+/**
+ * @typedef {Object} Store
+ * @property {TableData} tableData
+ * @property {number} currentPage
+ * @property {string | null} deckName
+ * @property {any[]} query
+ * @property {string} queryText
+ * @property {number} pageSize
+ */
+
+export class PagedTableView {
+  /**
+   * @param {Store} store
+   * @param {EffectList} effects
+   */
+  constructor(store, effects) {
+    this.s = store;
     this.r = {
       scrollContainer: document.getElementById('scroll-container'),
       tablist: document.getElementById('tablist'),
@@ -11,30 +43,11 @@ export class SheetPage {
       deckPicker: document.querySelector('#bottom-controls select'),
       pagination: document.getElementById('pagination'),
       paginationReadout: document.getElementById('pagination-readout'),
-      errorBox: document.getElementById('error-box'),
-      warningList: document.getElementById('warning-list'),
       table: document.getElementById('sheet-table'),
-      refreshBtn: document.getElementById('refresh'),
-      publishBtn: document.getElementById('publish'),
-      publishContainer: document.getElementById('publish-container'),
-      publishCodeblock: document.querySelector('#publish-container pre'),
     };
 
-    this.s = {
-      sheetData: null,
-      tableData: null,
-      currentPage: 1,
-      deckName: null,
-      query: [],
-      queryText: '',
-      pageSize: 50,
-    }
-
-    const effects = new EffectList();
-    this.setSheetData = effects.setter(val => { this.s.sheetData = val; });
     this.setTableData = effects.setter(val => { this.s.tableData = val; });
     this.setCurrentPage = effects.setter(val => { this.s.currentPage = val; });
-    this.setDeckName = effects.setter(val => { this.s.deckName = val; });
     this.setQuery = effects.setter(val => { this.s.query = val; });
     this.setQueryText = effects.setter(val => {
       this.s.queryText = val;
@@ -43,82 +56,17 @@ export class SheetPage {
 
     effects.register(this.repaginate.bind(this), () => [this.s.tableData, this.s.currentPage]);
     effects.register(this.populateTable.bind(this), () => [this.s.tableData, this.s.currentPage]);
-    effects.register(
-      this.calculateTableData.bind(this),
-      () => [this.s.deckName, this.s.sheetData]
-    );
     effects.register(this.calculateQuery.bind(this), () => [this.s.tableData && this.s.tableData.columns, this.s.queryText]);
     effects.register(this.runQuery.bind(this), () => [this.s.tableData && this.s.tableData.columns, this.s.query]);
-
-    effects.register(() => {
-      const { sheetData } = this.s;
-      if (sheetData == null) {
-        return;
-      }
-      modify(this.r.deckPicker, true, {},
-        sheetData.map(({ deck }) => h('option', {}, deck.title))
-      );
-    }, () => [this.s.sheetData]);
-
-    window.addEventListener("phx:mount", () => this.setupListeners());
-    // this.refresh();
   }
 
   setupListeners() {
-    const {
-      tablist,
-      refreshBtn,
-      deckPicker,
-      searchInput,
-    } = this.r;
-
-    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
-    const tabPanels = [...document.querySelectorAll('#top-controls [role="tabpanel"]')];
-
-    for (let i = 0; i < tabs.length && i < tabPanels.length; i++) {
-      const tab = tabs[i];
-      const tabPanel = tabPanels[i];
-      const otherTabs = [...tabs.slice(0, i), ...tabs.slice(i + 1)];
-      const otherTabPanels = [...tabPanels.slice(0, i), ...tabPanels.slice(i + 1)];
-      const activate = () => {
-        otherTabs.forEach((other) => {
-          other.classList.remove('active');
-          other.ariaSelected = "false";
-        });
-        otherTabPanels.forEach((other) => {
-          other.classList.add('hidden');
-        })
-        tab.classList.add('active');
-        tab.ariaSelected = "true";
-        tabPanel.classList.remove('hidden');
-      };
-      tab.addEventListener('click', activate);
-      if (window.location.hash === new URL(tab.href).hash) {
-        console.log(97, i);
-        activate();
-      }
-    }
-
-    refreshBtn.addEventListener('click', () => {
-      const { errorBox, publishContainer } = this.r;
-      errorBox.classList.add('hidden');
-      publishContainer.classList.add('hidden');
-      this.setCurrentPage(1);
-      this.setSheetData(null);
-      this.setDeckName(null);
-    });
-
-    deckPicker.addEventListener('change', evt => {
-      this.setDeckName(evt.target.selectedOptions[0].value);
-      this.setQueryText('disable:false');
-    });
+    const { searchInput } = this.r;
 
     searchInput.addEventListener('input', evt => {
       this.setQueryText(evt.target.value);
       this.setCurrentPage(1);
     });
-
-    window.addEventListener('phx:load', this.handleLoad.bind(this));
   }
 
   repaginate() {
@@ -178,25 +126,16 @@ export class SheetPage {
   }
 
   populateTable() {
-    const { warningList, table } = this.r;
+    const { table } = this.r;
     const { tableData, currentPage, pageSize } = this.s;
     if (tableData == null) {
       modify(table, true, {}, [
         h("caption", {}, "Loading...")
       ]);
-      warningList.classList.add('hidden');
       return;
     }
 
-    const { columns, indices, length, warnings, widthEstimate } = tableData;
-    if (warnings.length) {
-      warningList.classList.remove('hidden');
-      modify(warningList, true, {},
-        warnings.map(({ message }) => h('li', { class: 'text-sm' }, message))
-      );
-    } else {
-      warningList.classList.add('hidden');
-    }
+    const { columns, indices, length, widthEstimate } = tableData;
     const rowNums = new Array(pageSize).fill(0)
       .map((_, i) => (currentPage - 1) * pageSize + i)
       .filter(n => n < length)
@@ -316,6 +255,181 @@ export class SheetPage {
       console.log(queryResult.msg);
     }
   }
+}
+
+function deckColumns(deck) {
+  const { cards, stat_defs: statDefs, tag_defs: tagDefs } = deck.data;
+  const unpascal = (s) => s.slice(0, 1).toLowerCase() + s.slice(1);
+
+  const categorySummary = cards.reduce((acc, { category }) => {
+    if (category != null) {
+      acc.count += 1;
+      acc.groupCounts.set((acc.groupCounts.get(category) || 0) + 1);
+    }
+    return acc;
+  }, { count: 0, groupCounts: new Map() });
+  const formatters = {
+    string: (x) => x != null ? x : "",
+    date: (x) => x != null ? x.slice(0, 10) : "",
+    number: (x) => x != null ? x.toLocaleString() : "",
+    currency: (x) =>  x != null ? `$${x.toLocaleString()}` : "",
+    latLng: (x) => x != null ? `${x[0]}, ${x[1]}` : "",
+    boolean: (x) => x === true ? "true" : "",
+    stringArray: (x) => x != null ? x.join(", ") : "",
+  }
+  const columns = [
+    { label: "#", type: "", show: true, get: (i) => String(i + 1), formatter: formatters.string, },
+    { label: "Card", type: "string", show: true, get: (i) => cards[i].title, formatter: formatters.string, },
+    { label: "Disable?", type: "boolean", show: false, get: (i) => cards[i].is_disabled, formatter: formatters.boolean, },
+    { label: "Notes", type: "string", show: false, get: (i) => cards[i].notes, formatter: formatters.string, },
+    { label: "ID", type: "string", show: false, get: (i) => cards[i].unique_id, formatter: formatters.string, },
+    { label: "Popularity", type: "number", show: true, get: (i) => cards[i].popularity, formatter: formatters.number, },
+    { label: "Category", type: "string", show: categorySummary.count > 0, get: (i) => cards[i].category, formatter: formatters.string },
+    ...tagDefs.map(e => ({
+      label: e.label,
+      section: "tag",
+      type: "string[]",
+      show: true,
+      get: (i) => e.values[i],
+      formatter: formatters.stringArray,
+    })),
+    ...statDefs.map(e => {
+      return {
+        label: e.label,
+        section: "stat",
+        type: unpascal(e.data.kind),
+        show: true,
+        get: (i) => e.data.values[i],
+        formatter:
+          e.data.kind === 'Date'
+            ? formatters.date
+            : e.data.kind === 'LatLng'
+            ? formatters.latLng
+            : e.data.kind === 'Number' && e.data.unit === 'Dollar'
+            ? formatters.currency
+            : e.data.kind === 'Number'
+            ? formatters.number
+            : formatters.string,
+      };
+    }),
+  ];
+  return [columns, categorySummary];
+}
+
+export class SheetPage {
+  constructor() {
+    this.r = {
+      tablist: document.getElementById('tablist'),
+      deckPicker: document.querySelector('#bottom-controls select'),
+      errorBox: document.getElementById('error-box'),
+      warningList: document.getElementById('warning-list'),
+      refreshBtn: document.getElementById('refresh'),
+      publishBtn: document.getElementById('publish'),
+      publishContainer: document.getElementById('publish-container'),
+      publishCodeblock: document.querySelector('#publish-container pre'),
+    };
+
+    this.s = {
+      sheetData: null,
+      tableData: null,
+      currentPage: 1,
+      deckName: null,
+      query: [],
+      queryText: '',
+      pageSize: 50,
+    }
+
+    const effects = new EffectList();
+    this.tableView = new PagedTableView(this.s, effects);
+    this.setSheetData = effects.setter(val => { this.s.sheetData = val; });
+    this.setTableData = effects.setter(val => { this.s.tableData = val; });
+    this.setDeckName = effects.setter(val => { this.s.deckName = val; });
+    this.setCurrentPage = effects.setter(val => { this.s.currentPage = val; });
+
+    effects.register(this.populateWarnings.bind(this), () => [this.s.tableData]);
+    effects.register(() => {
+      const { sheetData } = this.s;
+      if (sheetData == null) {
+        return;
+      }
+      modify(this.r.deckPicker, true, {},
+        sheetData.map(({ deck }) => h('option', {}, deck.title))
+      );
+    }, () => [this.s.sheetData]);
+    effects.register(
+      this.calculateTableData.bind(this),
+      () => [this.s.deckName, this.s.sheetData]
+    );
+
+    window.addEventListener("phx:mount", () => {
+      this.setupListeners();
+      this.tableView.setupListeners();
+    });
+    // this.refresh();
+  }
+
+  setupListeners() {
+    const {
+      tablist,
+      refreshBtn,
+      deckPicker,
+    } = this.r;
+
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    const tabPanels = [...document.querySelectorAll('#top-controls [role="tabpanel"]')];
+
+    for (let i = 0; i < tabs.length && i < tabPanels.length; i++) {
+      const tab = tabs[i];
+      const tabPanel = tabPanels[i];
+      const otherTabs = [...tabs.slice(0, i), ...tabs.slice(i + 1)];
+      const otherTabPanels = [...tabPanels.slice(0, i), ...tabPanels.slice(i + 1)];
+      const activate = () => {
+        otherTabs.forEach((other) => {
+          other.classList.remove('active');
+          other.ariaSelected = "false";
+        });
+        otherTabPanels.forEach((other) => {
+          other.classList.add('hidden');
+        })
+        tab.classList.add('active');
+        tab.ariaSelected = "true";
+        tabPanel.classList.remove('hidden');
+      };
+      tab.addEventListener('click', activate);
+      if (window.location.hash === new URL(tab.href).hash) {
+        activate();
+      }
+    }
+
+    refreshBtn.addEventListener('click', () => {
+      const { errorBox, publishContainer } = this.r;
+      errorBox.classList.add('hidden');
+      publishContainer.classList.add('hidden');
+      this.setCurrentPage(1);
+      this.setSheetData(null);
+      this.setDeckName(null);
+    });
+
+    deckPicker.addEventListener('change', evt => {
+      this.setDeckName(evt.target.selectedOptions[0].value);
+      this.tableView.setQueryText('disable:false');
+    });
+
+    window.addEventListener('phx:load', this.handleLoad.bind(this));
+  }
+
+  populateWarnings() {
+    const { warningList } = this.r;
+    const warnings = this.s.tableData ? this.s.tableData.warnings : [];
+    if (warnings.length) {
+      warningList.classList.remove('hidden');
+      modify(warningList, true, {},
+        warnings.map(({ message }) => h('li', { class: 'text-sm' }, message))
+      );
+    } else {
+      warningList.classList.add('hidden');
+    }
+  }
 
   calculateTableData() {
     const { sheetData, deckName } = this.s;
@@ -330,72 +444,19 @@ export class SheetPage {
       return;
     }
     const { deck, callouts } = entry;
-    const { cards, stat_defs: statDefs, tag_defs: tagDefs } = deck.data;
-    const unpascal = (s) => s.slice(0, 1).toLowerCase() + s.slice(1);
     const warnings = callouts.slice();
-
-    const categorySummary = cards.reduce((acc, { category }) => {
-      if (category != null) {
-        acc.count += 1;
-        acc.groupCounts.set((acc.groupCounts.get(category) || 0) + 1);
-      }
-      return acc;
-    }, { count: 0, groupCounts: new Map() });
-    const formatters = {
-      string: (x) => x != null ? x : "",
-      date: (x) => x != null ? x.slice(0, 10) : "",
-      number: (x) => x != null ? x.toLocaleString() : "",
-      currency: (x) =>  x != null ? `$${x.toLocaleString()}` : "",
-      latLng: (x) => x != null ? `${x[0]}, ${x[1]}` : "",
-      boolean: (x) => x === true ? "true" : "",
-      stringArray: (x) => x != null ? x.join(", ") : "",
-    }
-    const columns = [
-      { label: "#", type: "", show: true, get: (i) => String(i + 1), formatter: formatters.string, },
-      { label: "Card", type: "string", show: true, get: (i) => cards[i].title, formatter: formatters.string, },
-      { label: "Disable?", type: "boolean", show: false, get: (i) => cards[i].is_disabled, formatter: formatters.boolean, },
-      { label: "Notes", type: "string", show: false, get: (i) => cards[i].notes, formatter: formatters.string, },
-      { label: "ID", type: "string", show: false, get: (i) => cards[i].unique_id, formatter: formatters.string, },
-      { label: "Popularity", type: "number", show: true, get: (i) => cards[i].popularity, formatter: formatters.number, },
-      { label: "Category", type: "string", show: categorySummary.count > 0, get: (i) => cards[i].category, formatter: formatters.string },
-      ...tagDefs.map(e => ({
-        label: e.label,
-        section: "tag",
-        type: "string[]",
-        show: true,
-        get: (i) => e.values[i],
-        formatter: formatters.stringArray,
-      })),
-      ...statDefs.map(e => {
-        return {
-          label: e.label,
-          section: "stat",
-          type: unpascal(e.data.kind),
-          show: true,
-          get: (i) => e.data.values[i],
-          formatter:
-            e.data.kind === 'Date'
-              ? formatters.date
-              : e.data.kind === 'LatLng'
-              ? formatters.latLng
-              : e.data.kind === 'Number' && e.data.unit === 'Dollar'
-              ? formatters.currency
-              : e.data.kind === 'Number'
-              ? formatters.number
-              : formatters.string,
-        };
-      }),
-    ];
+    const [columns, categorySummary] = deckColumns(deck);
     if (categorySummary.count === 0) {
       warnings.push({
         kind: "Warning",
         message: "Category is not filled out - the game customization sliders will be disabled"
       });
     } else {
-      if (categorySummary.count < cards.length) {
+      const numCards = deck.data.cards.length;
+      if (categorySummary.count < numCards) {
         warnings.push({
           kind: "Warning",
-          message: `Category is blank for ${cards.length - categorySummary.count} cells`
+          message: `Category is blank for ${numCards - categorySummary.count} cells`
         });
       }
       categorySummary.groupCounts.forEach((v, cat) => {
@@ -421,7 +482,7 @@ export class SheetPage {
       widthEstimate: 0,
       warnings,
     });
-    this.setQueryText("disable:false");
+    this.tableView.setQueryText('disable:false');
   }
 
   handleLoad(evt) {
@@ -435,6 +496,98 @@ export class SheetPage {
       console.error('handleLoad', errorMessage);
       errorBox.classList.remove('hidden');
       errorBox.textContent = errorMessage;
+    }
+  }
+}
+
+export class ExplorePage {
+  constructor() {
+    this.r = {
+      tablist: document.getElementById('tablist'),
+      deckReadout: document.getElementById('deck-readout'),
+    };
+
+    this.s = {
+      tableData: null,
+      currentPage: 1,
+      query: [],
+      queryText: '',
+      pageSize: 50,
+    }
+
+    const effects = new EffectList();
+    this.tableView = new PagedTableView(this.s, effects);
+    this.setTableData = effects.setter(val => { this.s.tableData = val; });
+    this.setCurrentPage = effects.setter(val => { this.s.currentPage = val; });
+    effects.register(() => {
+      const { tableData } = this.s;
+      if (tableData == null) {
+        return;
+      }
+      this.r.deckReadout.textContent = tableData.deck.title;
+    }, () => [this.s.tableData]);
+
+    window.addEventListener("phx:mount", () => {
+      this.setupListeners();
+      this.tableView.setupListeners();
+    });
+    // this.refresh();
+  }
+
+  setupListeners() {
+    const { tablist } = this.r;
+
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    const tabPanels = [...document.querySelectorAll('#top-controls [role="tabpanel"]')];
+
+    for (let i = 0; i < tabs.length && i < tabPanels.length; i++) {
+      const tab = tabs[i];
+      const tabPanel = tabPanels[i];
+      const otherTabs = [...tabs.slice(0, i), ...tabs.slice(i + 1)];
+      const otherTabPanels = [...tabPanels.slice(0, i), ...tabPanels.slice(i + 1)];
+      const activate = () => {
+        otherTabs.forEach((other) => {
+          other.classList.remove('active');
+          other.ariaSelected = "false";
+        });
+        otherTabPanels.forEach((other) => {
+          other.classList.add('hidden');
+        })
+        tab.classList.add('active');
+        tab.ariaSelected = "true";
+        tabPanel.classList.remove('hidden');
+      };
+      tab.addEventListener('click', activate);
+      if (window.location.hash === new URL(tab.href).hash) {
+        activate();
+      }
+    }
+
+    window.addEventListener('phx:load', this.handleLoad.bind(this));
+  }
+
+  calculateTableData(deck) {
+    const [columns, _] = deckColumns(deck);
+    this.setTableData({
+      columns,
+      deck,
+      indices: [],
+      length: 0,
+      widthEstimate: 0,
+    });
+    this.tableView.setQueryText('disable:false');
+  }
+
+  handleLoad(evt) {
+    const json = evt.detail;
+    // const { errorBox } = this.r;
+    if (json.ok) {
+      this.calculateTableData(json.ok);
+    } else {
+      const errorMessage = json.error || "Unknown error";
+      console.error('handleLoad', errorMessage);
+      // errorBox.classList.remove('hidden');
+      // errorBox.textContent = errorMessage;
     }
   }
 }

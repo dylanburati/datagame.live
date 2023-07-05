@@ -2,7 +2,7 @@
   <h1 class="text-center font-extralight" style="font-size: 2rem">Explore</h1>
   <div class="deck-grid">
     <%= for deck <- @decks do %>
-      <a class="deck-link interactable" href={Routes.explorer_path(@conn, :index)}>
+      <a class="deck-link interactable" href={Routes.explorer_path(@conn, :index, Integer.to_string(deck.id))}>
         <img alt={deck.title} src={deck.image_url || App.Utils.image_url(deck)} />
       </a>
     <% end %>

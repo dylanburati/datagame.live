@@ -31,7 +31,7 @@ defmodule AppWeb.Router do
     get "/user/logout", UserController, :logout
 
     live_session :default, on_mount: {AppWeb.LiveAuth, :assign_current_user} do
-      live "/explore", ExplorerLive, :index
+      live "/explore/:id", ExplorerLive, :index
     end
 
     live_session :admin, on_mount: {AppWeb.LiveAuth, :require_admin} do

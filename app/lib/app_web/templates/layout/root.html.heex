@@ -16,8 +16,8 @@
     <link rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
     <script type="text/javascript">
     window.pageRoutes = {
-      sheet: '<%= Routes.page_path(@conn, :sheet) %>',
-      sheetLive: '<%= Routes.sheet_path(@conn, :index, "__PARAM__") %>',
+      sheet: '<%= Routes.sheet_path(@conn, :index, "__PARAM__") %>',
+      explore: '<%= Routes.explorer_path(@conn, :index, "__PARAM__") %>',
       sheetAdvanced: '<%= Routes.page_path(@conn, :sheet_advanced) %>',
     };
     window.apiRoutes = {
