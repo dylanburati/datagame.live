@@ -129,6 +129,7 @@ pub enum ExprValue<'a> {
     LatLng((f64, f64)),
     Date(NaiveDateTimeExt),
     String(Cow<'a, str>),
+    IntArray(Cow<'a, [i64]>),
     StringArray(Cow<'a, [String]>),
 }
 
@@ -159,6 +160,12 @@ impl From<NaiveDateTimeExt> for ExprValue<'_> {
 impl<'a> From<Cow<'a, str>> for ExprValue<'a> {
     fn from(value: Cow<'a, str>) -> Self {
         ExprValue::String(value)
+    }
+}
+
+impl<'a> From<Cow<'a, [i64]>> for ExprValue<'a> {
+    fn from(value: Cow<'a, [i64]>) -> Self {
+        ExprValue::IntArray(value)
     }
 }
 
@@ -204,6 +211,13 @@ impl<'a> ExprValue<'a> {
         }
     }
 
+    pub fn get_int_array(&self) -> Option<&[i64]> {
+        match self {
+            ExprValue::IntArray(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn get_string_array(&self) -> Option<&[String]> {
         match self {
             ExprValue::StringArray(v) => Some(v),
@@ -218,6 +232,7 @@ impl<'a> ExprValue<'a> {
             ExprValue::LatLng(lhs) => rhs.get_lat_lng().map(|v| lhs == v),
             ExprValue::Date(lhs) => rhs.get_date().map(|v| lhs == v),
             ExprValue::String(lhs) => rhs.get_string().map(|v| lhs == &v),
+            ExprValue::IntArray(lhs) => rhs.get_int_array().map(|v| lhs == &v),
             ExprValue::StringArray(lhs) => rhs.get_string_array().map(|v| lhs == &v),
         }
     }
@@ -386,6 +401,7 @@ pub enum OwnedExprValue {
     LatLng((f64, f64)),
     Date(NaiveDateTimeExt),
     String(String),
+    IntArray(Vec<i64>),
     StringArray(SmallVec<[String; 2]>),
 }
 
@@ -425,6 +441,13 @@ impl OwnedExprValue {
         }
     }
 
+    pub fn get_int_array(&self) -> Option<&[i64]> {
+        match self {
+            OwnedExprValue::IntArray(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn get_string_array(&self) -> Option<&[String]> {
         match self {
             OwnedExprValue::StringArray(v) => Some(v),
@@ -460,6 +483,12 @@ impl From<NaiveDateTimeExt> for OwnedExprValue {
 impl From<String> for OwnedExprValue {
     fn from(value: String) -> Self {
         OwnedExprValue::String(value)
+    }
+}
+
+impl From<Vec<i64>> for OwnedExprValue {
+    fn from(value: Vec<i64>) -> Self {
+        OwnedExprValue::IntArray(value)
     }
 }
 
@@ -734,6 +763,7 @@ impl<'a> IntermediateExpr<'a> {
             ExprValue::LatLng(v) => OwnedExprValue::LatLng(v),
             ExprValue::Date(v) => OwnedExprValue::Date(v),
             ExprValue::String(v) => OwnedExprValue::String(v.into_owned()),
+            ExprValue::IntArray(v) => OwnedExprValue::IntArray(v.into_owned()),
             ExprValue::StringArray(v) => OwnedExprValue::StringArray(SmallVec::from(&v[..])),
         });
         Ok(maybe_oev)
