@@ -121,7 +121,7 @@ impl TryOps for ExprType {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExprValue<'a> {
     Bool(bool),
     Number(f64),
@@ -202,7 +202,7 @@ impl<'a> ExprValue<'a> {
             ExprValue::Number(lhs) => rhs.get_number().map(|v| lhs == v),
             ExprValue::LatLng(lhs) => rhs.get_lat_lng().map(|v| lhs == v),
             ExprValue::Date(lhs) => rhs.get_date().map(|v| lhs == v),
-            ExprValue::String(lhs) => rhs.get_string().map(|v| *lhs == v),
+            ExprValue::String(lhs) => rhs.get_string().map(|v| lhs == &v),
         }
     }
 
@@ -359,6 +359,52 @@ impl<'a> TryOps for ExprValue<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum OwnedExprValue {
+    Bool(bool),
+    Number(f64),
+    LatLng((f64, f64)),
+    Date(NaiveDateTimeExt),
+    String(String),
+}
+
+impl OwnedExprValue {
+    pub fn get_bool(&self) -> Option<&bool> {
+        match self {
+            OwnedExprValue::Bool(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn get_number(&self) -> Option<&f64> {
+        match self {
+            OwnedExprValue::Number(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn get_lat_lng(&self) -> Option<&(f64, f64)> {
+        match self {
+            OwnedExprValue::LatLng(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn get_date(&self) -> Option<&NaiveDateTimeExt> {
+        match self {
+            OwnedExprValue::Date(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn get_string(&self) -> Option<&str> {
+        match self {
+            OwnedExprValue::String(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
 pub enum IntermediateExpr<'a> {
     Number {
         value: f64,
@@ -498,7 +544,7 @@ impl<'a> IntermediateExpr<'a> {
             IntermediateExpr::NumberVariable { side, values } => {
                 let maybe_index = Self::select_index(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
-                    values.get(index).is_some()
+                    matches!(values.get(index), Some(Some(_)))
                 } else {
                     true
                 }
@@ -506,7 +552,7 @@ impl<'a> IntermediateExpr<'a> {
             IntermediateExpr::DateVariable { side, values } => {
                 let maybe_index = Self::select_index(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
-                    values.get(index).is_some()
+                    matches!(values.get(index), Some(Some(_)))
                 } else {
                     true
                 }
@@ -514,7 +560,7 @@ impl<'a> IntermediateExpr<'a> {
             IntermediateExpr::StringVariable { side, values } => {
                 let maybe_index = Self::select_index(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
-                    values.get(index).is_some()
+                    matches!(values.get(index), Some(Some(_)))
                 } else {
                     true
                 }
@@ -527,7 +573,7 @@ impl<'a> IntermediateExpr<'a> {
         }
     }
 
-    pub fn get_value(&self, left_idx: usize, right_idx: usize) -> Result<Option<ExprValue>, ()> {
+    fn get_expr_value(&self, left_idx: usize, right_idx: usize) -> Result<Option<ExprValue>, ()> {
         match self {
             IntermediateExpr::Number { value } => Ok(Some(ExprValue::Number(*value))),
             IntermediateExpr::Date { value } => Ok(Some(ExprValue::Date(*value))),
@@ -555,7 +601,7 @@ impl<'a> IntermediateExpr<'a> {
                 Ok(ev)
             }
             IntermediateExpr::Unary { op, child } => {
-                if let Some(child_value) = child.get_value(left_idx, right_idx)? {
+                if let Some(child_value) = child.get_expr_value(left_idx, right_idx)? {
                     let ev = match op {
                         UnOp::Bool => child_value.bool(),
                         UnOp::Not => child_value.not(),
@@ -567,8 +613,8 @@ impl<'a> IntermediateExpr<'a> {
                 }
             }
             IntermediateExpr::Binary { op, lhs, rhs } => {
-                if let Some(lhs_value) = lhs.get_value(left_idx, right_idx)? {
-                    if let Some(rhs_value) = rhs.get_value(left_idx, right_idx)? {
+                if let Some(lhs_value) = lhs.get_expr_value(left_idx, right_idx)? {
+                    if let Some(rhs_value) = rhs.get_expr_value(left_idx, right_idx)? {
                         let ev = match op {
                             BinOp::Eq => lhs_value.eq(rhs_value),
                             BinOp::Neq => lhs_value.neq(rhs_value),
@@ -591,5 +637,17 @@ impl<'a> IntermediateExpr<'a> {
                 Ok(None)
             }
         }
+    }
+
+    pub fn get_value(&self, left_idx: usize, right_idx: usize) -> Result<Option<OwnedExprValue>, ()> {
+        let maybe_ev = self.get_expr_value(left_idx, right_idx)?;
+        let maybe_oev = maybe_ev.map(|ev| match ev {
+            ExprValue::Bool(v) => OwnedExprValue::Bool(v),
+            ExprValue::Number(v) => OwnedExprValue::Number(v),
+            ExprValue::LatLng(v) => OwnedExprValue::LatLng(v),
+            ExprValue::Date(v) => OwnedExprValue::Date(v),
+            ExprValue::String(v) => OwnedExprValue::String(v.into_owned()),
+        });
+        Ok(maybe_oev)
     }
 }

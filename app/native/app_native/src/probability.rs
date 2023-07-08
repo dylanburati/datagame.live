@@ -71,7 +71,8 @@ where
                 return res;
             };
             // Safety: random is never NaN or infinite, and both args to the product are non-negative
-            let replace_idx: usize = unsafe { (rand::random::<f64>() * (count as f64)).to_int_unchecked() };
+            let replace_idx: usize =
+                unsafe { (rand::random::<f64>() * (count as f64)).to_int_unchecked() };
             res[replace_idx] = v;
 
             w *= rand::random::<f64>().powf(invcount);
@@ -104,6 +105,107 @@ where
             }
         }
         heap.into_iter().map(|pair| pair.1).collect()
+    }
+}
+
+pub struct BlendIter<I1, I2, E>
+where
+    I1: Iterator<Item = E>,
+    I2: Iterator<Item = E>,
+{
+    left: I1,
+    right: I2,
+    /// Some(n) => not exhausted, needs n more
+    /// None => exhausted
+    state: (Option<usize>, Option<usize>),
+}
+
+impl<I1, I2, E> Iterator for BlendIter<I1, I2, E>
+where
+    I1: Iterator<Item = E>,
+    I2: Iterator<Item = E>,
+{
+    type Item = (bool, E);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.state {
+            (_, None) => self.left.next().map(|x| (true, x)),
+            (None, _) => self.right.next().map(|x| (false, x)),
+            (Some(l), Some(r)) if l > 0 => {
+                if let Some(v) = self.left.next() {
+                    self.state = (Some(l - 1), Some(r));
+                    Some((true, v))
+                } else {
+                    self.state = (None, Some(r));
+                    self.next()
+                }
+            }
+            (Some(0), Some(r)) if r > 0 => {
+                if let Some(v) = self.right.next() {
+                    self.state = (Some(0), Some(r - 1));
+                    Some((false, v))
+                } else {
+                    self.state = (Some(0), None);
+                    self.next()
+                }
+            }
+            (Some(_), Some(_)) => {
+                if rand::random() {
+                    if let Some(v) = self.left.next() {
+                        Some((true, v))
+                    } else {
+                        self.state = (None, Some(0));
+                        self.next()
+                    }
+                } else {
+                    if let Some(v) = self.right.next() {
+                        Some((false, v))
+                    } else {
+                        self.state = (Some(0), None);
+                        self.next()
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub trait Blend<T> {
+    type Item;
+    type Iter1: Iterator<Item = Self::Item>;
+    type Iter2: Iterator<Item = Self::Item>;
+
+    /// Returns an iterator that takes `min_left` from `self`, `min_right` from `right`,
+    /// an then selects randomly between the two.
+    fn blend(
+        self,
+        right: T,
+        min_left: usize,
+        min_right: usize,
+    ) -> BlendIter<Self::Iter1, Self::Iter2, Self::Item>;
+}
+
+impl<I1, I2, E> Blend<I2> for I1
+where
+    I1: Iterator<Item = E>,
+    I2: IntoIterator<Item = E>,
+{
+    type Item = E;
+    type Iter1 = I1;
+    type Iter2 = I2::IntoIter;
+
+    fn blend(
+        self,
+        right: I2,
+        min_left: usize,
+        min_right: usize,
+    ) -> BlendIter<Self::Iter1, Self::Iter2, Self::Item> {
+        let right = right.into_iter();
+        BlendIter {
+            left: self,
+            right,
+            state: (Some(min_left), Some(min_right)),
+        }
     }
 }
 

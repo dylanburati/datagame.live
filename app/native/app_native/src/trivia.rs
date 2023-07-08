@@ -2,12 +2,17 @@ use std::{
     cell::RefCell,
     cmp::Ordering,
     collections::{BTreeMap, HashMap, HashSet},
+    fmt::Debug,
+    sync::Mutex,
 };
 
+use error_chain::error_chain;
+use rustler::{Encoder, NifUnitEnum};
+
 use crate::{
-    probability::{ReservoirSample, SampleTree},
-    tinylang::{self, IntermediateExpr},
-    types::{CardTable, Deck},
+    probability::{Blend, ReservoirSample, SampleTree},
+    tinylang::{self, IntermediateExpr, OwnedExprValue},
+    types::{Card, CardTable, Deck, NaiveDateTimeExt},
 };
 
 pub fn scale_popularity(deck: &mut Deck) {
@@ -50,7 +55,7 @@ pub struct KnowledgeBase {
 pub struct ActiveDeck {
     data: CardTable,
     pairings: Vec<ActivePairing>,
-    views: RefCell<HashMap<u64, DeckView>>,
+    views: Mutex<RefCell<HashMap<u64, DeckView>>>,
 }
 
 impl ActiveDeck {
@@ -76,7 +81,7 @@ impl ActiveDeck {
         Self {
             data,
             pairings,
-            views: RefCell::new(HashMap::default()),
+            views: Mutex::new(RefCell::new(HashMap::default())),
         }
     }
 
@@ -85,7 +90,8 @@ impl ActiveDeck {
         F: FnOnce(DeckViewIter<'_>) -> R,
     {
         let key = difficulty.to_bits();
-        let mut map = self.views.borrow_mut();
+        let map_sync = self.views.lock().unwrap();
+        let mut map = map_sync.borrow_mut();
         let view = map
             .entry(key)
             .or_insert_with(|| DeckView::new(&self.data, difficulty));
@@ -141,37 +147,9 @@ impl DeckView {
     }
 }
 
-pub enum TriviaExp {
-    /// The selection must contain every ID in the list
-    All { ids: Vec<u8> },
-    /// The selection must not contain any ID in the list
-    None { ids: Vec<u8> },
-    /// The selection must not contain more than `max` IDs in the list
-    NoneLenient { ids: Vec<u8>, max: u8 },
-    /// The selection must contain at least one ID from the list
-    Any { ids: Vec<u8> },
-    /// The slice of the selection `min_pos..min_pos + ids.len()` must contain
-    /// every ID in the list
-    AllPos { ids: Vec<u8>, min_pos: u8 },
-}
-
-// pub trait TriviaGen<'a> {
-//     type Subject;
-//     type Answer;
-
-//     fn get_subject(&self, kb: &mut KnowledgeBase<'a>) -> Option<Self::Subject>;
-
-//     fn get_answers(
-//         &self,
-//         kb: &mut KnowledgeBase<'a>,
-//         subject: Self::Subject,
-//         invert: bool,
-//     ) -> Vec<Self::Answer>;
-
-//     fn get_expectations(&self, answers: Vec<Self::Answer>) -> Vec<TriviaExp>;
-// }
-
 mod selectors {
+    use crate::tinylang;
+
     pub struct Deck {}
     pub struct Category {
         pub difficulty: f64,
@@ -183,22 +161,36 @@ mod selectors {
         pub difficulty: f64,
         pub which: usize,
     }
+    pub struct Stat {
+        pub difficulty: f64,
+        pub expression: tinylang::Expression,
+        pub return_type: tinylang::ExprType,
+    }
 }
 
 mod instances {
+    use crate::tinylang;
+
     #[derive(Debug, Clone, Copy)]
     pub struct Deck {}
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Category(pub String);
 
     #[derive(Debug, Clone, Copy)]
     pub struct Card(pub usize);
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Tag {
         pub which: usize,
         pub value: String,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Stat {
+        pub card: usize,
+        pub value: tinylang::OwnedExprValue,
+        pub value_type: tinylang::ExprType,
     }
 }
 
@@ -247,14 +239,29 @@ impl Select for selectors::Category {
 }
 
 enum CardCond {
-    Deck(instances::Deck),
+    /// The selected Card belongs to the instance Category
     Category(instances::Category),
+    /// The pairing at the index has a link from the selected Card to any
+    /// Card
     EdgeOut(usize),
+    /// The pairing at the index has a link from the instance Card to the
+    /// selected Card
     Edge(instances::Card, usize),
+    /// The pairing at the index has no link from the instance Card to the
+    /// selected Card
     NoEdge(instances::Card, usize),
-    PredicateOut(tinylang::Expression),
+    /// The expression evaluates to true when `left` is the instance Card and
+    /// `right` is the selected Card
     Predicate(tinylang::Expression, Option<instances::Card>),
+    /// All left-side variables in the expression are present on the selected
+    /// Card
+    ExpressionOut(tinylang::Expression),
+    /// The selected Card has a Tag matching the instance Tag
     Tag(instances::Tag),
+    /// The selected Card has no Tag matching the instance Tag
+    NoTag(instances::Tag),
+    /// The selected Card has a Tag for the tag definition at the index
+    TagOut(usize),
 }
 
 impl Select for selectors::Card {
@@ -268,7 +275,7 @@ impl Select for selectors::Card {
         // TODO validate 0 or 1 CardCond::Edge
         for c in conds.iter() {
             match c {
-                CardCond::PredicateOut(expr) => {
+                CardCond::ExpressionOut(expr) => {
                     lexprs.push(expr.optimize(&deck.data, &deck.data).unwrap())
                 }
                 CardCond::Predicate(expr, o) => rexprs.push((
@@ -309,9 +316,8 @@ impl Select for selectors::Card {
                     });
                 all_true
                     && conds.iter().all(|c| match c {
-                        CardCond::Deck(_) => true,
                         CardCond::Predicate(_, _) => true,
-                        CardCond::PredicateOut(_) => true,
+                        CardCond::ExpressionOut(_) => true,
                         CardCond::Edge(_, _) => true,
                         CardCond::NoEdge(_, _) => true,
                         CardCond::Category(instances::Category(cat)) => deck.data.cards[*i]
@@ -325,6 +331,12 @@ impl Select for selectors::Card {
                             .is_some(),
                         CardCond::Tag(instances::Tag { which, value }) => {
                             deck.data.tag_defs[*which].values[*i].contains(value)
+                        }
+                        CardCond::NoTag(instances::Tag { which, value }) => {
+                            !deck.data.tag_defs[*which].values[*i].contains(value)
+                        }
+                        CardCond::TagOut(which) => {
+                            !deck.data.tag_defs[*which].values[*i].is_empty()
                         }
                     })
             })
@@ -389,111 +401,51 @@ impl Select for selectors::Tag {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::io::Write;
+enum StatCond {
+    Edge(instances::Card),
+    NoEdge(instances::Card),
+}
 
-    use crate::{importer, tinylang::expr};
+impl Select for selectors::Stat {
+    type Item = instances::Stat;
+    type Cond = StatCond;
 
-    use super::{scale_popularity, selectors, ActiveDeck, CardCond, Select};
-
-    #[test]
-    fn test_select() -> Result<(), Box<dyn std::error::Error>> {
-        let json_bytes = std::fs::read("../../1687456135278600_in.json")?;
-        let json = String::from_utf8(json_bytes)?;
-        let decks = importer::parse_spreadsheet(
-            vec![
-                "Movies".into(),
-                "Animals".into(),
-                "Music:Billoard US".into(),
-                "The Rich and Famous".into(),
-                "Places".into(),
-                "Characters".into(),
-            ],
-            json,
-        )?;
-        let decks: Vec<_> = decks
-            .into_iter()
-            .map(|d| d.deck)
-            .map(|mut d| {
-                scale_popularity(&mut d);
-                d
-            })
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
-        let selector = selectors::Category { difficulty: 0.0 };
-        let subject = selector.select(&decks[4], &[]).expect("Instance");
-        writeln!(std::io::stderr(), "subject = {:?}", subject)?;
-        let selector2 = selectors::Card { difficulty: -5.0 };
-        let answer = selector2
-            .select(
-                &decks[4],
-                &[
-                    CardCond::Category(subject),
-                    CardCond::Predicate(expr("R\"Capital\"?").unwrap(), None),
-                ],
-            )
-            .expect("Capital");
-        writeln!(
-            std::io::stderr(),
-            "answer = {:?}",
-            decks[4].data.cards[answer.0]
-        )?;
-        let selector = selectors::Card { difficulty: -0.5 };
-        for _ in 0..1000 {
-            let criteria = expr(
-                "L\"Pronoun\" == R\"Partner pronoun\" and R\"Pronoun\" == L\"Partner pronoun\"",
-            )?;
-            let subjects1 = selector.select_n(&decks[3], &[CardCond::EdgeOut(0)], 3);
-            assert_eq!(subjects1.len(), 3);
-            let mut pairs: Vec<_> = subjects1
-                .iter()
-                .map(|instance| {
-                    let inst2 = selector
-                        .select(&decks[3], &[CardCond::Edge(*instance, 0)])
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "no edge {} {}",
-                                instance.0, &decks[3].data.cards[instance.0].title
-                            )
-                        });
-                    (instance.0, inst2.0)
-                })
-                .collect();
-            let pair2 = (1..10)
-                .filter_map(|_| {
-                    let instance =
-                        selector.select(&decks[3], &[CardCond::PredicateOut(criteria.clone())])?;
-                    selector
-                        .select(
-                            &decks[3],
-                            &[
-                                CardCond::NoEdge(instance, 0),
-                                CardCond::Predicate(criteria.clone(), Some(instance)),
-                            ],
-                        )
-                        .map(|inst2| (instance.0, inst2.0))
-                })
-                .next()
-                .expect("10th attempt");
-            pairs.push(pair2);
-            let &[(c00, c01), (c10, c11), (c20, c21), (c30, c31)] = &pairs[..] else {
-                panic!("{:?}", pairs);
-            };
-            writeln!(
-                std::io::stderr(),
-                "{} + {}\n{} + {}\n{} + {}\n{} + {}\n\n",
-                &decks[3].data.cards[c00].title,
-                &decks[3].data.cards[c01].title,
-                &decks[3].data.cards[c10].title,
-                &decks[3].data.cards[c11].title,
-                &decks[3].data.cards[c20].title,
-                &decks[3].data.cards[c21].title,
-                &decks[3].data.cards[c30].title,
-                &decks[3].data.cards[c31].title,
-            )?;
-        }
-        Ok(())
+    fn select_n(&self, deck: &ActiveDeck, conds: &[Self::Cond], n: usize) -> Vec<Self::Item> {
+        let intermediate = self.expression.optimize(&deck.data, &deck.data).unwrap();
+        let prohibited = match conds {
+            [StatCond::Edge(instances::Card(i))] => {
+                let Some(value) = intermediate.get_value(*i, *i).unwrap() else {
+                    return vec![];
+                };
+                return vec![instances::Stat {
+                    card: *i,
+                    value,
+                    value_type: self.return_type,
+                }];
+            }
+            [StatCond::NoEdge(instances::Card(i))] => *i,
+            [] => panic!("Zero conds not supported for selectors::Stat"),
+            _ => panic!("Multiple conds not supported for selectors::Stat"),
+        };
+        deck.with_iter(self.difficulty, |iter| {
+            let mut acc = vec![];
+            for i in iter {
+                if i == prohibited {
+                    continue;
+                }
+                if let Some(value) = intermediate.get_value(i, i).unwrap() {
+                    acc.push(instances::Stat {
+                        card: i,
+                        value,
+                        value_type: self.return_type,
+                    });
+                    if acc.len() >= n {
+                        break;
+                    }
+                }
+            }
+            acc
+        })
     }
 }
 
@@ -553,25 +505,590 @@ Card, ../Card, L"Coordinates"? and R"Coordinates"?, {stat: L"Coordinates" <-> R"
 //     Pairing(usize),
 // }
 
-// pub enum AnswerType {
-//     Selection {
-//         max_true: u8,
-//         max_false: u8,
-//         total: u8,
-//     },
-//     Ranking {
-//         is_ascending: bool,
-//         is_singular: bool,
-//         total: u8,
-//     },
-//     Hangman,
+pub struct TriviaDefCommon {
+    deck_id: u64,
+    question_format: String,
+}
+
+pub struct MultipleChoiceCommon {
+    min_true: u8,
+    max_true: u8,
+    total: u8,
+    is_inverted: bool,
+}
+
+impl MultipleChoiceCommon {
+    fn min_false(&self) -> u8 {
+        self.total - self.max_true
+    }
+
+    fn max_false(&self) -> u8 {
+        self.total - self.min_true
+    }
+
+    fn min_answers(&self) -> u8 {
+        if self.is_inverted {
+            self.min_false()
+        } else {
+            self.min_true
+        }
+    }
+
+    fn max_answers(&self) -> u8 {
+        if self.is_inverted {
+            self.max_false()
+        } else {
+            self.max_true
+        }
+    }
+}
+
+pub enum MultipleChoiceDef {
+    CardStat {
+        left: selectors::Card,
+        right: selectors::Stat,
+        params: MultipleChoiceCommon,
+    },
+    CardTag {
+        left: selectors::Card,
+        right: selectors::Tag,
+        params: MultipleChoiceCommon,
+    },
+    TagCard {
+        left: selectors::Tag,
+        right: selectors::Card,
+        params: MultipleChoiceCommon,
+    },
+    Pairing {
+        left: selectors::Card,
+        right: selectors::Card,
+        separator: char,
+        pairing_id: usize,
+        /// Will be satisfied by incorrect answers, which also must not be in
+        /// the pairing
+        predicate: Option<tinylang::Expression>,
+        // TODO boost
+        params: MultipleChoiceCommon,
+    },
+}
+
+pub struct RankingCommon {
+    is_asc: bool,
+    is_single: bool,
+}
+
+pub enum RankingDef {
+    Card {
+        left: Option<selectors::Category>,
+        right: selectors::Card,
+        stat: tinylang::Expression,
+        stat_type: tinylang::ExprType,
+        params: RankingCommon,
+    },
+    CardCard {
+        left: selectors::Card,
+        right: selectors::Card,
+        stat: tinylang::Expression,
+        stat_type: tinylang::ExprType,
+        params: RankingCommon,
+    },
+}
+
+pub enum HangmanDef {
+    Card {
+        left: Option<selectors::Category>,
+        right: selectors::Card,
+    },
+}
+
+pub enum TriviaDef {
+    MultipleChoice(MultipleChoiceDef),
+    Ranking(RankingDef),
+    Hangman(HangmanDef),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum TriviaExp {
+    /// The selection must contain every ID in the list
+    All { ids: Vec<u8> },
+    /// The selection must not contain any ID in the list
+    None { ids: Vec<u8> },
+    /// The selection must not contain more than `max` IDs in the list
+    NoneLenient { ids: Vec<u8>, max: u8 },
+    /// The selection must contain at least one ID from the list
+    Any { ids: Vec<u8> },
+    /// The slice of the selection `min_pos..min_pos + ids.len()` must contain
+    /// every ID in the list
+    AllPos { ids: Vec<u8>, min_pos: u8 },
+}
+
+/// Compat
+#[derive(Debug, NifUnitEnum)]
+pub enum TriviaAnswerType {
+    Selection,
+    Hangman,
+    StatAsc,
+    StatMin,
+    StatDesc,
+    StatMax,
+}
+
+/// Compat
+#[derive(Debug)]
+pub struct TriviaAnswer<T: ?Sized> {
+    id: u8,
+    answer: String,
+    question_value: Box<T>,
+}
+
+/// Compat
+#[derive(Debug)]
+pub struct Trivia<T: ?Sized> {
+    question: String,
+    answer_type: TriviaAnswerType,
+    min_answers: u8,
+    max_answers: u8,
+    question_value_type: String,
+    options: Vec<TriviaAnswer<T>>,
+    prefilled_answers: Vec<TriviaAnswer<T>>,
+}
+
+error_chain! {
+    foreign_links {
+        DeserializationError(serde_json::Error);
+    }
+
+    errors {
+        NotEnoughData(c: u8) {
+            description("not enough data")
+            display("expected at least {} valid item(s) for TriviaDef", c)
+        }
+    }
+}
+
+type GradeableTrivia = (Trivia<dyn Debug>, Vec<TriviaExp>);
+
+pub trait TriviaGen {
+    fn get_trivia(&self, deck: &ActiveDeck, common: &TriviaDefCommon) -> Result<GradeableTrivia>;
+}
+
+// fn box_expr_value(value: OwnedExprValue) -> Box<dyn Debug> {
+//     match value {
+//         OwnedExprValue::Bool(v) => Box::new(v),
+//         OwnedExprValue::Number(v) => Box::new(v),
+//         OwnedExprValue::LatLng(v) => Box::new(v),
+//         OwnedExprValue::Date(v) => Box::new(v),
+//         OwnedExprValue::String(v) => Box::new(v),
+//     }
 // }
 
-// pub struct TriviaDefCommon {
-//     deck_id: u64,
-//     answer_type: AnswerType,
-//     question_format: String,
-// }
+fn transform_multiple_choice<E, F>(
+    answers_t: Vec<E>,
+    answers_f: Vec<E>,
+    params: &MultipleChoiceCommon,
+    fun: F,
+) -> (Vec<TriviaAnswer<dyn Debug>>, Vec<TriviaExp>)
+where
+    F: Fn(u8, E) -> TriviaAnswer<dyn Debug>,
+{
+    let mut ids_t = vec![];
+    let mut ids_f = vec![];
+    let mut answers = vec![];
+    for (id, (t, inst)) in answers_t
+        .into_iter()
+        .blend(answers_f, params.min_true.into(), params.min_false().into())
+        .enumerate()
+    {
+        if t == params.is_inverted {
+            ids_f.push(id as u8);
+        } else {
+            ids_t.push(id as u8);
+        }
+        answers.push(fun(id as u8, inst))
+    }
+    let expectations = vec![
+        TriviaExp::All { ids: ids_t },
+        TriviaExp::None { ids: ids_f },
+    ];
+    (answers, expectations)
+}
+
+impl TriviaGen for MultipleChoiceDef {
+    fn get_trivia(&self, deck: &ActiveDeck, common: &TriviaDefCommon) -> Result<GradeableTrivia> {
+        match self {
+            MultipleChoiceDef::CardStat {
+                left,
+                right,
+                params,
+            } => {
+                let subj = left
+                    .select(deck, &[CardCond::ExpressionOut(right.expression.clone())])
+                    .ok_or_else(|| Error::from(ErrorKind::NotEnoughData(1)))?;
+                let answers_t =
+                    right.select_n(deck, &[StatCond::Edge(subj)], params.max_true.into());
+                if answers_t.len() < params.min_true.into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_true).into());
+                }
+                let answers_f =
+                    right.select_n(deck, &[StatCond::NoEdge(subj)], params.max_false().into());
+                if answers_f.len() < params.min_false().into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_false()).into());
+                }
+                let (answers, expectations) =
+                    transform_multiple_choice(answers_t, answers_f, params, |id, inst| {
+                        TriviaAnswer {
+                            id,
+                            answer: inst.value.get_string().unwrap().to_owned(),
+                            question_value: Box::new(deck.data.cards[inst.card].title.clone()),
+                        }
+                    });
+                let card_title = deck.data.cards[subj.0].title.as_str();
+                let trivia = Trivia {
+                    question: common.question_format.as_str().replace("{}", card_title),
+                    answer_type: TriviaAnswerType::Selection,
+                    min_answers: params.min_answers(),
+                    max_answers: params.max_answers(),
+                    question_value_type: "string".into(),
+                    options: answers,
+                    prefilled_answers: vec![],
+                };
+                Ok((trivia, expectations))
+            }
+            MultipleChoiceDef::CardTag {
+                left,
+                right,
+                params,
+            } => {
+                let subj = left
+                    .select(deck, &[CardCond::TagOut(right.which)])
+                    .ok_or_else(|| Error::from(ErrorKind::NotEnoughData(1)))?;
+                let answers_t =
+                    right.select_n(deck, &[TagCond::Edge(subj)], params.max_true.into());
+                if answers_t.len() < params.min_true.into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_true).into());
+                }
+                let answers_f =
+                    right.select_n(deck, &[TagCond::NoEdge(subj)], params.max_false().into());
+                if answers_f.len() < params.min_false().into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_false()).into());
+                }
+                let (answers, expectations) =
+                    transform_multiple_choice(answers_t, answers_f, params, |id, inst| {
+                        // TODO lookup tag->cards
+                        let question_value: Box<dyn Debug> = Box::new(<Vec<String>>::new());
+                        TriviaAnswer {
+                            id,
+                            answer: inst.value,
+                            question_value,
+                        }
+                    });
+                let card_title = deck.data.cards[subj.0].title.as_str();
+                let trivia = Trivia {
+                    question: common.question_format.as_str().replace("{}", card_title),
+                    answer_type: TriviaAnswerType::Selection,
+                    min_answers: params.min_answers(),
+                    max_answers: params.max_answers(),
+                    question_value_type: "string[]".into(),
+                    options: answers,
+                    prefilled_answers: vec![],
+                };
+                Ok((trivia, expectations))
+            }
+            MultipleChoiceDef::TagCard {
+                left,
+                right,
+                params,
+            } => {
+                let subj = left
+                    .select(deck, &[])
+                    .ok_or_else(|| Error::from(ErrorKind::NotEnoughData(1)))?;
+                let answers_t =
+                    right.select_n(deck, &[CardCond::Tag(subj.clone())], params.max_true.into());
+                if answers_t.len() < params.min_true.into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_true).into());
+                }
+                let answers_f = right.select_n(
+                    deck,
+                    &[CardCond::NoTag(subj.clone())],
+                    params.max_false().into(),
+                );
+                if answers_f.len() < params.min_false().into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_false()).into());
+                }
+                let (answers, expectations) =
+                    transform_multiple_choice(answers_t, answers_f, params, |id, inst| {
+                        let question_value: Box<dyn Debug> =
+                            Box::new(deck.data.tag_defs[left.which].values[inst.0].to_vec());
+                        TriviaAnswer {
+                            id,
+                            answer: deck.data.cards[inst.0].title.clone(),
+                            question_value,
+                        }
+                    });
+                let trivia = Trivia {
+                    question: common.question_format.as_str().replace("{}", &subj.value),
+                    answer_type: TriviaAnswerType::Selection,
+                    min_answers: params.min_answers(),
+                    max_answers: params.max_answers(),
+                    question_value_type: "string[]".into(),
+                    options: answers,
+                    prefilled_answers: vec![],
+                };
+                Ok((trivia, expectations))
+            }
+            MultipleChoiceDef::Pairing {
+                left,
+                right,
+                separator,
+                pairing_id,
+                predicate,
+                params,
+            } => {
+                let subjects_t = left.select_n(
+                    deck,
+                    &[CardCond::EdgeOut(*pairing_id)],
+                    params.max_true.into(),
+                );
+                if subjects_t.len() < params.min_true.into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_true).into());
+                }
+                let mut answers_t = vec![];
+                for inst in subjects_t {
+                    let inst2 = right
+                        .select(deck, &[CardCond::Edge(inst, *pairing_id)])
+                        .ok_or_else(|| Error::from(ErrorKind::NotEnoughData(1)))?;
+                    answers_t.push((inst, inst2));
+                }
+                let lconds: Vec<_> = predicate
+                    .iter()
+                    .map(|e| CardCond::ExpressionOut(e.clone()))
+                    .collect();
+                let mut answers_f = vec![];
+                for _ in 0..2 {
+                    let subjects_f = left.select_n(deck, &lconds, params.max_false().into());
+                    for inst in subjects_f {
+                        let rconds: Vec<_> = predicate
+                            .iter()
+                            .map(|e| CardCond::Predicate(e.clone(), Some(inst)))
+                            .collect();
+                        if let Some(inst2) = right.select(deck, &rconds) {
+                            answers_f.push((inst, inst2));
+                            if answers_f.len() >= params.max_false().into() {
+                                break;
+                            }
+                        }
+                    }
+                    if answers_f.len() >= params.min_false().into() {
+                        break;
+                    }
+                }
+                if answers_f.len() < params.min_false().into() {
+                    return Err(ErrorKind::NotEnoughData(params.min_false().into()).into());
+                }
+                let (answers, expectations) =
+                    transform_multiple_choice(answers_t, answers_f, params, |id, (inst, inst2)| {
+                        // TODO edge information
+                        let question_value: Box<dyn Debug> = Box::new(String::new());
+                        TriviaAnswer {
+                            id,
+                            answer: format!(
+                                "{} {} {}",
+                                deck.data.cards[inst.0].title,
+                                separator,
+                                deck.data.cards[inst2.0].title
+                            ),
+                            question_value,
+                        }
+                    });
+                let trivia = Trivia {
+                    question: common.question_format.clone(),
+                    answer_type: TriviaAnswerType::Selection,
+                    min_answers: params.min_answers(),
+                    max_answers: params.max_answers(),
+                    question_value_type: "string".into(),
+                    options: answers,
+                    prefilled_answers: vec![],
+                };
+                Ok((trivia, expectations))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use rstest::{fixture, rstest};
+
+    use crate::{
+        importer,
+        tinylang::{expr, ExprType},
+    };
+
+    use super::*;
+
+    #[fixture]
+    #[once]
+    fn decks() -> Vec<ActiveDeck> {
+        let json_bytes = std::fs::read("../../1687456135278600_in.json").unwrap();
+        let json = String::from_utf8(json_bytes).unwrap();
+        let decks = importer::parse_spreadsheet(
+            vec![
+                "Movies".into(),
+                "Animals".into(),
+                "Music:Billoard US".into(),
+                "The Rich and Famous".into(),
+                "Places".into(),
+                "Characters".into(),
+            ],
+            json,
+        )
+        .unwrap();
+        decks
+            .into_iter()
+            .map(|mut d| {
+                scale_popularity(&mut d.deck);
+                ActiveDeck::new(d.deck.data)
+            })
+            .collect()
+    }
+
+    #[rstest]
+    fn test_multiple_choice_card_stat(
+        decks: &Vec<ActiveDeck>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let definition = MultipleChoiceDef::CardStat {
+            left: selectors::Card { difficulty: -0.5 },
+            right: selectors::Stat {
+                difficulty: -0.5,
+                expression: expr("L\"Capital\"").unwrap(),
+                return_type: ExprType::String,
+            },
+            params: MultipleChoiceCommon {
+                min_true: 1,
+                max_true: 1,
+                total: 4,
+                is_inverted: false,
+            },
+        };
+        let common = TriviaDefCommon {
+            deck_id: 4,
+            question_format: "What is the capital of {}?".into(),
+        };
+        let (trivia, exps) = definition.get_trivia(&decks[4], &common)?;
+        writeln!(std::io::stderr(), "trivia = {:?}", trivia)?;
+        writeln!(std::io::stderr(), "exps = {:?}", exps)?;
+        for _ in 0..1000 {
+            let _ = definition.get_trivia(&decks[4], &common)?;
+        }
+        Ok(())
+    }
+
+    #[rstest]
+    fn test_multiple_choice_card_tag(
+        decks: &Vec<ActiveDeck>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let definition = MultipleChoiceDef::CardTag {
+            left: selectors::Card { difficulty: -0.5 },
+            right: selectors::Tag {
+                difficulty: -0.5,
+                which: decks[0]
+                    .data
+                    .tag_defs
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, td)| (td.label == "Director").then_some(i))
+                    .next()
+                    .unwrap(),
+            },
+            params: MultipleChoiceCommon {
+                min_true: 1,
+                max_true: 1,
+                total: 4,
+                is_inverted: false,
+            },
+        };
+        let common = TriviaDefCommon {
+            deck_id: 0,
+            question_format: "Who directed {}?".into(),
+        };
+        let (trivia, exps) = definition.get_trivia(&decks[0], &common)?;
+        writeln!(std::io::stderr(), "trivia = {:?}", trivia)?;
+        writeln!(std::io::stderr(), "exps = {:?}", exps)?;
+        for _ in 0..1000 {
+            let _ = definition.get_trivia(&decks[0], &common)?;
+        }
+        Ok(())
+    }
+
+    #[rstest]
+    fn test_multiple_choice_tag_card(
+        decks: &Vec<ActiveDeck>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let definition = MultipleChoiceDef::TagCard {
+            left: selectors::Tag {
+                difficulty: -0.5,
+                which: decks[0]
+                    .data
+                    .tag_defs
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, td)| (td.label == "Director").then_some(i))
+                    .next()
+                    .unwrap(),
+            },
+            right: selectors::Card { difficulty: -0.5 },
+            params: MultipleChoiceCommon {
+                min_true: 1,
+                max_true: 1,
+                total: 4,
+                is_inverted: false,
+            },
+        };
+        let common = TriviaDefCommon {
+            deck_id: 0,
+            question_format: "Which movie was directed by {}?".into(),
+        };
+        let (trivia, exps) = definition.get_trivia(&decks[0], &common)?;
+        writeln!(std::io::stderr(), "trivia = {:?}", trivia)?;
+        writeln!(std::io::stderr(), "exps = {:?}", exps)?;
+        for _ in 0..1000 {
+            let _ = definition.get_trivia(&decks[0], &common)?;
+        }
+        Ok(())
+    }
+
+    #[rstest]
+    fn test_multiple_choice_pairing(
+        decks: &Vec<ActiveDeck>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let definition = MultipleChoiceDef::Pairing {
+            left: selectors::Card { difficulty: -0.5 },
+            right: selectors::Card { difficulty: -0.5 },
+            separator: '+',
+            pairing_id: 0,
+            predicate: Some(expr("L\"Pronoun\" == R\"Partner pronoun\" and R\"Pronoun\" == L\"Partner pronoun\"").unwrap()),
+            params: MultipleChoiceCommon {
+                min_true: 3,
+                max_true: 3,
+                total: 4,
+                is_inverted: true,
+            },
+        };
+        let common = TriviaDefCommon {
+            deck_id: 3,
+            question_format: "Pick the fake couple.".into(),
+        };
+        let (trivia, exps) = definition.get_trivia(&decks[3], &common)?;
+        writeln!(std::io::stderr(), "trivia = {:?}", trivia)?;
+        writeln!(std::io::stderr(), "exps = {:?}", exps)?;
+        for _ in 0..1000 {
+            let _ = definition.get_trivia(&decks[3], &common)?;
+        }
+        Ok(())
+    }
+}
 
 // /// Trivia def with `Card` subject, `Tag` answers,
 // /// and relationship `tag in card.tags[tag_label]`
