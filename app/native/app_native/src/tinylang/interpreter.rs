@@ -405,57 +405,6 @@ pub enum OwnedExprValue {
     StringArray(SmallVec<[String; 2]>),
 }
 
-impl OwnedExprValue {
-    pub fn get_bool(&self) -> Option<&bool> {
-        match self {
-            OwnedExprValue::Bool(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_number(&self) -> Option<&f64> {
-        match self {
-            OwnedExprValue::Number(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_lat_lng(&self) -> Option<&(f64, f64)> {
-        match self {
-            OwnedExprValue::LatLng(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_date(&self) -> Option<&NaiveDateTimeExt> {
-        match self {
-            OwnedExprValue::Date(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_string(&self) -> Option<&str> {
-        match self {
-            OwnedExprValue::String(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_int_array(&self) -> Option<&[i64]> {
-        match self {
-            OwnedExprValue::IntArray(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_string_array(&self) -> Option<&[String]> {
-        match self {
-            OwnedExprValue::StringArray(v) => Some(v),
-            _ => None,
-        }
-    }
-}
-
 impl From<bool> for OwnedExprValue {
     fn from(value: bool) -> Self {
         OwnedExprValue::Bool(value)

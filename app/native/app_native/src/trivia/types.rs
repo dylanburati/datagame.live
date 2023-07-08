@@ -1,19 +1,12 @@
 use std::{
     cell::RefCell,
-    cmp::Ordering,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     fmt::{Debug, Display},
 };
 
-use error_chain::error_chain;
 use rustler::{Encoder, NifUnitEnum};
-use smallvec::SmallVec;
 
-use crate::{
-    probability::{Blend, ReservoirSample, SampleTree},
-    tinylang::{self, IntermediateExpr, OwnedExprValue},
-    types::{Card, CardTable, Deck, EdgeSide, NaiveDateTimeExt},
-};
+use crate::{probability::SampleTree, tinylang::OwnedExprValue, types::CardTable};
 
 pub struct KnowledgeBase {
     pub decks: Vec<ActiveDeck>,
@@ -70,7 +63,6 @@ pub struct ActivePairing {
 }
 
 pub struct DeckView {
-    difficulty: f64,
     tree: SampleTree<usize>,
 }
 
@@ -102,10 +94,7 @@ impl DeckView {
                 .filter(|(_, c)| !c.is_disabled)
                 .map(|(i, c)| (f64::exp(-difficulty * c.popularity), i)),
         );
-        DeckView {
-            difficulty,
-            tree: sample_tree,
-        }
+        DeckView { tree: sample_tree }
     }
 
     pub fn iter(&mut self) -> DeckViewIter<'_> {

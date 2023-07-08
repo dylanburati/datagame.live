@@ -12,7 +12,7 @@ use super::{
         selectors, ActiveDeck, GradeableTrivia, QValue, Trivia, TriviaAnswer, TriviaAnswerType,
         TriviaDefCommon,
     },
-    Error, ErrorKind, Result,
+    ErrorKind, Result,
 };
 
 pub struct MultipleChoiceCommon {
@@ -51,7 +51,7 @@ impl MultipleChoiceCommon {
 pub enum MultipleChoiceDef {
     CardStat {
         left: Option<selectors::Category>,
-        right: selectors::Card,
+        right: selectors::Stat,
         params: MultipleChoiceCommon,
     },
     CardTag {
@@ -153,19 +153,28 @@ impl TriviaGen for MultipleChoiceDef {
                 if answers.len() < params.total.into() {
                     return Err(ErrorKind::NotEnoughData(params.total).into());
                 }
-                let subj = answers
-                    .pop()
-                    .ok_or_else(|| ErrorKind::NotEnoughData(1))?;
-                let (answers, expectations) =
-                    transform_multiple_choice(vec![subj.clone()], answers, params, |id, inst| {
+                let subj = answers.pop().ok_or_else(|| ErrorKind::NotEnoughData(1))?;
+
+                let (answers, expectations) = transform_multiple_choice(
+                    vec![subj.clone()],
+                    answers,
+                    params,
+                    |id, (idx, inst)| {
+                        let answer = match inst.value {
+                            OwnedExprValue::String(v) => v,
+                            _ => panic!(
+                                "MultipleChoiceDef::CardStat: right must have return type String"
+                            ),
+                        };
                         TriviaAnswer {
                             id,
-                            answer: inst.stats[0].value.get_string().unwrap().to_owned(),
-                            question_value: deck.data.cards[inst.index].title.clone().into(),
+                            answer,
+                            question_value: deck.data.cards[idx].title.clone().into(),
                         }
-                    });
-                let card_title = deck.data.cards[subj.index].title.as_str();
-                let question = common.question_format.as_str().replace("{}", card_title);
+                    },
+                );
+                let card_title = deck.data.cards[subj.0].title.as_str();
+                let question = common.question_format.replace("{}", card_title);
                 let trivia = Trivia::new_selection(params, question, "string", answers);
                 Ok((trivia, expectations))
             }
@@ -199,7 +208,7 @@ impl TriviaGen for MultipleChoiceDef {
                             question_value: OwnedExprValue::StringArray(SmallVec::new()).into(),
                         }
                     });
-                let card_title = deck.data.cards[subj.index].title.as_str();
+                let card_title = &deck.data.cards[subj.index].title;
                 let question = common.question_format.as_str().replace("{}", card_title);
                 let trivia = Trivia::new_selection(params, question, "string[]", answers);
                 Ok((trivia, expectations))
@@ -235,7 +244,7 @@ impl TriviaGen for MultipleChoiceDef {
                                 .into(),
                         }
                     });
-                let question = common.question_format.as_str().replace("{}", &subj.value);
+                let question = common.question_format.replace("{}", &subj.value);
                 let trivia = Trivia::new_selection(params, question, "string[]", answers);
                 Ok((trivia, expectations))
             }
@@ -270,10 +279,10 @@ impl TriviaGen for MultipleChoiceDef {
                 for _ in 0..2 {
                     let subjects_f = left.select_n(deck, &lconds, params.max_false().into());
                     for inst in subjects_f {
-                        let rconds: Vec<_> = predicate
-                            .iter()
-                            .map(|e| CardCond::Predicate(e.clone(), Some(inst.index)))
-                            .collect();
+                        let mut rconds = vec![CardCond::NoEdge(inst.index, *pairing_id)];
+                        predicate.iter().for_each(|e| {
+                            rconds.push(CardCond::Predicate(e.clone(), Some(inst.index)))
+                        });
                         if let Some(inst2) = right.select(deck, &rconds) {
                             answers_f.push((inst, inst2));
                             if answers_f.len() >= params.max_false().into() {
@@ -323,7 +332,7 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    fn test_card_stat(decks: &Vec<Deck>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_card_stat(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
             .cloned()
@@ -331,12 +340,10 @@ mod tests {
             .collect();
         let definition = MultipleChoiceDef::CardStat {
             left: None,
-            right: selectors::Card {
+            right: selectors::Stat {
                 difficulty: -0.5,
-                stats: vec![selectors::StatNested {
-                    expression: expr("R\"Capital\"").unwrap(),
-                    return_type: ExprType::String,
-                }],
+                expression: expr("R\"Capital\"").unwrap(),
+                return_type: ExprType::String,
             },
             params: MultipleChoiceCommon {
                 min_true: 1,
@@ -363,7 +370,7 @@ mod tests {
     }
 
     #[rstest]
-    fn test_card_tag(decks: &Vec<Deck>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_card_tag(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
             .cloned()
@@ -410,7 +417,7 @@ mod tests {
     }
 
     #[rstest]
-    fn test_tag_card(decks: &Vec<Deck>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_tag_card(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
             .cloned()
@@ -457,7 +464,7 @@ mod tests {
     }
 
     #[rstest]
-    fn test_pairing(decks: &Vec<Deck>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_pairing(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
             .cloned()

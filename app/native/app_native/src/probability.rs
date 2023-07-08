@@ -157,13 +157,11 @@ where
                         self.state = (None, Some(0));
                         self.next()
                     }
+                } else if let Some(v) = self.right.next() {
+                    Some((false, v))
                 } else {
-                    if let Some(v) = self.right.next() {
-                        Some((false, v))
-                    } else {
-                        self.state = (Some(0), None);
-                        self.next()
-                    }
+                    self.state = (Some(0), None);
+                    self.next()
                 }
             }
         }
@@ -237,7 +235,7 @@ impl<T: Copy> SampleTree<T> {
                 a.push(node);
                 (x + node.weight, a)
             });
-        if data.len() > 0 {
+        if !data.is_empty() {
             let _ = Self::set_left_weight(&mut data, 0);
         }
         let frozen_data = data.clone();
@@ -256,7 +254,9 @@ impl<T: Copy> SampleTree<T> {
             return data[index].weight;
         }
         let mut total = data[index].weight;
-        let mut subweights = data[index].subweights.clone();
+        let mut subweights = data[index].subweights;
+        // subweights isn't long enough to make this range into enumerate().take(B)
+        #[allow(clippy::needless_range_loop)]
         for which in 0..B {
             let child_index = first_child_index + which;
             if child_index >= data.len() {

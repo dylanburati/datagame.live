@@ -71,7 +71,7 @@ impl PairingColumns<'_> {
             Some(rc) => rc.left.index,
         }
     }
-    
+
     fn end_index(&self) -> usize {
         match &self.criteria_common {
             None => self.criteria_for_all.index,
@@ -768,7 +768,7 @@ fn convert_pairing(
             sheet_column_name(pairing_columns.end_index()),
         ));
         callouts.push(callout);
-        return None
+        return None;
     }
 
     let mut requirements_text = &mut String::new();
@@ -895,7 +895,13 @@ fn convert_pairings(
         return result;
     }
     for pairing_columns in pairing_columns_list {
-        if let Some(pairing) = convert_pairing(pairing_columns, card_table, &index_map, &pairing_name_set, callouts) {
+        if let Some(pairing) = convert_pairing(
+            pairing_columns,
+            card_table,
+            &index_map,
+            &pairing_name_set,
+            callouts,
+        ) {
             pairing_name_set.insert(pairing.label.clone());
             result.push(pairing);
         }
@@ -997,7 +1003,8 @@ mod tests {
 
     use crate::{
         importer::parse_value_range,
-        tinylang::{expr, ExprType},
+        match_it,
+        tinylang::{expr, ExprType, OwnedExprValue},
         types::{Callout, Card, CardTable, StatArray, StatUnit},
     };
 
@@ -1208,13 +1215,13 @@ mod tests {
         assert_eq!(
             expr.get_value(0, 13)
                 .unwrap()
-                .map(|r| *r.get_number().unwrap()),
+                .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap()),
             Some(2261.0)
         );
         assert_eq!(
             expr.get_value(0, 14)
                 .unwrap()
-                .map(|r| *r.get_number().unwrap()),
+                .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap()),
             None
         );
         for i in 0..14 {
@@ -1222,11 +1229,11 @@ mod tests {
                 let ltr = expr
                     .get_value(i, j)
                     .unwrap()
-                    .map(|r| *r.get_number().unwrap());
+                    .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap());
                 let rtl = expr
                     .get_value(j, i)
                     .unwrap()
-                    .map(|r| *r.get_number().unwrap());
+                    .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap());
                 assert_eq!(ltr.map(|x| -x), rtl);
             }
         }

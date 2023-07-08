@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap, num::TryFromIntError};
+use std::{collections::HashMap, num::TryFromIntError};
 
 use crate::{
     tinylang::{OwnedExprValue},
@@ -6,12 +6,11 @@ use crate::{
 };
 
 use super::{
-    engine::{CardCond, Select, TriviaGen},
+    engine::{Select, TriviaGen},
     types::{
-        instances, selectors, ActiveDeck, GradeableTrivia, QValue, Trivia, TriviaAnswer,
+        selectors, ActiveDeck, GradeableTrivia, QValue, Trivia, TriviaAnswer,
         TriviaAnswerType, TriviaDefCommon,
-    },
-    Error, ErrorKind, Result,
+    }, ErrorKind, Result,
 };
 
 pub enum HangmanDef {
@@ -145,7 +144,7 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    fn test_card(decks: &Vec<Deck>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_card(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
             .cloned()
@@ -176,7 +175,7 @@ mod tests {
     }
 
     #[rstest]
-    fn test_stat(decks: &Vec<Deck>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_stat(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
             .cloned()

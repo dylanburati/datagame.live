@@ -1,4 +1,5 @@
 mod importer;
+mod macros;
 mod probability;
 mod tinylang;
 mod trivia;

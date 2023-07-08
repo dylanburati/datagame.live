@@ -170,7 +170,7 @@ impl TriviaGen for RankingDef {
                     };
                     let ans = TriviaAnswer {
                         id,
-                        answer: deck.data.cards[inst.index].title.clone().into(),
+                        answer: deck.data.cards[inst.index].title.clone(),
                         question_value,
                     };
                     (num, ans)
@@ -279,7 +279,7 @@ mod tests {
 
     #[rstest]
     fn test_card_number(
-        decks: &Vec<Deck>,
+        decks: &[Deck],
         #[values(false, true)] is_asc: bool,
         #[values(false, true)] is_single: bool,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -324,7 +324,7 @@ mod tests {
 
     #[rstest]
     fn test_card_date(
-        decks: &Vec<Deck>,
+        decks: &[Deck],
         #[values(false, true)] is_asc: bool,
         #[values(false, true)] is_single: bool,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -369,7 +369,7 @@ mod tests {
 
     #[rstest]
     fn test_card_squared(
-        decks: &Vec<Deck>,
+        decks: &[Deck],
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
