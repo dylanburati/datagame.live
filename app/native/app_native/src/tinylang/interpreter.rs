@@ -1,30 +1,31 @@
-use std::{borrow::Cow, cmp::Ordering};
+use std::{borrow::Cow, cmp::Ordering, f64::consts::PI};
+
+use smallvec::SmallVec;
 
 use crate::types::{CardTable, EdgeSide, NaiveDateTimeExt, StatArray};
 
-use super::parser::{BinOp, UnOp, Expression};
+use super::parser::{BinOp, Expression, UnOp};
 
-#[rustfmt::skip]
-trait TryOps {
+trait TryOps: Sized {
     type Error;
 
-    fn bool(self) -> Result<Self, Self::Error> where Self: Sized;
-    fn not(self) -> Result<Self, Self::Error> where Self: Sized;
-    fn neg(self) -> Result<Self, Self::Error> where Self: Sized;
-    fn eq(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn neq(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn lt(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn lte(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn gt(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn gte(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn and(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn or(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn add(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn sub(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn mul(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn div(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn pow(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
-    fn dist(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized;
+    fn bool(self) -> Result<Self, Self::Error>;
+    fn not(self) -> Result<Self, Self::Error>;
+    fn neg(self) -> Result<Self, Self::Error>;
+    fn eq(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn neq(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn lt(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn lte(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn gt(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn gte(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn and(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn or(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn add(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn sub(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn mul(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn div(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn pow(self, rhs: Self) -> Result<Self, Self::Error>;
+    fn dist(self, rhs: Self) -> Result<Self, Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,15 +41,15 @@ pub enum ExprType {
 impl TryOps for ExprType {
     type Error = String;
 
-    fn bool(self) -> Result<Self, Self::Error> where Self: Sized {
+    fn bool(self) -> Result<Self, Self::Error> {
         Ok(ExprType::Bool)
     }
 
-    fn not(self) -> Result<Self, Self::Error> where Self: Sized {
+    fn not(self) -> Result<Self, Self::Error> {
         Ok(ExprType::Bool)
     }
 
-    fn neg(self) -> Result<Self, Self::Error> where Self: Sized {
+    fn neg(self) -> Result<Self, Self::Error> {
         if self == ExprType::Number {
             Ok(self)
         } else {
@@ -56,16 +57,16 @@ impl TryOps for ExprType {
         }
     }
 
-    fn eq(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn eq(self, rhs: Self) -> Result<Self, Self::Error> {
         if self == rhs {
             Ok(ExprType::Bool)
         } else {
             Err(format!("== and != do not apply to ({:?}, {:?})", self, rhs))
         }
     }
-    fn neq(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.eq(rhs) }
+    fn neq(self, rhs: Self) -> Result<Self, Self::Error> { self.eq(rhs) }
 
-    fn lt(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn lt(self, rhs: Self) -> Result<Self, Self::Error> {
         match self {
             lt @ (ExprType::Number | ExprType::Date) if lt == rhs => Ok(ExprType::Bool),
             _ => Err(format!(
@@ -74,11 +75,11 @@ impl TryOps for ExprType {
             )),
         }
     }
-    fn lte(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.lt(rhs) }
-    fn gt(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.lt(rhs) }
-    fn gte(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.lt(rhs) }
+    fn lte(self, rhs: Self) -> Result<Self, Self::Error> { self.lt(rhs) }
+    fn gt(self, rhs: Self) -> Result<Self, Self::Error> { self.lt(rhs) }
+    fn gte(self, rhs: Self) -> Result<Self, Self::Error> { self.lt(rhs) }
 
-    fn and(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn and(self, rhs: Self) -> Result<Self, Self::Error> {
         if matches!((self, rhs), (ExprType::Bool, ExprType::Bool)) {
             Ok(ExprType::Bool)
         } else {
@@ -88,9 +89,9 @@ impl TryOps for ExprType {
             ))
         }
     }
-    fn or(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.and(rhs) }
+    fn or(self, rhs: Self) -> Result<Self, Self::Error> { self.and(rhs) }
 
-    fn add(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn add(self, rhs: Self) -> Result<Self, Self::Error> {
         if matches!((self, rhs), (ExprType::Number, ExprType::Number)) {
             Ok(ExprType::Number)
         } else {
@@ -101,18 +102,18 @@ impl TryOps for ExprType {
         }
     }
 
-    fn sub(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn sub(self, rhs: Self) -> Result<Self, Self::Error> {
         match self {
             lt @ (ExprType::Number | ExprType::Date) if lt == rhs => Ok(ExprType::Number),
             _ => Err(format!("- does not apply to ({:?}, {:?})", self, rhs)),
         }
     }
 
-    fn mul(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.add(rhs) }
-    fn div(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.add(rhs) }
-    fn pow(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { self.add(rhs) }
+    fn mul(self, rhs: Self) -> Result<Self, Self::Error> { self.add(rhs) }
+    fn div(self, rhs: Self) -> Result<Self, Self::Error> { self.add(rhs) }
+    fn pow(self, rhs: Self) -> Result<Self, Self::Error> { self.add(rhs) }
 
-    fn dist(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn dist(self, rhs: Self) -> Result<Self, Self::Error> {
         if matches!((self, rhs), (ExprType::LatLng, ExprType::LatLng)) {
             Ok(ExprType::Number)
         } else {
@@ -128,6 +129,7 @@ pub enum ExprValue<'a> {
     LatLng((f64, f64)),
     Date(NaiveDateTimeExt),
     String(Cow<'a, str>),
+    StringArray(Cow<'a, [String]>),
 }
 
 impl From<bool> for ExprValue<'_> {
@@ -157,6 +159,12 @@ impl From<NaiveDateTimeExt> for ExprValue<'_> {
 impl<'a> From<Cow<'a, str>> for ExprValue<'a> {
     fn from(value: Cow<'a, str>) -> Self {
         ExprValue::String(value)
+    }
+}
+
+impl<'a> From<Cow<'a, [String]>> for ExprValue<'a> {
+    fn from(value: Cow<'a, [String]>) -> Self {
+        ExprValue::StringArray(value)
     }
 }
 
@@ -196,6 +204,13 @@ impl<'a> ExprValue<'a> {
         }
     }
 
+    pub fn get_string_array(&self) -> Option<&[String]> {
+        match self {
+            ExprValue::StringArray(v) => Some(v),
+            _ => None,
+        }
+    }
+
     fn equals(&self, rhs: &ExprValue) -> Option<bool> {
         match self {
             ExprValue::Bool(lhs) => rhs.get_bool().map(|v| lhs == v),
@@ -203,6 +218,7 @@ impl<'a> ExprValue<'a> {
             ExprValue::LatLng(lhs) => rhs.get_lat_lng().map(|v| lhs == v),
             ExprValue::Date(lhs) => rhs.get_date().map(|v| lhs == v),
             ExprValue::String(lhs) => rhs.get_string().map(|v| lhs == &v),
+            ExprValue::StringArray(lhs) => rhs.get_string_array().map(|v| lhs == &v),
         }
     }
 
@@ -219,63 +235,63 @@ impl<'a> ExprValue<'a> {
 impl<'a> TryOps for ExprValue<'a> {
     type Error = ();
 
-    fn bool(self) -> Result<Self, Self::Error> where Self: Sized {
+    fn bool(self) -> Result<Self, Self::Error> {
         match self {
             ExprValue::Bool(v) => Ok(ExprValue::Bool(v)),
             _ => Ok(ExprValue::Bool(true)),
         }
     }
 
-    fn not(self) -> Result<Self, Self::Error> where Self: Sized {
+    fn not(self) -> Result<Self, Self::Error> {
         match self {
             ExprValue::Bool(v) => Ok(ExprValue::Bool(!v)),
             _ => Ok(ExprValue::Bool(false)),
         }
     }
 
-    fn neg(self) -> Result<Self, Self::Error> where Self: Sized {
+    fn neg(self) -> Result<Self, Self::Error> {
         let val = self.get_number().map(|x| -*x).ok_or(())?;
         Ok(val.into())
     }
 
-    fn eq(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn eq(self, rhs: Self) -> Result<Self, Self::Error> {
         let val = self.equals(&rhs).ok_or(())?;
         Ok(val.into())
     }
-    fn neq(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized { 
+    fn neq(self, rhs: Self) -> Result<Self, Self::Error> { 
         let val = self.equals(&rhs).ok_or(())?;
         Ok((!val).into())
     }
 
-    fn lt(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn lt(self, rhs: Self) -> Result<Self, Self::Error> {
         let cv = self.cmp(&rhs).ok_or(())?;
         let val = matches!(cv, Ordering::Less);
         Ok(val.into())
     }
-    fn lte(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn lte(self, rhs: Self) -> Result<Self, Self::Error> {
         let cv = self.cmp(&rhs).ok_or(())?;
         let val = matches!(cv, Ordering::Less | Ordering::Equal);
         Ok(val.into())
     }
-    fn gt(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn gt(self, rhs: Self) -> Result<Self, Self::Error> {
         let cv = self.cmp(&rhs).ok_or(())?;
         let val = matches!(cv, Ordering::Greater);
         Ok(val.into())
     }
-    fn gte(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn gte(self, rhs: Self) -> Result<Self, Self::Error> {
         let cv = self.cmp(&rhs).ok_or(())?;
         let val = matches!(cv, Ordering::Greater | Ordering::Equal);
         Ok(val.into())
     }
 
-    fn and(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn and(self, rhs: Self) -> Result<Self, Self::Error> {
         let lhs = self.get_bool().ok_or(())?;
         if !lhs {
             return Ok(ExprValue::Bool(false));
         }
         Ok(rhs)
     }
-    fn or(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn or(self, rhs: Self) -> Result<Self, Self::Error> {
         let lhs = self.get_bool().ok_or(())?;
         if *lhs {
             return Ok(ExprValue::Bool(true));
@@ -283,13 +299,13 @@ impl<'a> TryOps for ExprValue<'a> {
         Ok(rhs)
     }
 
-    fn add(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn add(self, rhs: Self) -> Result<Self, Self::Error> {
         let x1 = self.get_number().ok_or(())?;
         let x2 = rhs.get_number().ok_or(())?;
         Ok((x1 + x2).into())
     }
 
-    fn sub(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn sub(self, rhs: Self) -> Result<Self, Self::Error> {
         match self {
             ExprValue::Number(x1) => {
                 let x2 = rhs.get_number().ok_or(())?;
@@ -304,27 +320,31 @@ impl<'a> TryOps for ExprValue<'a> {
         }
     }
 
-    fn mul(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn mul(self, rhs: Self) -> Result<Self, Self::Error> {
         let x1 = self.get_number().ok_or(())?;
         let x2 = rhs.get_number().ok_or(())?;
         Ok((x1 * x2).into())
     }
-    fn div(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn div(self, rhs: Self) -> Result<Self, Self::Error> {
         let x1 = self.get_number().ok_or(())?;
         let x2 = rhs.get_number().ok_or(())?;
         Ok((x1 / x2).into())
     }
-    fn pow(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
+    fn pow(self, rhs: Self) -> Result<Self, Self::Error> {
         let x1 = self.get_number().ok_or(())?;
         let x2 = rhs.get_number().ok_or(())?;
         Ok(x1.powf(*x2).into())
     }
     
-    fn dist(self, rhs: Self) -> Result<Self, Self::Error> where Self: Sized {
-        let (lat1, lon1) = self.get_lat_lng().ok_or(())?;
-        let (lat2, lon2) = rhs.get_lat_lng().ok_or(())?;
-        let flattening = 1.0 / 298.257223563;
-        let radius_km = 6378.137;
+    fn dist(self, rhs: Self) -> Result<Self, Self::Error> {
+        const FLATTENING: f64 = 1.0 / 298.257223563;
+        const RADIUS_KM: f64 = 6378.137;
+        let (mut lat1, mut lon1) = self.get_lat_lng().ok_or(())?;
+        let (mut lat2, mut lon2) = rhs.get_lat_lng().ok_or(())?;
+        lat1 *= PI / 180.0;
+        lon1 *= PI / 180.0;
+        lat2 *= PI / 180.0;
+        lon2 *= PI / 180.0;
 
         #[inline]
         fn haversin(x: f64) -> f64 {
@@ -343,8 +363,8 @@ impl<'a> TryOps for ExprValue<'a> {
         }
 
         // lambert's formula
-        let b1 = f64::atan((1.0 - flattening) * lat1.tan());
-        let b2 = f64::atan((1.0 - flattening) * lat2.tan());
+        let b1 = f64::atan((1.0 - FLATTENING) * lat1.tan());
+        let b2 = f64::atan((1.0 - FLATTENING) * lat2.tan());
         let dlambda = f64::abs(lon1 - lon2);
         let dphi = f64::abs(b1 - b2);
         let central2 = haversin(dphi) + haversin(dlambda) * (1.0 - haversin(dphi) - haversin(lat1 + lat2));
@@ -354,7 +374,7 @@ impl<'a> TryOps for ExprValue<'a> {
         let q = 0.5 * (b2 - b1);
         let x = (central - f64::sin(central)) * sin2(p) * cos2(q) / cos2(halfcentral);
         let y = (central + f64::sin(central)) * sin2(q) * cos2(p) / sin2(halfcentral);
-        let dist_km = radius_km * (central - 0.5 * flattening * (x + y));
+        let dist_km = RADIUS_KM * (central - 0.5 * FLATTENING * (x + y));
         Ok(dist_km.into())
     }
 }
@@ -366,6 +386,7 @@ pub enum OwnedExprValue {
     LatLng((f64, f64)),
     Date(NaiveDateTimeExt),
     String(String),
+    StringArray(SmallVec<[String; 2]>),
 }
 
 impl OwnedExprValue {
@@ -402,6 +423,55 @@ impl OwnedExprValue {
             OwnedExprValue::String(v) => Some(v),
             _ => None,
         }
+    }
+
+    pub fn get_string_array(&self) -> Option<&[String]> {
+        match self {
+            OwnedExprValue::StringArray(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
+impl From<bool> for OwnedExprValue {
+    fn from(value: bool) -> Self {
+        OwnedExprValue::Bool(value)
+    }
+}
+
+impl From<f64> for OwnedExprValue {
+    fn from(value: f64) -> Self {
+        OwnedExprValue::Number(value)
+    }
+}
+
+impl From<(f64, f64)> for OwnedExprValue {
+    fn from(value: (f64, f64)) -> Self {
+        OwnedExprValue::LatLng(value)
+    }
+}
+
+impl From<NaiveDateTimeExt> for OwnedExprValue {
+    fn from(value: NaiveDateTimeExt) -> Self {
+        OwnedExprValue::Date(value)
+    }
+}
+
+impl From<String> for OwnedExprValue {
+    fn from(value: String) -> Self {
+        OwnedExprValue::String(value)
+    }
+}
+
+impl From<SmallVec<[String; 2]>> for OwnedExprValue {
+    fn from(value: SmallVec<[String; 2]>) -> Self {
+        OwnedExprValue::StringArray(value)
+    }
+}
+
+impl From<&[String]> for OwnedExprValue {
+    fn from(value: &[String]) -> Self {
+        OwnedExprValue::StringArray(value.into())
     }
 }
 
@@ -457,18 +527,22 @@ impl Expression {
                     .find(|sd| &sd.label == key)
                     .ok_or_else(|| format!("Stat {} not found", key))?;
                 match &col.data {
-                    StatArray::Number { unit: _, values } => {
-                        Ok(IntermediateExpr::NumberVariable { side: *side, values: values.as_slice() })
-                    },
-                    StatArray::Date { values } => {
-                        Ok(IntermediateExpr::DateVariable { side: *side, values: values.as_slice() })
-                    },
-                    StatArray::String { values } => {
-                        Ok(IntermediateExpr::StringVariable { side: *side, values: values.as_slice() })
-                    },
-                    StatArray::LatLng { values } => {
-                        Ok(IntermediateExpr::LatLngVariable { side: *side, values: values.as_slice() })
-                    },
+                    StatArray::Number { unit: _, values } => Ok(IntermediateExpr::NumberVariable {
+                        side: *side,
+                        values: values.as_slice(),
+                    }),
+                    StatArray::Date { values } => Ok(IntermediateExpr::DateVariable {
+                        side: *side,
+                        values: values.as_slice(),
+                    }),
+                    StatArray::String { values } => Ok(IntermediateExpr::StringVariable {
+                        side: *side,
+                        values: values.as_slice(),
+                    }),
+                    StatArray::LatLng { values } => Ok(IntermediateExpr::LatLngVariable {
+                        side: *side,
+                        values: values.as_slice(),
+                    }),
                 }
             }
             Expression::Unary { op, child } => {
@@ -541,7 +615,17 @@ impl<'a> IntermediateExpr<'a> {
 
     pub fn has_vars(&self, left_idx: Option<usize>, right_idx: Option<usize>) -> bool {
         match self {
+            IntermediateExpr::Number { value: _ } => true,
+            IntermediateExpr::Date { value: _ } => true,
             IntermediateExpr::NumberVariable { side, values } => {
+                let maybe_index = Self::select_index(side, left_idx, right_idx);
+                if let Some(index) = maybe_index {
+                    matches!(values.get(index), Some(Some(_)))
+                } else {
+                    true
+                }
+            }
+            IntermediateExpr::LatLngVariable { side, values } => {
                 let maybe_index = Self::select_index(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
                     matches!(values.get(index), Some(Some(_)))
@@ -569,7 +653,6 @@ impl<'a> IntermediateExpr<'a> {
             IntermediateExpr::Binary { op: _, lhs, rhs } => {
                 lhs.has_vars(left_idx, right_idx) && rhs.has_vars(left_idx, right_idx)
             }
-            _ => true,
         }
     }
 
@@ -639,7 +722,11 @@ impl<'a> IntermediateExpr<'a> {
         }
     }
 
-    pub fn get_value(&self, left_idx: usize, right_idx: usize) -> Result<Option<OwnedExprValue>, ()> {
+    pub fn get_value(
+        &self,
+        left_idx: usize,
+        right_idx: usize,
+    ) -> Result<Option<OwnedExprValue>, ()> {
         let maybe_ev = self.get_expr_value(left_idx, right_idx)?;
         let maybe_oev = maybe_ev.map(|ev| match ev {
             ExprValue::Bool(v) => OwnedExprValue::Bool(v),
@@ -647,6 +734,7 @@ impl<'a> IntermediateExpr<'a> {
             ExprValue::LatLng(v) => OwnedExprValue::LatLng(v),
             ExprValue::Date(v) => OwnedExprValue::Date(v),
             ExprValue::String(v) => OwnedExprValue::String(v.into_owned()),
+            ExprValue::StringArray(v) => OwnedExprValue::StringArray(SmallVec::from(&v[..])),
         });
         Ok(maybe_oev)
     }

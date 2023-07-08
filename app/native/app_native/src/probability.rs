@@ -219,6 +219,7 @@ where
 pub struct SampleTree<T: Copy> {
     data: Vec<SampleNode<T>>,
     total: f64,
+    size: usize,
     frozen_data: Vec<SampleNode<T>>,
     frozen_total: f64,
 }
@@ -243,6 +244,7 @@ impl<T: Copy> SampleTree<T> {
         Self {
             data,
             total,
+            size: frozen_data.len(),
             frozen_data,
             frozen_total: total,
         }
@@ -271,7 +273,7 @@ impl<T: Copy> SampleTree<T> {
     }
 
     pub fn sample(&mut self) -> Option<T> {
-        if self.total == 0.0 {
+        if self.size == 0 || self.total <= 0.0 {
             return None;
         }
         let mut rand_weight = rand::random::<f64>() * self.total;
@@ -281,6 +283,7 @@ impl<T: Copy> SampleTree<T> {
             rand_weight -= node.weight;
             if rand_weight <= 0.0 {
                 self.set(index, 0.0);
+                self.size -= 1;
                 return Some(node.key);
             }
             let mut index_next = B * index + B;
@@ -298,6 +301,7 @@ impl<T: Copy> SampleTree<T> {
     }
 
     pub fn reset(&mut self) {
+        self.size = self.frozen_data.len();
         self.data = self.frozen_data.clone();
         self.total = self.frozen_total;
     }

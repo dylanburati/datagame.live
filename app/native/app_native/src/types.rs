@@ -31,7 +31,7 @@ rustler::atoms! {
     atom_unit = "unit",
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TagDef {
     pub(crate) label: String,
     pub(crate) values: Vec<SmallVec<[String; 2]>>,
@@ -56,7 +56,7 @@ impl Encoder for TagDef {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, NifUnitEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, NifUnitEnum)]
 pub enum StatUnit {
     Kilometer,
     Dollar,
@@ -66,7 +66,7 @@ pub enum StatUnit {
 pub struct NaiveDateTimeExt(NaiveDateTime);
 
 impl NaiveDateTimeExt {
-    fn strftime_format() -> &'static str {
+    pub fn strftime_format() -> &'static str {
         "%Y-%m-%dT%H:%M:%S"
     }
 }
@@ -118,7 +118,7 @@ impl Encoder for NaiveDateTimeExt {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, NifTaggedEnum)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, NifTaggedEnum)]
 #[serde(tag = "kind")]
 pub enum StatArray {
     Number {
@@ -136,13 +136,13 @@ pub enum StatArray {
     },
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct StatDef {
     pub label: String,
     pub data: StatArray,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct Card {
     pub title: String,
     pub unique_id: Option<String>,
@@ -152,7 +152,7 @@ pub struct Card {
     pub category: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct Edge {
     pub left: u64,
     pub right: u64,
@@ -171,7 +171,7 @@ pub enum EdgeSide {
     Right,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, NifMap)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct Pairing {
     pub label: String,
     pub is_symmetric: bool,
@@ -180,7 +180,7 @@ pub struct Pairing {
     pub data: Vec<Edge>,
 }
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize, NifMap)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, NifMap)]
 pub struct CardTable {
     pub cards: Vec<Card>,
     pub tag_defs: Vec<TagDef>,
@@ -188,7 +188,7 @@ pub struct CardTable {
     pub pairings: Vec<Pairing>,
 }
 
-#[derive(PartialEq, NifMap)]
+#[derive(Clone, PartialEq, NifMap)]
 pub struct Deck {
     pub id: u64,
     pub revision: u64,
