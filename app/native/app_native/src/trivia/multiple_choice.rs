@@ -9,7 +9,7 @@ use crate::{
 use super::{
     engine::{CardCond, Select, TagCond, TriviaGen},
     types::{
-        selectors, ActiveDeck, GradeableTrivia, QValue, Trivia, TriviaAnswer, TriviaAnswerType,
+        selectors, ActiveDeck, GradeableTrivia, Trivia, TriviaAnswer, TriviaAnswerType,
         TriviaDefCommon,
     },
     ErrorKind, Result,
@@ -77,12 +77,12 @@ pub enum MultipleChoiceDef {
     },
 }
 
-impl<T> Trivia<T> {
+impl Trivia {
     pub fn new_selection(
         params: &MultipleChoiceCommon,
         question: String,
         question_value_type: &str,
-        options: Vec<TriviaAnswer<T>>,
+        options: Vec<TriviaAnswer>,
     ) -> Self {
         Self {
             question,
@@ -101,9 +101,9 @@ fn transform_multiple_choice<E, F>(
     answers_f: Vec<E>,
     params: &MultipleChoiceCommon,
     fun: F,
-) -> (Vec<TriviaAnswer<QValue>>, Vec<TriviaExp>)
+) -> (Vec<TriviaAnswer>, Vec<TriviaExp>)
 where
-    F: Fn(u8, E) -> TriviaAnswer<QValue>,
+    F: Fn(u8, E) -> TriviaAnswer,
 {
     let mut ids_t = vec![];
     let mut ids_f = vec![];

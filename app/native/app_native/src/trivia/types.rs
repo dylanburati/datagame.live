@@ -4,7 +4,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use rustler::{Encoder, NifUnitEnum};
+use rustler::{Decoder, Encoder, NifMap, NifUnitEnum};
 
 use crate::{probability::SampleTree, tinylang::OwnedExprValue, types::CardTable};
 
@@ -194,14 +194,14 @@ impl Display for TriviaAnswerType {
 }
 
 /// Compat
-#[derive(Debug)]
-pub struct TriviaAnswer<T> {
+#[derive(Debug, NifMap)]
+pub struct TriviaAnswer {
     pub id: u8,
     pub answer: String,
-    pub question_value: T,
+    pub question_value: QValue,
 }
 
-impl<T: Display> Display for TriviaAnswer<T> {
+impl Display for TriviaAnswer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -213,17 +213,17 @@ impl<T: Display> Display for TriviaAnswer<T> {
 
 /// Compat
 #[derive(Debug)]
-pub struct Trivia<T> {
+pub struct Trivia {
     pub question: String,
     pub answer_type: TriviaAnswerType,
     pub min_answers: u8,
     pub max_answers: u8,
     pub question_value_type: String,
-    pub options: Vec<TriviaAnswer<T>>,
-    pub prefilled_answers: Vec<TriviaAnswer<T>>,
+    pub options: Vec<TriviaAnswer>,
+    pub prefilled_answers: Vec<TriviaAnswer>,
 }
 
-impl<T: Display> Display for Trivia<T> {
+impl Display for Trivia {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Trivia")?;
         writeln!(f, "  question: {:?}", self.question)?;
@@ -279,6 +279,36 @@ impl Encoder for QValue {
     }
 }
 
+impl<'a> Decoder<'a> for QValue {
+    fn decode(_term: rustler::Term<'a>) -> rustler::NifResult<Self> {
+        Err(rustler::Error::RaiseAtom("not_implemented"))
+        // // This probably works, but not worth it to test since Trivia objects
+        // // aren't intended to be returned to Rust after they're generated
+        //
+        // if term.is_atom() {
+        //     <bool as Decoder<'a>>::decode(term).map(|v| v.into())
+        // } else if term.is_number() {
+        //     <f64 as Decoder<'a>>::decode(term).map(|v| v.into())
+        // } else if term.is_tuple() {
+        //     <(f64, f64) as Decoder<'a>>::decode(term).map(|v| v.into())
+        // } else if term.is_binary() {
+        //     match <NaiveDateTimeExt as Decoder<'a>>::decode(term) {
+        //         Err(_) => (),
+        //         Ok(v) => return Ok(v.into()),
+        //     }
+        //     <String as Decoder<'a>>::decode(term).map(|v| v.into())
+        // } else if term.is_list() {
+        //     match <Vec<i64> as Decoder<'a>>::decode(term) {
+        //         Err(_) => (),
+        //         Ok(v) => return Ok(v.into()),
+        //     };
+        //     <Vec<String> as Decoder<'a>>::decode(term).map(|v| v.as_slice().into())
+        // } else {
+        //     Err(rustler::Error::RaiseAtom("bad_variant"))
+        // }
+    }
+}
+
 impl Display for QValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
@@ -293,4 +323,4 @@ impl Display for QValue {
     }
 }
 
-pub type GradeableTrivia = (Trivia<QValue>, Vec<TriviaExp>);
+pub type GradeableTrivia = (Trivia, Vec<TriviaExp>);

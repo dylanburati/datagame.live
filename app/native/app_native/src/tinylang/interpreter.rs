@@ -231,7 +231,7 @@ impl<'a> ExprValue<'a> {
             ExprValue::Number(lhs) => rhs.get_number().map(|v| lhs == v),
             ExprValue::LatLng(lhs) => rhs.get_lat_lng().map(|v| lhs == v),
             ExprValue::Date(lhs) => rhs.get_date().map(|v| lhs == v),
-            ExprValue::String(lhs) => rhs.get_string().map(|v| lhs == &v),
+            ExprValue::String(lhs) => rhs.get_string().map(|v| lhs == v),
             ExprValue::IntArray(lhs) => rhs.get_int_array().map(|v| lhs == &v),
             ExprValue::StringArray(lhs) => rhs.get_string_array().map(|v| lhs == &v),
         }

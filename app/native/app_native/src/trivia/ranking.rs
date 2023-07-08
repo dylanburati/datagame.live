@@ -9,10 +9,10 @@ use crate::{
 use super::{
     engine::{CardCond, Select, TriviaGen},
     types::{
-        instances, selectors, ActiveDeck, GradeableTrivia, QValue, Trivia, TriviaAnswer,
-        TriviaAnswerType, TriviaDefCommon,
+        instances, selectors, ActiveDeck, GradeableTrivia, Trivia, TriviaAnswer, TriviaAnswerType,
+        TriviaDefCommon,
     },
-    Error, ErrorKind, Result,
+    ErrorKind, Result,
 };
 
 pub struct RankingCommon {
@@ -34,7 +34,7 @@ impl RankingCommon {
 pub enum RankingDef {
     Card {
         left: Option<selectors::Category>,
-        right: selectors::Card,
+        right: selectors::Stat,
         params: RankingCommon,
     },
     CardCard {
@@ -46,12 +46,12 @@ pub enum RankingDef {
     },
 }
 
-impl<T> Trivia<T> {
+impl Trivia {
     pub fn new_ranking(
         params: &RankingCommon,
         question: String,
         question_value_type: &str,
-        options: Vec<TriviaAnswer<T>>,
+        options: Vec<TriviaAnswer>,
     ) -> Self {
         let answer_type = match (params.is_asc, params.is_single) {
             (true, true) => TriviaAnswerType::StatMin,
@@ -75,9 +75,9 @@ fn transform_ranking<E, F>(
     answers_in: Vec<E>,
     params: &RankingCommon,
     mut fun: F,
-) -> (Vec<TriviaAnswer<QValue>>, Vec<TriviaExp>)
+) -> (Vec<TriviaAnswer>, Vec<TriviaExp>)
 where
-    F: FnMut(u8, E) -> (f64, TriviaAnswer<QValue>),
+    F: FnMut(u8, E) -> (f64, TriviaAnswer),
 {
     let mut answers = vec![];
     let mut numeric = vec![];
@@ -131,14 +131,6 @@ impl TriviaGen for RankingDef {
                 right,
                 params,
             } => {
-                let stat_sel = match &right.stats[..] {
-                    [sel] => sel,
-                    _ => {
-                        return Err(Error::from(ErrorKind::Msg(
-                            "expected one StatNested".into(),
-                        )))
-                    }
-                };
                 let subj = match left {
                     Some(sel) => Some(
                         sel.select(deck, &[])
@@ -154,34 +146,29 @@ impl TriviaGen for RankingDef {
                 if answers.len() < params.total.into() {
                     return Err(ErrorKind::NotEnoughData(params.total).into());
                 }
-                let (answers, expectations) = transform_ranking(answers, params, |id, mut inst| {
-                    let stat = inst.stats.pop().unwrap();
-                    let (num, question_value) = match stat.value {
-                        OwnedExprValue::Number(v) => (v, v.into()),
-                        OwnedExprValue::Date(v) => (
-                            v.timestamp_millis() as f64,
-                            v.format(NaiveDateTimeExt::strftime_format())
-                                .to_string()
-                                .into(),
-                        ),
-                        _ => panic!(
+                let (answers, expectations) =
+                    transform_ranking(answers, params, |id, (idx, stat)| {
+                        let (num, question_value) = match stat.value {
+                            OwnedExprValue::Number(v) => (v, v.into()),
+                            OwnedExprValue::Date(v) => (v.timestamp_millis() as f64, v.into()),
+                            _ => panic!(
                             "RankingDef::Card: right.stats[0] must have return type Number or Date"
                         ),
-                    };
-                    let ans = TriviaAnswer {
-                        id,
-                        answer: deck.data.cards[inst.index].title.clone(),
-                        question_value,
-                    };
-                    (num, ans)
-                });
+                        };
+                        let ans = TriviaAnswer {
+                            id,
+                            answer: deck.data.cards[idx].title.clone(),
+                            question_value,
+                        };
+                        (num, ans)
+                    });
                 let question = match subj {
                     Some(instances::Category(cat)) => {
                         common.question_format.as_str().replace("{}", &cat)
                     }
                     None => common.question_format.clone(),
                 };
-                let question_value_type = match stat_sel.return_type {
+                let question_value_type = match right.return_type {
                     tinylang::ExprType::Number => "number",
                     tinylang::ExprType::Date => "string",
                     _ => panic!(
@@ -290,12 +277,10 @@ mod tests {
             .collect();
         let definition = RankingDef::Card {
             left: Some(selectors::Category { difficulty: 0.0 }),
-            right: selectors::Card {
+            right: selectors::Stat {
                 difficulty: -0.5,
-                stats: vec![selectors::StatNested {
-                    expression: expr("R\"Spotify plays\"").unwrap(),
-                    return_type: ExprType::Number,
-                }],
+                expression: expr("R\"Spotify plays\"").unwrap(),
+                return_type: ExprType::Number,
             },
             params: RankingCommon {
                 is_asc,
@@ -335,12 +320,10 @@ mod tests {
             .collect();
         let definition = RankingDef::Card {
             left: Some(selectors::Category { difficulty: 0.0 }),
-            right: selectors::Card {
+            right: selectors::Stat {
                 difficulty: -0.5,
-                stats: vec![selectors::StatNested {
-                    expression: expr("R\"Birth date\"").unwrap(),
-                    return_type: ExprType::Date,
-                }],
+                expression: expr("R\"Birth date\"").unwrap(),
+                return_type: ExprType::Date,
             },
             params: RankingCommon {
                 is_asc,
@@ -368,9 +351,7 @@ mod tests {
     }
 
     #[rstest]
-    fn test_card_squared(
-        decks: &[Deck],
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn test_card_squared(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks
             .iter()
             .cloned()

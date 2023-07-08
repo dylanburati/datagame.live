@@ -1,16 +1,14 @@
 use std::{collections::HashMap, num::TryFromIntError};
 
-use crate::{
-    tinylang::{OwnedExprValue},
-    trivia::types::TriviaExp,
-};
+use crate::{tinylang::OwnedExprValue, trivia::types::TriviaExp};
 
 use super::{
     engine::{Select, TriviaGen},
     types::{
-        selectors, ActiveDeck, GradeableTrivia, QValue, Trivia, TriviaAnswer,
-        TriviaAnswerType, TriviaDefCommon,
-    }, ErrorKind, Result,
+        selectors, ActiveDeck, GradeableTrivia, Trivia, TriviaAnswer, TriviaAnswerType,
+        TriviaDefCommon,
+    },
+    ErrorKind, Result,
 };
 
 pub enum HangmanDef {
@@ -18,11 +16,11 @@ pub enum HangmanDef {
     Stat { selector: selectors::Stat },
 }
 
-impl<T> Trivia<T> {
+impl Trivia {
     pub fn new_hangman(
         question: String,
-        options: Vec<TriviaAnswer<T>>,
-        prefilled_answers: Vec<TriviaAnswer<T>>,
+        options: Vec<TriviaAnswer>,
+        prefilled_answers: Vec<TriviaAnswer>,
     ) -> Self {
         Self {
             question,
@@ -36,11 +34,7 @@ impl<T> Trivia<T> {
     }
 }
 
-type HangmanTriple = (
-    Vec<TriviaAnswer<QValue>>,
-    Vec<TriviaAnswer<QValue>>,
-    Vec<TriviaExp>,
-);
+type HangmanTriple = (Vec<TriviaAnswer>, Vec<TriviaAnswer>, Vec<TriviaExp>);
 
 fn transform_hangman(card_title: &str) -> std::result::Result<HangmanTriple, TryFromIntError> {
     let mut answer_map: HashMap<_, _> = ('A'..='Z')
