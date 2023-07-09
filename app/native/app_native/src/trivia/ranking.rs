@@ -9,16 +9,27 @@ use crate::{
 use super::{
     engine::{CardCond, Select, TriviaGen},
     types::{
-        instances, selectors, ActiveDeck, GradeableTrivia, Trivia, TriviaAnswer, TriviaAnswerType,
-        TriviaDefCommon,
+        instances, selectors, ActiveDeck, GradeableTrivia, SanityCheck, Trivia, TriviaAnswer,
+        TriviaAnswerType, TriviaDefCommon,
     },
     ErrorKind, Result,
 };
 
 pub struct RankingCommon {
-    is_asc: bool,
-    is_single: bool,
-    total: u8,
+    pub is_asc: bool,
+    pub is_single: bool,
+    pub total: u8,
+}
+
+impl SanityCheck for RankingCommon {
+    type Error = super::Error;
+
+    fn sanity_check(&self) -> std::result::Result<(), Self::Error> {
+        if self.total <= 1 {
+            return Err(ErrorKind::Msg("total > 1".into()).into());
+        }
+        Ok(())
+    }
 }
 
 impl RankingCommon {
@@ -270,11 +281,7 @@ mod tests {
         #[values(false, true)] is_asc: bool,
         #[values(false, true)] is_single: bool,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = RankingDef::Card {
             left: Some(selectors::Category { difficulty: 0.0 }),
             right: selectors::Stat {
@@ -313,11 +320,7 @@ mod tests {
         #[values(false, true)] is_asc: bool,
         #[values(false, true)] is_single: bool,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = RankingDef::Card {
             left: Some(selectors::Category { difficulty: 0.0 }),
             right: selectors::Stat {
@@ -352,11 +355,7 @@ mod tests {
 
     #[rstest]
     fn test_card_squared(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = RankingDef::CardCard {
             left: selectors::Card {
                 difficulty: -0.5,

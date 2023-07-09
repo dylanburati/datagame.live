@@ -5,15 +5,33 @@ use crate::{tinylang::OwnedExprValue, trivia::types::TriviaExp};
 use super::{
     engine::{Select, TriviaGen},
     types::{
-        selectors, ActiveDeck, GradeableTrivia, Trivia, TriviaAnswer, TriviaAnswerType,
-        TriviaDefCommon,
+        selectors, ActiveDeck, GradeableTrivia, SanityCheck, Trivia, TriviaAnswer,
+        TriviaAnswerType, TriviaDefCommon,
     },
     ErrorKind, Result,
 };
 
+pub struct HangmanCommon {
+    pub lives: u8,
+}
+
+impl SanityCheck for HangmanCommon {
+    type Error = super::Error;
+
+    fn sanity_check(&self) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 pub enum HangmanDef {
-    Card { selector: selectors::Stat },
-    Stat { selector: selectors::Stat },
+    Card {
+        selector: selectors::Stat,
+        params: HangmanCommon,
+    },
+    Stat {
+        selector: selectors::Stat,
+        params: HangmanCommon,
+    },
 }
 
 impl Trivia {
@@ -36,7 +54,10 @@ impl Trivia {
 
 type HangmanTriple = (Vec<TriviaAnswer>, Vec<TriviaAnswer>, Vec<TriviaExp>);
 
-fn transform_hangman(card_title: &str) -> std::result::Result<HangmanTriple, TryFromIntError> {
+fn transform_hangman(
+    answer_str: &str,
+    params: &HangmanCommon,
+) -> std::result::Result<HangmanTriple, TryFromIntError> {
     let mut answer_map: HashMap<_, _> = ('A'..='Z')
         .enumerate()
         .map(|(id, c)| {
@@ -44,7 +65,7 @@ fn transform_hangman(card_title: &str) -> std::result::Result<HangmanTriple, Try
             (c, (id, positions))
         })
         .collect();
-    for (pos, c) in card_title.chars().enumerate() {
+    for (pos, c) in answer_str.chars().enumerate() {
         let l = answer_map.len();
         answer_map
             .entry(c.to_ascii_uppercase())
@@ -76,7 +97,10 @@ fn transform_hangman(card_title: &str) -> std::result::Result<HangmanTriple, Try
     }
     let expectations = vec![
         TriviaExp::All { ids: ids_t },
-        TriviaExp::NoneLenient { ids: ids_f, max: 1 },
+        TriviaExp::NoneLenient {
+            ids: ids_f,
+            max: params.lives,
+        },
     ];
     Ok((answers, prefilled_answers, expectations))
 }
@@ -84,13 +108,13 @@ fn transform_hangman(card_title: &str) -> std::result::Result<HangmanTriple, Try
 impl TriviaGen for HangmanDef {
     fn get_trivia(&self, deck: &ActiveDeck, common: &TriviaDefCommon) -> Result<GradeableTrivia> {
         match self {
-            HangmanDef::Card { selector } => {
+            HangmanDef::Card { selector, params } => {
                 let (card_index, stat) = selector
                     .select(deck, &[])
                     .ok_or_else(|| ErrorKind::NotEnoughData(1))?;
                 let card_title = &deck.data.cards[card_index].title;
-                let (answers, prefilled, expectations) =
-                    transform_hangman(card_title).map_err(|_| {
+                let (answers, prefilled, expectations) = transform_hangman(card_title, params)
+                    .map_err(|_| {
                         ErrorKind::Msg("card title has more than 255 distinct symbols".into())
                     })?;
                 let hint = match stat.value {
@@ -104,7 +128,7 @@ impl TriviaGen for HangmanDef {
                 let trivia = Trivia::new_hangman(question, answers, prefilled);
                 Ok((trivia, expectations))
             }
-            HangmanDef::Stat { selector } => {
+            HangmanDef::Stat { selector, params } => {
                 let (card_index, stat) = selector
                     .select(deck, &[])
                     .ok_or_else(|| ErrorKind::NotEnoughData(1))?;
@@ -112,8 +136,8 @@ impl TriviaGen for HangmanDef {
                     OwnedExprValue::String(v) => v,
                     _ => panic!("HangmanDef::Stat: selector must have return type String"),
                 };
-                let (answers, prefilled, expectations) =
-                    transform_hangman(&answer_str).map_err(|_| {
+                let (answers, prefilled, expectations) = transform_hangman(&answer_str, params)
+                    .map_err(|_| {
                         ErrorKind::Msg("card title has more than 255 distinct chars".into())
                     })?;
                 let card_title = &deck.data.cards[card_index].title;
@@ -139,17 +163,14 @@ mod tests {
 
     #[rstest]
     fn test_card(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = HangmanDef::Card {
             selector: selectors::Stat {
                 difficulty: -0.5,
                 expression: expr("R\"Description\"").unwrap(),
                 return_type: ExprType::String,
             },
+            params: HangmanCommon { lives: 1 },
         };
         let common = TriviaDefCommon {
             deck_id: 3,
@@ -170,17 +191,14 @@ mod tests {
 
     #[rstest]
     fn test_stat(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = HangmanDef::Stat {
             selector: selectors::Stat {
                 difficulty: -0.5,
                 expression: expr("R\"Capital\"").unwrap(),
                 return_type: ExprType::String,
             },
+            params: HangmanCommon { lives: 1 },
         };
         let common = TriviaDefCommon {
             deck_id: 4,

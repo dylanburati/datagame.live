@@ -6,21 +6,24 @@ use std::{
 
 use rustler::{Decoder, Encoder, NifMap, NifUnitEnum};
 
-use crate::{probability::SampleTree, tinylang::OwnedExprValue, types::CardTable};
-
-pub struct KnowledgeBase {
-    pub decks: Vec<ActiveDeck>,
-}
+use crate::{
+    probability::SampleTree,
+    tinylang::OwnedExprValue,
+    types::{CardTable, Deck},
+};
 
 pub struct ActiveDeck {
+    pub id: u64,
     pub data: CardTable,
     pub pairings: Vec<ActivePairing>,
     pub views: RefCell<HashMap<u64, DeckView>>,
 }
 
 impl ActiveDeck {
-    pub fn new(data: CardTable) -> Self {
-        let pairings = data
+    pub fn new(deck: Deck) -> Self {
+        let id = deck.id;
+        let data = deck.data;
+        let pairings: Vec<ActivePairing> = data
             .pairings
             .iter()
             .map(|p| {
@@ -39,10 +42,29 @@ impl ActiveDeck {
             })
             .collect();
         Self {
+            id,
             data,
             pairings,
             views: RefCell::new(HashMap::default()),
         }
+    }
+
+    pub fn get_pairing_index(&self, name: &str) -> Option<usize> {
+        self.data
+            .pairings
+            .iter()
+            .enumerate()
+            .find(|(_, p)| p.label == name)
+            .map(|pair| pair.0)
+    }
+
+    pub fn get_tag_index(&self, name: &str) -> Option<usize> {
+        self.data
+            .tag_defs
+            .iter()
+            .enumerate()
+            .find(|(_, t)| t.label == name)
+            .map(|pair| pair.0)
     }
 
     pub fn with_iter<F, R>(&self, difficulty: f64, f: F) -> R
@@ -324,3 +346,9 @@ impl Display for QValue {
 }
 
 pub type GradeableTrivia = (Trivia, Vec<TriviaExp>);
+
+pub trait SanityCheck {
+    type Error;
+
+    fn sanity_check(&self) -> Result<(), Self::Error>;
+}

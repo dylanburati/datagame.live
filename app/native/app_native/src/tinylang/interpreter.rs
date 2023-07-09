@@ -1,8 +1,10 @@
 use std::{borrow::Cow, cmp::Ordering, f64::consts::PI};
 
+extern crate derive_more;
+use derive_more::From;
 use smallvec::SmallVec;
 
-use crate::types::{CardTable, EdgeSide, NaiveDateTimeExt, StatArray};
+use crate::types::{Card, CardTable, EdgeSide, NaiveDateTimeExt, StatArray};
 
 use super::parser::{BinOp, Expression, UnOp};
 
@@ -35,6 +37,10 @@ pub enum ExprType {
     LatLng,
     Date,
     String,
+    #[allow(dead_code)]
+    IntArray,
+    #[allow(dead_code)]
+    StringArray,
 }
 
 #[rustfmt::skip]
@@ -122,7 +128,7 @@ impl TryOps for ExprType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, From)]
 pub enum ExprValue<'a> {
     Bool(bool),
     Number(f64),
@@ -131,48 +137,6 @@ pub enum ExprValue<'a> {
     String(Cow<'a, str>),
     IntArray(Cow<'a, [i64]>),
     StringArray(Cow<'a, [String]>),
-}
-
-impl From<bool> for ExprValue<'_> {
-    fn from(value: bool) -> Self {
-        ExprValue::Bool(value)
-    }
-}
-
-impl From<f64> for ExprValue<'_> {
-    fn from(value: f64) -> Self {
-        ExprValue::Number(value)
-    }
-}
-
-impl From<(f64, f64)> for ExprValue<'_> {
-    fn from(value: (f64, f64)) -> Self {
-        ExprValue::LatLng(value)
-    }
-}
-
-impl From<NaiveDateTimeExt> for ExprValue<'_> {
-    fn from(value: NaiveDateTimeExt) -> Self {
-        ExprValue::Date(value)
-    }
-}
-
-impl<'a> From<Cow<'a, str>> for ExprValue<'a> {
-    fn from(value: Cow<'a, str>) -> Self {
-        ExprValue::String(value)
-    }
-}
-
-impl<'a> From<Cow<'a, [i64]>> for ExprValue<'a> {
-    fn from(value: Cow<'a, [i64]>) -> Self {
-        ExprValue::IntArray(value)
-    }
-}
-
-impl<'a> From<Cow<'a, [String]>> for ExprValue<'a> {
-    fn from(value: Cow<'a, [String]>) -> Self {
-        ExprValue::StringArray(value)
-    }
 }
 
 impl<'a> ExprValue<'a> {
@@ -394,7 +358,7 @@ impl<'a> TryOps for ExprValue<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, From)]
 pub enum OwnedExprValue {
     Bool(bool),
     Number(f64),
@@ -405,51 +369,38 @@ pub enum OwnedExprValue {
     StringArray(SmallVec<[String; 2]>),
 }
 
-impl From<bool> for OwnedExprValue {
-    fn from(value: bool) -> Self {
-        OwnedExprValue::Bool(value)
+trait ColumnGet<'a, T> {
+    fn get(&'a self, index: usize) -> Option<&'a T>;
+}
+
+pub struct DirectColumn<'a, T>(&'a [Option<T>]);
+
+impl<'a, T> ColumnGet<'a, T> for DirectColumn<'a, T> {
+    fn get(&'a self, index: usize) -> Option<&'a T> {
+        self.0.get(index).and_then(Option::as_ref)
     }
 }
 
-impl From<f64> for OwnedExprValue {
-    fn from(value: f64) -> Self {
-        OwnedExprValue::Number(value)
+pub struct TitleColumn<'a>(&'a [Card]);
+
+impl<'a> ColumnGet<'a, String> for TitleColumn<'a> {
+    fn get(&'a self, index: usize) -> Option<&'a String> {
+        self.0.get(index).map(|c| &c.title)
     }
 }
 
-impl From<(f64, f64)> for OwnedExprValue {
-    fn from(value: (f64, f64)) -> Self {
-        OwnedExprValue::LatLng(value)
-    }
+#[derive(From)]
+pub enum StringColumn<'a> {
+    Direct(DirectColumn<'a, String>),
+    Title(TitleColumn<'a>),
 }
 
-impl From<NaiveDateTimeExt> for OwnedExprValue {
-    fn from(value: NaiveDateTimeExt) -> Self {
-        OwnedExprValue::Date(value)
-    }
-}
-
-impl From<String> for OwnedExprValue {
-    fn from(value: String) -> Self {
-        OwnedExprValue::String(value)
-    }
-}
-
-impl From<Vec<i64>> for OwnedExprValue {
-    fn from(value: Vec<i64>) -> Self {
-        OwnedExprValue::IntArray(value)
-    }
-}
-
-impl From<SmallVec<[String; 2]>> for OwnedExprValue {
-    fn from(value: SmallVec<[String; 2]>) -> Self {
-        OwnedExprValue::StringArray(value)
-    }
-}
-
-impl From<&[String]> for OwnedExprValue {
-    fn from(value: &[String]) -> Self {
-        OwnedExprValue::StringArray(value.into())
+impl<'a> ColumnGet<'a, String> for StringColumn<'a> {
+    fn get(&'a self, index: usize) -> Option<&'a String> {
+        match self {
+            StringColumn::Direct(inner) => inner.get(index),
+            StringColumn::Title(inner) => inner.get(index),
+        }
     }
 }
 
@@ -462,19 +413,19 @@ pub enum IntermediateExpr<'a> {
     },
     NumberVariable {
         side: EdgeSide,
-        values: &'a [Option<f64>],
+        values: DirectColumn<'a, f64>,
     },
     LatLngVariable {
         side: EdgeSide,
-        values: &'a [Option<(f64, f64)>],
+        values: DirectColumn<'a, (f64, f64)>,
     },
     DateVariable {
         side: EdgeSide,
-        values: &'a [Option<NaiveDateTimeExt>],
+        values: DirectColumn<'a, NaiveDateTimeExt>,
     },
     StringVariable {
         side: EdgeSide,
-        values: &'a [Option<String>],
+        values: StringColumn<'a>,
     },
     Unary {
         op: UnOp,
@@ -497,6 +448,13 @@ impl Expression {
             Expression::Number { value } => Ok(IntermediateExpr::Number { value: *value }),
             Expression::Date { value } => Ok(IntermediateExpr::Date { value: *value }),
             Expression::Variable { side, key } => {
+                if key == "Card" {
+                    let data = left_or_right(side, left, right);
+                    return Ok(IntermediateExpr::StringVariable {
+                        side: *side,
+                        values: TitleColumn(data.cards.as_slice()).into()
+                    });
+                }
                 let mut iter = match side {
                     EdgeSide::Left => left.stat_defs.iter(),
                     EdgeSide::Right => right.stat_defs.iter(),
@@ -507,19 +465,19 @@ impl Expression {
                 match &col.data {
                     StatArray::Number { unit: _, values } => Ok(IntermediateExpr::NumberVariable {
                         side: *side,
-                        values: values.as_slice(),
+                        values: DirectColumn(values.as_slice()),
                     }),
                     StatArray::Date { values } => Ok(IntermediateExpr::DateVariable {
                         side: *side,
-                        values: values.as_slice(),
+                        values: DirectColumn(values.as_slice()),
                     }),
                     StatArray::String { values } => Ok(IntermediateExpr::StringVariable {
                         side: *side,
-                        values: values.as_slice(),
+                        values: DirectColumn(values.as_slice()).into(),
                     }),
                     StatArray::LatLng { values } => Ok(IntermediateExpr::LatLngVariable {
                         side: *side,
-                        values: values.as_slice(),
+                        values: DirectColumn(values.as_slice()),
                     }),
                 }
             }
@@ -540,6 +498,14 @@ impl Expression {
                 })
             }
         }
+    }
+}
+
+#[inline]
+fn left_or_right<T>(side: &EdgeSide, left: T, right: T) -> T {
+    match side {
+        EdgeSide::Left => left,
+        EdgeSide::Right => right,
     }
 }
 
@@ -583,46 +549,38 @@ impl<'a> IntermediateExpr<'a> {
         }
     }
 
-    fn select_index<T>(side: &EdgeSide, left_idx: T, right_idx: T) -> T {
-        if matches!(side, EdgeSide::Left) {
-            left_idx
-        } else {
-            right_idx
-        }
-    }
-
     pub fn has_vars(&self, left_idx: Option<usize>, right_idx: Option<usize>) -> bool {
         match self {
             IntermediateExpr::Number { value: _ } => true,
             IntermediateExpr::Date { value: _ } => true,
             IntermediateExpr::NumberVariable { side, values } => {
-                let maybe_index = Self::select_index(side, left_idx, right_idx);
+                let maybe_index = left_or_right(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
-                    matches!(values.get(index), Some(Some(_)))
+                    values.get(index).is_some()
                 } else {
                     true
                 }
             }
             IntermediateExpr::LatLngVariable { side, values } => {
-                let maybe_index = Self::select_index(side, left_idx, right_idx);
+                let maybe_index = left_or_right(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
-                    matches!(values.get(index), Some(Some(_)))
+                    values.get(index).is_some()
                 } else {
                     true
                 }
             }
             IntermediateExpr::DateVariable { side, values } => {
-                let maybe_index = Self::select_index(side, left_idx, right_idx);
+                let maybe_index = left_or_right(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
-                    matches!(values.get(index), Some(Some(_)))
+                    values.get(index).is_some()
                 } else {
                     true
                 }
             }
             IntermediateExpr::StringVariable { side, values } => {
-                let maybe_index = Self::select_index(side, left_idx, right_idx);
+                let maybe_index = left_or_right(side, left_idx, right_idx);
                 if let Some(index) = maybe_index {
-                    matches!(values.get(index), Some(Some(_)))
+                    values.get(index).is_some()
                 } else {
                     true
                 }
@@ -639,26 +597,23 @@ impl<'a> IntermediateExpr<'a> {
             IntermediateExpr::Number { value } => Ok(Some(ExprValue::Number(*value))),
             IntermediateExpr::Date { value } => Ok(Some(ExprValue::Date(*value))),
             IntermediateExpr::NumberVariable { side, values } => {
-                let index = Self::select_index(side, left_idx, right_idx);
-                let ev = values.get(index).copied().flatten().map(ExprValue::Number);
+                let index = left_or_right(side, left_idx, right_idx);
+                let ev = values.get(index).copied().map(ExprValue::Number);
                 Ok(ev)
             }
             IntermediateExpr::LatLngVariable { side, values } => {
-                let index = Self::select_index(side, left_idx, right_idx);
-                let ev = values.get(index).copied().flatten().map(ExprValue::LatLng);
+                let index = left_or_right(side, left_idx, right_idx);
+                let ev = values.get(index).copied().map(ExprValue::LatLng);
                 Ok(ev)
             }
             IntermediateExpr::DateVariable { side, values } => {
-                let index = Self::select_index(side, left_idx, right_idx);
-                let ev = values.get(index).copied().flatten().map(ExprValue::Date);
+                let index = left_or_right(side, left_idx, right_idx);
+                let ev = values.get(index).copied().map(ExprValue::Date);
                 Ok(ev)
             }
             IntermediateExpr::StringVariable { side, values } => {
-                let index = Self::select_index(side, left_idx, right_idx);
-                let ev = values
-                    .get(index)
-                    .and_then(Option::as_ref)
-                    .map(|s| ExprValue::String(s.into()));
+                let index = left_or_right(side, left_idx, right_idx);
+                let ev = values.get(index).map(|s| ExprValue::String(s.into()));
                 Ok(ev)
             }
             IntermediateExpr::Unary { op, child } => {

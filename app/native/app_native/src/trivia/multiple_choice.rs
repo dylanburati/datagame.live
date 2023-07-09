@@ -9,20 +9,29 @@ use crate::{
 use super::{
     engine::{CardCond, Select, TagCond, TriviaGen},
     types::{
-        selectors, ActiveDeck, GradeableTrivia, Trivia, TriviaAnswer, TriviaAnswerType,
-        TriviaDefCommon,
+        selectors, ActiveDeck, GradeableTrivia, SanityCheck, Trivia, TriviaAnswer,
+        TriviaAnswerType, TriviaDefCommon,
     },
     ErrorKind, Result,
 };
 
 pub struct MultipleChoiceCommon {
-    min_true: u8,
-    max_true: u8,
-    total: u8,
-    is_inverted: bool,
+    pub min_true: u8,
+    pub max_true: u8,
+    pub total: u8,
+    pub is_inverted: bool,
 }
 
 impl MultipleChoiceCommon {
+    pub fn typical(total: u8) -> Self {
+        Self {
+            min_true: 1,
+            max_true: 1,
+            total,
+            is_inverted: false,
+        }
+    }
+
     fn min_false(&self) -> u8 {
         self.total - self.max_true
     }
@@ -45,6 +54,20 @@ impl MultipleChoiceCommon {
         } else {
             self.max_true
         }
+    }
+}
+
+impl SanityCheck for MultipleChoiceCommon {
+    type Error = super::Error;
+
+    fn sanity_check(&self) -> std::result::Result<(), Self::Error> {
+        if self.total == 0 {
+            return Err(ErrorKind::Msg("total > 0".into()).into());
+        }
+        if self.min_true > self.max_true || self.max_true > self.total {
+            return Err(ErrorKind::Msg("min_true <= max_true <= total".into()).into());
+        }
+        Ok(())
     }
 }
 
@@ -333,11 +356,7 @@ mod tests {
 
     #[rstest]
     fn test_card_stat(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = MultipleChoiceDef::CardStat {
             left: None,
             right: selectors::Stat {
@@ -371,11 +390,7 @@ mod tests {
 
     #[rstest]
     fn test_card_tag(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = MultipleChoiceDef::CardTag {
             left: selectors::Card {
                 difficulty: -0.5,
@@ -418,11 +433,7 @@ mod tests {
 
     #[rstest]
     fn test_tag_card(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = MultipleChoiceDef::TagCard {
             left: selectors::Tag {
                 difficulty: -0.5,
@@ -465,11 +476,7 @@ mod tests {
 
     #[rstest]
     fn test_pairing(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks
-            .iter()
-            .cloned()
-            .map(|d| ActiveDeck::new(d.data))
-            .collect();
+        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
         let definition = MultipleChoiceDef::Pairing {
             left: selectors::Card {
                 difficulty: -0.5,
@@ -483,7 +490,7 @@ mod tests {
             pairing_id: 0,
             predicate: Some(
                 expr(
-                    "L\"Pronoun\" == R\"Partner pronoun\" and R\"Pronoun\" == L\"Partner pronoun\"",
+                    "L\"Card\" != R\"Card\" and L\"Pronoun\" == R\"Partner pronoun\" and R\"Pronoun\" == L\"Partner pronoun\"",
                 )
                 .unwrap(),
             ),

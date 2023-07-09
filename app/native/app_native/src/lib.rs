@@ -5,16 +5,30 @@ mod tinylang;
 mod trivia;
 mod types;
 
-use rustler::{Encoder, Env, Error, NifResult, Term};
+use std::sync::Mutex;
 
-use importer::ErrorKind;
+use rustler::{Encoder, Env, Error, NifResult, ResourceArc, Term};
 
-use crate::types::{Deck, ExDeck};
+use trivia::KnowledgeBase;
+
+use crate::{
+    trivia::ActiveDeck,
+    types::{Deck, ExDeck},
+};
 
 mod atoms {
     rustler::atoms! {
         ok,
     }
+}
+
+struct KnowledgeBaseResource {
+    pub data: Mutex<KnowledgeBase>,
+}
+
+fn load(env: Env, _: Term) -> bool {
+    rustler::resource!(KnowledgeBaseResource, env);
+    true
 }
 
 #[rustler::nif]
@@ -29,9 +43,11 @@ fn parse_spreadsheet(env: Env<'_>, sheet_names: Vec<String>, json: String) -> Ni
     let decks = importer::parse_spreadsheet(sheet_names, json).map_err(|err| {
         let kind = err.kind();
         match kind {
-            ErrorKind::DeserializationError(err) => Error::Term(Box::new(format!("{}", err))),
-            ErrorKind::BadMajorDimension => Error::Term(Box::new(format!("{}", err))),
-            ErrorKind::WrongNumberOfRanges => Error::Term(Box::new(format!("{}", err))),
+            importer::ErrorKind::DeserializationError(err) => {
+                Error::Term(Box::new(format!("{}", err)))
+            }
+            importer::ErrorKind::BadMajorDimension => Error::Term(Box::new(format!("{}", err))),
+            importer::ErrorKind::WrongNumberOfRanges => Error::Term(Box::new(format!("{}", err))),
             _ => Error::Term(Box::new("Unknown error")),
         }
     })?;
@@ -62,17 +78,54 @@ fn prepare_decks(env: Env<'_>, decks: Vec<Deck>) -> Term<'_> {
 
 #[rustler::nif]
 fn deserialize_deck(env: Env<'_>, stored: ExDeck) -> NifResult<Term<'_>> {
-    let deck = Deck::try_from(stored)
-        .map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
+    let deck = Deck::try_from(stored).map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
     Ok(rustler::types::tuple::make_tuple(
         env,
         &[atoms::ok().encode(env), deck.encode(env)],
     ))
 }
 
+#[rustler::nif]
+fn load_trivia_base(stored: Vec<ExDeck>) -> NifResult<ResourceArc<KnowledgeBaseResource>> {
+    let mut active_decks = vec![];
+    for ex_deck in stored {
+        let id = ex_deck.id;
+        let deck = Deck::try_from(ex_deck)
+            .map_err(|err| Error::Term(Box::new(format!("{} {}", id, err))))?;
+        active_decks.push(ActiveDeck::new(deck))
+    }
+    let mut base = KnowledgeBase {
+        decks: active_decks,
+        trivia_defs: vec![],
+    };
+    trivia::seed(&mut base).map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
+    let resource: ResourceArc<KnowledgeBaseResource> = ResourceArc::new(KnowledgeBaseResource {
+        data: Mutex::new(base),
+    });
+    Ok(resource)
+}
+
+#[rustler::nif]
+fn get_trivia(
+    env: Env<'_>,
+    kb_sync: ResourceArc<KnowledgeBaseResource>,
+    def_id: u64,
+) -> NifResult<Term<'_>> {
+    let kb: std::sync::MutexGuard<'_, KnowledgeBase> = kb_sync.data.try_lock().unwrap();
+    let result = def_id * 64 + kb.decks.len() as u64;
+    Ok(result.encode(env))
+}
+
 rustler::init!(
     "Elixir.App.Native",
-    [parse_spreadsheet, prepare_decks, deserialize_deck]
+    [
+        parse_spreadsheet,
+        prepare_decks,
+        deserialize_deck,
+        load_trivia_base,
+        get_trivia
+    ],
+    load = load
 );
 
 // #[cfg(test)]

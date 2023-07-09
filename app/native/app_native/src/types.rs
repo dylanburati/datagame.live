@@ -1,11 +1,11 @@
 use std::ops::Deref;
 
 use chrono::NaiveDateTime;
-use rustler::{Atom, Decoder, Encoder, Env, NifMap, NifResult, NifTaggedEnum, NifUnitEnum, Term, NifStruct};
+use rustler::{
+    Atom, Decoder, Encoder, Env, NifMap, NifResult, NifStruct, NifTaggedEnum, NifUnitEnum, Term,
+};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-
-use crate::tinylang::Expression;
 
 fn try_decode_field<'a, T>(term: Term<'a>, field: Atom) -> NifResult<T>
 where
@@ -175,8 +175,6 @@ pub enum EdgeSide {
 pub struct Pairing {
     pub label: String,
     pub is_symmetric: bool,
-    pub requirements: Option<Expression>,
-    pub boosts: Vec<Expression>,
     pub data: Vec<Edge>,
 }
 
@@ -201,12 +199,12 @@ pub struct Deck {
 #[derive(PartialEq, NifStruct)]
 #[module = "App.Entities.Deck"]
 pub struct ExDeck {
-    id: u64,
-    revision: u64,
-    title: String,
-    spreadsheet_id: String,
-    image_url: Option<String>,
-    data: String,
+    pub id: u64,
+    pub revision: u64,
+    pub title: String,
+    pub spreadsheet_id: String,
+    pub image_url: Option<String>,
+    pub data: String,
 }
 
 impl TryFrom<ExDeck> for Deck {

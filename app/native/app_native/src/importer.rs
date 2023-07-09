@@ -9,12 +9,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
 
-use crate::{
-    tinylang::{expr, ExprType, Expression},
-    types::{
-        AnnotatedDeck, Callout, Card, CardTable, Deck, Edge, NaiveDateTimeExt, Pairing, StatArray,
-        StatDef, StatUnit, TagDef,
-    },
+use crate::types::{
+    AnnotatedDeck, Callout, Card, CardTable, Deck, Edge, NaiveDateTimeExt, Pairing, StatArray,
+    StatDef, StatUnit, TagDef,
 };
 
 fn sheet_column_name(index: usize) -> String {
@@ -41,40 +38,18 @@ impl<'a> Column<'a> {
     }
 }
 
-struct PairingReferenceColumns<'a> {
+struct PairingColumns<'a> {
+    label: String,
     left: Column<'a>,
     right: Column<'a>,
     is_symmetric: bool,
     info: Option<Column<'a>>,
 }
 
-impl PairingReferenceColumns<'_> {
+impl PairingColumns<'_> {
     fn end_index(&self) -> usize {
         match self.info {
             None => self.right.index,
-            Some(col) => col.index,
-        }
-    }
-}
-
-struct PairingColumns<'a> {
-    label: String,
-    reference_columns: Option<PairingReferenceColumns<'a>>,
-    criteria_for_all: Column<'a>,
-    criteria_common: Option<Column<'a>>,
-}
-
-impl PairingColumns<'_> {
-    fn start_index(&self) -> usize {
-        match &self.reference_columns {
-            None => self.criteria_for_all.index,
-            Some(rc) => rc.left.index,
-        }
-    }
-
-    fn end_index(&self) -> usize {
-        match &self.criteria_common {
-            None => self.criteria_for_all.index,
             Some(col) => col.index,
         }
     }
@@ -104,7 +79,6 @@ enum IError<I> {
 }
 
 type IResult<I> = std::result::Result<I, IError<I>>;
-type IResult2<I, O> = std::result::Result<(I, O), IError<I>>;
 
 trait InsertNew<T> {
     fn insert_new<F>(&mut self, f: F) -> bool
@@ -189,9 +163,10 @@ fn parse_tag_column<'a>(
     }
 }
 
-fn parse_pairing_colgroup_refs<'a>(
+fn parse_pairing_colgroup<'a>(
+    out: &mut StructuredColumns<'a>,
     input: &'a [Option<Column<'a>>],
-) -> IResult2<&'a [Option<Column<'a>>], PairingReferenceColumns> {
+) -> IResult<&'a [Option<Column<'a>>]> {
     let Some((Some(lcol), rest1)) = input.split_first() else {
         return Err(IError::Cont(input))
     };
@@ -245,91 +220,15 @@ fn parse_pairing_colgroup_refs<'a>(
         Some((Some(c), r)) if c.header == "Info" => (Some(c), r),
         _ => (None, rest2),
     };
-    let refs = PairingReferenceColumns {
+    let pairing_columns = PairingColumns {
+        label: label.into(),
         left: Column::new(lcol.index, label, lcol.body),
         right: Column::new(rcol.index, label, rcol.body),
         is_symmetric,
         info: icol.cloned(),
     };
-    Ok((rest3, refs))
-}
-
-type PairingCriteriaColumns<'a> = (&'a str, &'a Column<'a>, Option<&'a Column<'a>>);
-
-fn parse_pairing_criteria_cols<'a>(
-    input: &'a [Option<Column<'a>>],
-) -> IResult2<&'a [Option<Column<'a>>], PairingCriteriaColumns<'a>> {
-    let Some((Some(acol), rest1)) = input.split_first() else {
-        return Err(IError::Cont(input))
-    };
-    let Some(label) = acol.header.strip_prefix('∀') else {
-        return Err(IError::Cont(input))
-    };
-    let (ccol, rest2) = match rest1.split_first() {
-        Some((Some(c), r)) if c.header == "🚀" => (Some(c), r),
-        _ => (None, rest1),
-    };
-    Ok((rest2, (label, acol, ccol)))
-}
-
-fn parse_pairing_colgroup<'a>(
-    out: &mut StructuredColumns<'a>,
-    input: &'a [Option<Column<'a>>],
-) -> IResult<&'a [Option<Column<'a>>]> {
-    let (rest1, reference_columns): (&[Option<Column<'_>>], Option<PairingReferenceColumns<'_>>) =
-        parse_pairing_colgroup_refs(input)
-            .map(|(in2, rc)| (in2, Some(rc)))
-            .or_else(|e| match e {
-                IError::Cont(in2) => Ok((in2, None)),
-                e_halt => Err(e_halt),
-            })?;
-    let (rest2, criteria_columns) =
-        parse_pairing_criteria_cols(rest1).map_err(|e| match (e, &reference_columns) {
-            (IError::Cont(nxt), None) => IError::Cont(nxt),
-            (IError::Cont(nxt), Some(rc)) => {
-                let callout = Callout::Error(format!(
-                    "Incomplete pairing {} ({}-{})",
-                    rc.left.header,
-                    sheet_column_name(rc.left.index),
-                    sheet_column_name(rc.end_index())
-                ));
-                IError::Halt((nxt, callout))
-            }
-            (e_halt, _) => e_halt,
-        })?;
-
-    let (alabel, acol, ccol) = criteria_columns;
-    let label = match &reference_columns {
-        None => {
-            if alabel.is_empty() {
-                let callout = Callout::Error(format!(
-                    "Pairing name is required ({})",
-                    sheet_column_name(acol.index)
-                ));
-                return Err(IError::Halt((rest2, callout)));
-            } else {
-                alabel
-            }
-        }
-        Some(rc) => {
-            if !alabel.is_empty() && alabel != rc.left.header {
-                let callout = Callout::Error(format!(
-                    "Pairing name mismatch ({}-{})",
-                    sheet_column_name(rc.left.index),
-                    sheet_column_name(acol.index)
-                ));
-                return Err(IError::Halt((rest2, callout)));
-            }
-            rc.left.header
-        }
-    };
-    out.pairings.push(PairingColumns {
-        label: label.to_owned(),
-        reference_columns,
-        criteria_for_all: *acol,
-        criteria_common: ccol.copied(),
-    });
-    Ok(rest2)
+    out.pairings.push(pairing_columns);
+    Ok(rest3)
 }
 
 fn parse_stat_column<'a>(
@@ -704,58 +603,8 @@ fn convert_stat_defs(
     stat_defs
 }
 
-fn check_expression(
-    input: &str,
-    card_table: &CardTable,
-    return_type: ExprType,
-    location: String,
-    callouts: &mut Vec<Callout>,
-) -> Option<Expression> {
-    let expr = match expr(input) {
-        Ok(e) => e,
-        Err(msg) => {
-            callouts.push(Callout::Error(format!(
-                "Syntax error: {} ({})",
-                msg, location
-            )));
-            return None;
-        }
-    };
-    let expr2 = match expr.optimize(card_table, card_table) {
-        Ok(e) => e,
-        Err(msg) => {
-            callouts.push(Callout::Error(format!(
-                "Name error: {} ({})",
-                msg, location
-            )));
-            return None;
-        }
-    };
-    match expr2.get_type() {
-        Ok(typ) => {
-            if typ == return_type {
-                Some(expr)
-            } else {
-                callouts.push(Callout::Error(format!(
-                    "Type error: outer expression must be {:?}, not {:?} ({})",
-                    return_type, typ, location
-                )));
-                None
-            }
-        }
-        Err(msg) => {
-            callouts.push(Callout::Error(format!(
-                "Type error: {} ({})",
-                msg, location
-            )));
-            None
-        }
-    }
-}
-
 fn convert_pairing(
     pairing_columns: PairingColumns<'_>,
-    card_table: &CardTable,
     index_map: &HashMap<String, u64>,
     pairing_name_set: &HashSet<String>,
     callouts: &mut Vec<Callout>,
@@ -764,116 +613,70 @@ fn convert_pairing(
         let callout = Callout::Warning(format!(
             "Duplicate pairing: {} ({}-{})",
             pairing_columns.label,
-            sheet_column_name(pairing_columns.start_index()),
+            sheet_column_name(pairing_columns.left.index),
             sheet_column_name(pairing_columns.end_index()),
         ));
         callouts.push(callout);
         return None;
     }
 
-    let mut requirements_text = &mut String::new();
-    requirements_text =
-        pairing_columns
-            .criteria_for_all
-            .body
-            .iter()
-            .fold(requirements_text, |acc, cell| {
-                if !cell.is_empty() {
-                    if acc.is_empty() {
-                        acc.push_str(format!("({})", cell).as_str())
-                    } else {
-                        acc.push_str(format!(" and ({})", cell).as_str())
-                    }
-                }
-                acc
-            });
-    let requirements = if requirements_text.is_empty() {
-        None
-    } else {
-        check_expression(
-            requirements_text,
-            card_table,
-            ExprType::Bool,
-            sheet_column_name(pairing_columns.criteria_for_all.index),
-            callouts,
-        )
-    };
-    let mut boosts = vec![];
-    if let Some(col) = pairing_columns.criteria_common {
-        for (row_index, boost_text) in col.body.iter().enumerate() {
-            if boost_text.is_empty() {
-                continue;
-            }
-            let maybe_boost_expr = check_expression(
-                boost_text,
-                card_table,
-                ExprType::Number,
-                format!("{}{}", sheet_column_name(col.index), row_index + 2),
-                callouts,
-            );
-            if let Some(boost_expr) = maybe_boost_expr {
-                boosts.push(boost_expr);
-            }
+    let mut edges = vec![];
+    let left = pairing_columns.left;
+    let right = pairing_columns.right;
+    match left.body.len().cmp(&right.body.len()) {
+        Ordering::Equal => (),
+        Ordering::Greater => {
+            callouts.push(Callout::Warning(format!(
+                "Skipping data below row {} in column {}",
+                right.body.len() + 1,
+                sheet_column_name(left.index)
+            )));
+        }
+        Ordering::Less => {
+            callouts.push(Callout::Warning(format!(
+                "Skipping data below row {} in column {}",
+                left.body.len() + 1,
+                sheet_column_name(right.index)
+            )));
         }
     }
-    let mut edges = vec![];
-    let mut is_symmetric = None;
-    if let Some(refs) = pairing_columns.reference_columns {
-        is_symmetric = Some(refs.is_symmetric);
-        match refs.left.body.len().cmp(&refs.right.body.len()) {
-            Ordering::Equal => (),
-            Ordering::Greater => {
-                callouts.push(Callout::Warning(format!(
-                    "Skipping data below row {} in column {}",
-                    refs.right.body.len() + 1,
-                    sheet_column_name(refs.left.index)
-                )));
-            }
-            Ordering::Less => {
-                callouts.push(Callout::Warning(format!(
-                    "Skipping data below row {} in column {}",
-                    refs.left.body.len() + 1,
-                    sheet_column_name(refs.right.index)
-                )));
-            }
+    let mut info_iter = pairing_columns
+        .info
+        .map(|c| c.body.iter())
+        .unwrap_or([].iter());
+    for (row_index, (id1, id2)) in left.body.iter().zip(right.body).enumerate() {
+        let info = info_iter.next().filter(|s| !s.is_empty());
+        if id1.is_empty() || id2.is_empty() {
+            callouts.push(Callout::Warning(format!(
+                "Skipping row {} in pairing {} because of blank",
+                row_index + 2,
+                left.header
+            )));
+            continue;
         }
-        let mut info_iter = refs.info.map(|c| c.body.iter()).unwrap_or([].iter());
-        for (row_index, (id1, id2)) in refs.left.body.iter().zip(refs.right.body).enumerate() {
-            let info = info_iter.next().filter(|s| !s.is_empty());
-            if id1.is_empty() || id2.is_empty() {
-                callouts.push(Callout::Warning(format!(
-                    "Skipping row {} in pairing {} because of blank",
-                    row_index + 2,
-                    refs.left.header
-                )));
-                continue;
-            }
-            let Some(index1) = index_map.get(id1) else {
-                callouts.push(Callout::Error(format!(
-                    "Invalid ID in pairing {} ({}{})",
-                    refs.left.header,
-                    sheet_column_name(refs.left.index),
-                    row_index + 2,
-                )));
-                continue
-            };
-            let Some(index2) = index_map.get(id2) else {
-                callouts.push(Callout::Error(format!(
-                    "Invalid ID in pairing {} ({}{})",
-                    refs.left.header,
-                    sheet_column_name(refs.right.index),
-                    row_index + 2,
-                )));
-                continue
-            };
-            edges.push(Edge::new(*index1, *index2, info.cloned()));
-        }
+        let Some(index1) = index_map.get(id1) else {
+            callouts.push(Callout::Error(format!(
+                "Invalid ID in pairing {} ({}{})",
+                left.header,
+                sheet_column_name(left.index),
+                row_index + 2,
+            )));
+            continue
+        };
+        let Some(index2) = index_map.get(id2) else {
+            callouts.push(Callout::Error(format!(
+                "Invalid ID in pairing {} ({}{})",
+                left.header,
+                sheet_column_name(right.index),
+                row_index + 2,
+            )));
+            continue
+        };
+        edges.push(Edge::new(*index1, *index2, info.cloned()));
     }
     Some(Pairing {
-        label: pairing_columns.criteria_for_all.header.to_owned(),
-        is_symmetric: is_symmetric.unwrap_or(false),
-        requirements,
-        boosts,
+        label: pairing_columns.label,
+        is_symmetric: pairing_columns.is_symmetric,
         data: edges,
     })
 }
@@ -895,13 +698,9 @@ fn convert_pairings(
         return result;
     }
     for pairing_columns in pairing_columns_list {
-        if let Some(pairing) = convert_pairing(
-            pairing_columns,
-            card_table,
-            &index_map,
-            &pairing_name_set,
-            callouts,
-        ) {
+        if let Some(pairing) =
+            convert_pairing(pairing_columns, &index_map, &pairing_name_set, callouts)
+        {
             pairing_name_set.insert(pairing.label.clone());
             result.push(pairing);
         }

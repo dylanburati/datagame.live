@@ -1,5 +1,5 @@
-mod parser;
 mod interpreter;
+mod parser;
 
-pub use parser::{expr, Expression};
 pub use interpreter::{ExprType, ExprValue, IntermediateExpr, OwnedExprValue};
+pub use parser::{expr, Expression};
