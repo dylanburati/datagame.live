@@ -281,7 +281,7 @@ mod tests {
         #[values(false, true)] is_asc: bool,
         #[values(false, true)] is_single: bool,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::Card {
             left: Some(selectors::Category { difficulty: 0.0 }),
             right: selectors::Stat {
@@ -320,7 +320,7 @@ mod tests {
         #[values(false, true)] is_asc: bool,
         #[values(false, true)] is_single: bool,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::Card {
             left: Some(selectors::Category { difficulty: 0.0 }),
             right: selectors::Stat {
@@ -355,7 +355,7 @@ mod tests {
 
     #[rstest]
     fn test_card_squared(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::CardCard {
             left: selectors::Card {
                 difficulty: -0.5,

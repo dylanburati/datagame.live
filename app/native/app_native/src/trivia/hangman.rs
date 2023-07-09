@@ -163,7 +163,7 @@ mod tests {
 
     #[rstest]
     fn test_card(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = HangmanDef::Card {
             selector: selectors::Stat {
                 difficulty: -0.5,
@@ -191,7 +191,7 @@ mod tests {
 
     #[rstest]
     fn test_stat(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = HangmanDef::Stat {
             selector: selectors::Stat {
                 difficulty: -0.5,

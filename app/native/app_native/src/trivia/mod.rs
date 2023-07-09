@@ -115,7 +115,7 @@ pub enum TriviaDef {
 }
 
 impl TriviaDef {
-    fn _deck<'a>(base: &'a KnowledgeBase, deck_id: u64) -> Result<&'a ActiveDeck> {
+    fn _deck(base: &KnowledgeBase, deck_id: u64) -> Result<&ActiveDeck> {
         let deck = base
             .get_deck(deck_id)
             .ok_or_else(|| ErrorKind::InvalidDeckId(deck_id))?;

@@ -356,7 +356,7 @@ mod tests {
 
     #[rstest]
     fn test_card_stat(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = MultipleChoiceDef::CardStat {
             left: None,
             right: selectors::Stat {
@@ -390,7 +390,7 @@ mod tests {
 
     #[rstest]
     fn test_card_tag(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = MultipleChoiceDef::CardTag {
             left: selectors::Card {
                 difficulty: -0.5,
@@ -433,7 +433,7 @@ mod tests {
 
     #[rstest]
     fn test_tag_card(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = MultipleChoiceDef::TagCard {
             left: selectors::Tag {
                 difficulty: -0.5,
@@ -476,7 +476,7 @@ mod tests {
 
     #[rstest]
     fn test_pairing(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let decks: Vec<_> = decks.iter().cloned().map(|d| ActiveDeck::new(d)).collect();
+        let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = MultipleChoiceDef::Pairing {
             left: selectors::Card {
                 difficulty: -0.5,
