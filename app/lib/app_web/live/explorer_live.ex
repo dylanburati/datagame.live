@@ -28,15 +28,43 @@ defmodule AppWeb.ExplorerLive do
     {:noreply, socket}
   end
 
+  def handle_event("trivia", _event_params, socket) do
+    case Map.get(socket.assigns, :trivia_base) do
+      {kb, tdefs} ->
+        payload = case get_trivia(socket, kb, tdefs) do
+          {:ok, trv, exps} ->
+            json = Phoenix.View.render(AppWeb.TriviaView, "trivia_explore.json", %{trivia: trv, expectations: exps})
+            %{ok: json}
+          {:error, msg} ->
+            %{error: msg}
+        end
+        {:noreply, push_event(socket, "trivia-result", payload)}
+      _ ->
+        {:noreply, push_event(socket, "trivia-result", %{error: "Not loaded"})}
+    end
+  end
+
+  defp get_trivia(socket, kb, tdefs) do
+    deck_tdef_ids = Enum.with_index(tdefs)
+    |> Enum.filter(fn {td, _} -> Integer.to_string(td.deck_id) == socket.assigns.params["id"] end)
+    |> Enum.map(&elem(&1, 1))
+    case deck_tdef_ids do
+      [] -> {:error, "No trivia defs in deck"}
+      lst -> App.Native.get_trivia(kb, Enum.at(lst, :rand.uniform(length(lst)) - 1))
+    end
+  end
+
   def handle_info({:load, id}, socket) do
     socket = with {:ok, dbdeck} <- DeckService.show(id) do
-      payload = case App.Native.deserialize_deck(dbdeck) do
-        {:ok, deck} ->
-          %{"ok" => Phoenix.View.render(AppWeb.SheetView, "deck.json", %{data: deck})}
-        {:error, err} ->
-          %{"error" => to_string(err)}
+      with {:ok, deck} <- App.Native.deserialize_deck(dbdeck),
+           {:ok, kb, tdefs} <- App.Native.cached_trivia_base() do
+        deck_json = Phoenix.View.render(AppWeb.SheetView, "deck.json", deck)
+        socket
+        |> assign(:trivia_base, {kb, tdefs})
+        |> push_event("load", %{"ok" => deck_json})
+      else
+        {:error, err} -> push_event(socket, "load", %{"error" => to_string(err)})
       end
-      push_event(socket, "load", payload)
     else
       _ ->
         socket

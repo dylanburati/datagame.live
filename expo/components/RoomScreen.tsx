@@ -120,16 +120,13 @@ function roomReducer(
     message.answers.forEach(({ userId, answered }) => {
       state.receivedAnswers.set(userId, answered);
     });
-    const triviaStats = message.stats
-      ? { ...message.stats, values: new Map(message.stats.values) }
-      : undefined;
     return {
       ...state,
       phase: message.isFinal
         ? RoomPhase.ROOM_FEEDBACK
         : RoomPhase.DIRECT_FEEDBACK,
       expectedAnswers: message.expectedAnswers,
-      triviaStats,
+      statAnnotation: message?.statAnnotation,
       deadline: message.isFinal
         ? message.deadline + state.clockDiffMs
         : state.deadline,

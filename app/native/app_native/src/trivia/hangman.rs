@@ -1,6 +1,6 @@
 use std::{collections::HashMap, num::TryFromIntError};
 
-use crate::{tinylang::OwnedExprValue, trivia::types::TriviaExp};
+use crate::{tinylang::{OwnedExprValue, self}, trivia::types::TriviaExp};
 
 use super::{
     engine::{Select, TriviaGen},
@@ -45,7 +45,7 @@ impl Trivia {
             answer_type: TriviaAnswerType::Hangman,
             min_answers: 1,
             max_answers: 1,
-            question_value_type: "number[]".into(),
+            question_value_type: tinylang::ExprType::IntArray,
             options,
             prefilled_answers,
         }
@@ -53,6 +53,14 @@ impl Trivia {
 }
 
 type HangmanTriple = (Vec<TriviaAnswer>, Vec<TriviaAnswer>, Vec<TriviaExp>);
+
+fn single_uppercase(c: char) -> char {
+    let cx: Vec<_> = c.to_uppercase().collect();
+    match &cx[..] {
+        &[cu] => cu,
+        _ => c,
+    }
+}
 
 fn transform_hangman(
     answer_str: &str,
@@ -68,7 +76,7 @@ fn transform_hangman(
     for (pos, c) in answer_str.chars().enumerate() {
         let l = answer_map.len();
         answer_map
-            .entry(c.to_ascii_uppercase())
+            .entry(single_uppercase(c))
             .and_modify(|(_, positions)| positions.push(pos as i64))
             .or_insert((l, vec![pos as i64]));
     }

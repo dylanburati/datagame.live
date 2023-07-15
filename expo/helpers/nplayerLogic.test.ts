@@ -8,9 +8,9 @@ const OPTION_IDS = [0, 1, 2];
 describe('Functions', () => {
   it('getChangeInRanking', () => {
     const expectations: TriviaExpectation[] = [
-      { kind: 'all', group: [0], minPos: 0 }, // 100
-      { kind: 'all', group: [1], minPos: 1 }, // 75
-      { kind: 'all', group: [2], minPos: 2 }, // 50
+      { kind: 'all_pos', ids: [0], minPos: 0 }, // 100
+      { kind: 'all_pos', ids: [1], minPos: 1 }, // 75
+      { kind: 'all_pos', ids: [2], minPos: 2 }, // 50
     ];
     expect(
       getChangeInRanking(expectations, OrderedSet.from([0, 1, 2]), OPTION_IDS)
@@ -34,8 +34,8 @@ describe('Functions', () => {
 
   it('getChangeInRanking (ties)', () => {
     const expectations: TriviaExpectation[] = [
-      { kind: 'all', group: [0, 1], minPos: 0 }, // 100, 100
-      { kind: 'all', group: [2], minPos: 2 }, // 50
+      { kind: 'all_pos', ids: [0, 1], minPos: 0 }, // 100, 100
+      { kind: 'all_pos', ids: [2], minPos: 2 }, // 50
     ];
     expect(
       getChangeInRanking(expectations, OrderedSet.from([0, 1, 2]), OPTION_IDS)

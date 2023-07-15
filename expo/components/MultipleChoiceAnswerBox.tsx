@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { ViewStyle } from 'react-native';
 import {
   expectedAnswersArePresent,
   getCorrectArray,
@@ -8,11 +9,11 @@ import {
   StyledTriviaOption,
 } from '../helpers/nplayerLogic';
 import { OrderedSet } from '../helpers/data';
+import { TaggedTriviaOption } from '../helpers/api';
 import { AnswerBoxProps } from './AnswerBoxProps';
 import { ChipPicker } from './ChipPicker';
 import { MultipleChoiceOptionView } from './MultipleChoiceOptionView';
 import { styles } from '../styles';
-import { ViewStyle } from 'react-native';
 
 function getStyledOptions(
   state: RoomStateWithTrivia,
@@ -80,7 +81,16 @@ export function MultipleChoiceAnswerBox({
       }
     >
       {({ item: { option }, index }) => (
-        <MultipleChoiceOptionView item={option} index={index} state={state} />
+        <MultipleChoiceOptionView
+          item={
+            {
+              kind: trivia.questionValueType,
+              ...option,
+            } as TaggedTriviaOption
+          }
+          index={index}
+          state={state}
+        />
       )}
     </ChipPicker>
   );

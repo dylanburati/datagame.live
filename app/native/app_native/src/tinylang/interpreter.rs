@@ -2,6 +2,7 @@ use std::{borrow::Cow, cmp::Ordering, f64::consts::PI};
 
 extern crate derive_more;
 use derive_more::From;
+use rustler::NifUnitEnum;
 use smallvec::SmallVec;
 
 use crate::types::{Card, CardTable, EdgeSide, NaiveDateTimeExt, StatArray};
@@ -30,7 +31,7 @@ trait TryOps: Sized {
     fn dist(self, rhs: Self) -> Result<Self, Self::Error>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, NifUnitEnum)]
 pub enum ExprType {
     Bool,
     Number,

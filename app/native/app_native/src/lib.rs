@@ -12,7 +12,7 @@ use rustler::{Encoder, Env, Error, NifResult, ResourceArc, Term};
 use trivia::KnowledgeBase;
 
 use crate::{
-    trivia::ActiveDeck,
+    trivia::{ActiveDeck, TriviaDef},
     types::{Deck, ExDeck},
 };
 
@@ -86,12 +86,12 @@ fn deserialize_deck(env: Env<'_>, stored: ExDeck) -> NifResult<Term<'_>> {
 }
 
 #[rustler::nif]
-fn load_trivia_base(stored: Vec<ExDeck>) -> NifResult<ResourceArc<KnowledgeBaseResource>> {
+fn load_trivia_base(env: Env<'_>, stored: Vec<ExDeck>) -> NifResult<Term<'_>> {
     let mut active_decks = vec![];
     for ex_deck in stored {
         let id = ex_deck.id;
         let deck = Deck::try_from(ex_deck)
-            .map_err(|err| Error::Term(Box::new(format!("{} {}", id, err))))?;
+            .map_err(|err| Error::Term(Box::new(format!("{} (id = {})", err, id))))?;
         active_decks.push(ActiveDeck::new(deck))
     }
     let mut base = KnowledgeBase {
@@ -99,21 +99,43 @@ fn load_trivia_base(stored: Vec<ExDeck>) -> NifResult<ResourceArc<KnowledgeBaseR
         trivia_defs: vec![],
     };
     trivia::seed(&mut base).map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
-    let resource: ResourceArc<KnowledgeBaseResource> = ResourceArc::new(KnowledgeBaseResource {
+    let trivia_def_list: Vec<_> = base
+        .trivia_defs
+        .iter()
+        .map(TriviaDef::common)
+        .cloned()
+        .collect();
+    let resource = ResourceArc::new(KnowledgeBaseResource {
         data: Mutex::new(base),
     });
-    Ok(resource)
+    Ok(rustler::types::tuple::make_tuple(
+        env,
+        &[
+            atoms::ok().encode(env),
+            resource.encode(env),
+            trivia_def_list.encode(env),
+        ],
+    ))
 }
 
 #[rustler::nif]
 fn get_trivia(
     env: Env<'_>,
     kb_sync: ResourceArc<KnowledgeBaseResource>,
-    def_id: u64,
+    def_id: usize,
 ) -> NifResult<Term<'_>> {
     let kb: std::sync::MutexGuard<'_, KnowledgeBase> = kb_sync.data.try_lock().unwrap();
-    let result = def_id * 64 + kb.decks.len() as u64;
-    Ok(result.encode(env))
+    let (trivia, exps) = kb
+        .get_trivia(def_id)
+        .map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
+    Ok(rustler::types::tuple::make_tuple(
+        env,
+        &[
+            atoms::ok().encode(env),
+            trivia.encode(env),
+            exps.encode(env),
+        ],
+    ))
 }
 
 rustler::init!(
@@ -127,45 +149,3 @@ rustler::init!(
     ],
     load = load
 );
-
-// #[cfg(test)]
-// mod tests {
-//     use crate::{importer, tinylang::{expr, ExprType, ExprValue}, types::{StatDef, StatArray}};
-
-//     #[test]
-//     fn test_speed() -> Result<(), Box<dyn std::error::Error>> {
-//         let json_bytes = std::fs::read("../../1687456135278600_in.json")?;
-//         let json = String::from_utf8(json_bytes)?;
-//         let decks = importer::parse_spreadsheet(
-//             vec![
-//                 "Movies".into(),
-//                 "Animals".into(),
-//                 "Music:Billoard US".into(),
-//                 "The Rich and Famous".into(),
-//                 "Places".into(),
-//                 "Characters".into(),
-//             ],
-//             json,
-//         )?;
-//         assert_eq!(decks.len(), 6);
-//         let card_table = &decks[2].deck.data;
-//         let expr = expr("(L\"Spotify plays\" / R\"Spotify plays\")").unwrap();
-//         let expr = expr.optimize(card_table, card_table).unwrap();
-//         assert_eq!(expr.get_type().unwrap(), ExprType::Number);
-//         // let numbers = match &card_table.stat_defs[0].data {
-//         //     StatArray::Number { unit: _, values } => values,
-//         //     _ => panic!(),
-//         // };
-//         for i in 0..card_table.cards.len() {
-//             for j in 0..card_table.cards.len() {
-//                 let ev = expr.get_value(i, j).unwrap();
-//                 assert!(matches!(ev, None | Some(ExprValue::Number(_))), "{:?}", ev)
-//                 // match numbers[i].and_then(|x| numbers[j].map(|y| x / y)) {
-//                 //     None => (),
-//                 //     Some(q) => assert!(q < 1e9),
-//                 // }
-//             }
-//         }
-//         Ok(())
-//     }
-// }

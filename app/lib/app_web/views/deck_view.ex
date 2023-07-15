@@ -16,17 +16,17 @@ defmodule AppWeb.DeckView do
       id: deck.id,
       title: deck.title,
       imageUrl: deck.image_url,
-      imageDominantColor: deck.image_dominant_color,
+      imageDominantColor: "rgb(96, 96, 96)",
       createdAt: deck.inserted_at,
       updatedAt: deck.updated_at,
-      numEnabledCards: deck.enabled_count,
+      # numEnabledCards: deck.enabled_count,
     }
-    |> maybe_put(is_list(deck.category_counts), :categoryCounts, deck.category_counts)
-    |> maybe_put_lazy(
-      Ecto.assoc_loaded?(deck.card_tag_defs),
-      :tagDefinitions,
-      fn -> Enum.map(deck.card_tag_defs, &card_tag_def_json/1) end
-    )
+    # |> maybe_put(is_list(deck.category_counts), :categoryCounts, deck.category_counts)
+    # |> maybe_put_lazy(
+    #   Ecto.assoc_loaded?(deck.card_tag_defs),
+    #   :tagDefinitions,
+    #   fn -> Enum.map(deck.card_tag_defs, &card_tag_def_json/1) end
+    # )
   end
 
   def render("decks.json", %{decks: decks}) do

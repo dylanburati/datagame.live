@@ -6,7 +6,11 @@ use crate::{
     types::EdgeSide,
 };
 
-use super::types::{instances, selectors, ActiveDeck, GradeableTrivia, TriviaDefCommon};
+use super::types::{
+    instances,
+    selectors::{self, PairingNested},
+    ActiveDeck, GradeableTrivia, TriviaDefCommon,
+};
 use super::Result;
 
 pub trait Select {
@@ -62,9 +66,6 @@ pub enum CardCond {
     /// The pairing at the index has a link from the selected Card to any
     /// Card
     EdgeOut(PairingIndex),
-    /// The pairing at the index has a link from the instance Card to the
-    /// selected Card
-    Edge(CardIndex, PairingIndex),
     /// The pairing at the index has no link from the instance Card to the
     /// selected Card
     NoEdge(CardIndex, PairingIndex),
@@ -90,6 +91,25 @@ impl Select for selectors::Card {
     type Cond = CardCond;
 
     fn select_n(&self, deck: &ActiveDeck, conds: &[Self::Cond], n: usize) -> Vec<Self::Item> {
+        // TODO validate no stats
+        if let Some(PairingNested { left, which }) = &self.pairing {
+            let edges = deck.pairings[*which]
+                .edge_infos
+                .range((*left, 0)..(left + 1, 0))
+                .map(|((_, i), v)| (*i, v.as_ref()))
+                .sample_weighted(n, |(i, _)| {
+                    f64::exp(-self.difficulty * deck.data.cards[*i].popularity)
+                });
+            return edges
+                .into_iter()
+                .map(|(i, info)| instances::Card {
+                    index: i,
+                    stats: vec![],
+                    pairing_info: info.cloned(),
+                })
+                .collect();
+        }
+
         let stat_exprs: Vec<_> = self
             .stats
             .iter()
@@ -104,7 +124,6 @@ impl Select for selectors::Card {
         let mut analyze_exprs: Vec<(IntermediateExpr<'_>, EdgeSide)> = vec![];
         let mut eval_exprs: Vec<(IntermediateExpr<'_>, Option<usize>)> = vec![];
         let mut prohibited = HashSet::new();
-        // TODO validate 0 or 1 CardCond::Edge
         for c in conds.iter() {
             match c {
                 CardCond::ExpressionOut(expr) => analyze_exprs.push((
@@ -117,32 +136,6 @@ impl Select for selectors::Card {
                 )),
                 CardCond::Predicate(expr, o) => {
                     eval_exprs.push((expr.optimize(&deck.data, &deck.data).unwrap(), *o))
-                }
-                CardCond::Edge(left, which) => {
-                    let indices = deck.pairings[*which]
-                        .edge_infos
-                        .range((*left, 0)..(left + 1, 0))
-                        .map(|((_, i), _)| *i)
-                        .sample_weighted(n, |i| {
-                            f64::exp(-self.difficulty * deck.data.cards[*i].popularity)
-                        });
-                    return indices
-                        .into_iter()
-                        .filter_map(|i| {
-                            let mut stats = vec![];
-                            for (expr, value_type) in stat_exprs.iter() {
-                                if let Some(value) = expr.get_value(0, i).unwrap() {
-                                    stats.push(instances::Stat {
-                                        value,
-                                        value_type: *value_type,
-                                    })
-                                } else {
-                                    return None;
-                                }
-                            }
-                            Some(instances::Card { index: i, stats })
-                        })
-                        .collect();
                 }
                 CardCond::NoEdge(left, which) => {
                     let indices = deck.pairings[*which]
@@ -180,7 +173,6 @@ impl Select for selectors::Card {
                         CardCond::Predicate(_, _) => true,
                         CardCond::ExpressionOut(_) => true,
                         CardCond::ExpressionIn(_) => true,
-                        CardCond::Edge(_, _) => true,
                         CardCond::NoEdge(_, _) => true,
                         CardCond::Category(instances::Category(cat)) => deck.data.cards[i]
                             .category
@@ -214,7 +206,11 @@ impl Select for selectors::Card {
                         return None;
                     }
                 }
-                Some(instances::Card { index: i, stats })
+                Some(instances::Card {
+                    index: i,
+                    stats,
+                    pairing_info: None,
+                })
             })
             .take(n)
             .collect()
@@ -285,6 +281,7 @@ impl Select for selectors::Stat {
                 expression: self.expression.clone(),
                 return_type: self.return_type,
             }],
+            pairing: None,
         };
         proxy
             .select_n(deck, conds, n)

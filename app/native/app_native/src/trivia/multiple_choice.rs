@@ -1,7 +1,7 @@
 use smallvec::SmallVec;
 
 use crate::{
-    probability::Blend,
+    probability::{Blend, ReservoirSample},
     tinylang::{self, OwnedExprValue},
     trivia::types::TriviaExp,
 };
@@ -104,7 +104,7 @@ impl Trivia {
     pub fn new_selection(
         params: &MultipleChoiceCommon,
         question: String,
-        question_value_type: &str,
+        question_value_type: tinylang::ExprType,
         options: Vec<TriviaAnswer>,
     ) -> Self {
         Self {
@@ -112,7 +112,7 @@ impl Trivia {
             answer_type: TriviaAnswerType::Selection,
             min_answers: params.min_answers(),
             max_answers: params.max_answers(),
-            question_value_type: question_value_type.into(),
+            question_value_type,
             options,
             prefilled_answers: vec![],
         }
@@ -198,7 +198,7 @@ impl TriviaGen for MultipleChoiceDef {
                 );
                 let card_title = deck.data.cards[subj.0].title.as_str();
                 let question = common.question_format.replace("{}", card_title);
-                let trivia = Trivia::new_selection(params, question, "string", answers);
+                let trivia = Trivia::new_selection(params, question, tinylang::ExprType::String, answers);
                 Ok((trivia, expectations))
             }
             MultipleChoiceDef::CardTag {
@@ -224,16 +224,24 @@ impl TriviaGen for MultipleChoiceDef {
                 }
                 let (answers, expectations) =
                     transform_multiple_choice(answers_t, answers_f, params, |id, inst| {
+                        let mut question_value = vec![];
+                        if let Some(card_indices) =
+                            deck.tag_defs[inst.which].edge_sources.get(&inst.value)
+                        {
+                            question_value = card_indices
+                                .iter()
+                                .map(|i| deck.data.cards[*i].title.clone())
+                                .sample(2);
+                        }
                         TriviaAnswer {
                             id,
                             answer: inst.value,
-                            // TODO lookup tag->cards
-                            question_value: OwnedExprValue::StringArray(SmallVec::new()).into(),
+                            question_value: SmallVec::from(question_value).into(),
                         }
                     });
                 let card_title = &deck.data.cards[subj.index].title;
                 let question = common.question_format.as_str().replace("{}", card_title);
-                let trivia = Trivia::new_selection(params, question, "string[]", answers);
+                let trivia = Trivia::new_selection(params, question, tinylang::ExprType::StringArray, answers);
                 Ok((trivia, expectations))
             }
             MultipleChoiceDef::TagCard {
@@ -268,7 +276,7 @@ impl TriviaGen for MultipleChoiceDef {
                         }
                     });
                 let question = common.question_format.replace("{}", &subj.value);
-                let trivia = Trivia::new_selection(params, question, "string[]", answers);
+                let trivia = Trivia::new_selection(params, question, tinylang::ExprType::StringArray, answers);
                 Ok((trivia, expectations))
             }
             MultipleChoiceDef::Pairing {
@@ -289,8 +297,16 @@ impl TriviaGen for MultipleChoiceDef {
                 }
                 let mut answers_t = vec![];
                 for inst in subjects_t {
+                    let right = selectors::Card {
+                        difficulty: right.difficulty,
+                        stats: vec![],
+                        pairing: Some(selectors::PairingNested {
+                            left: inst.index,
+                            which: *pairing_id,
+                        }),
+                    };
                     let inst2 = right
-                        .select(deck, &[CardCond::Edge(inst.index, *pairing_id)])
+                        .select(deck, &[])
                         .ok_or_else(|| ErrorKind::NotEnoughData(1))?;
                     answers_t.push((inst, inst2));
                 }
@@ -330,12 +346,11 @@ impl TriviaGen for MultipleChoiceDef {
                                 separator,
                                 deck.data.cards[inst2.index].title
                             ),
-                            // TODO edge information
-                            question_value: String::new().into(),
+                            question_value: inst2.pairing_info.unwrap_or_default().into(),
                         }
                     });
                 let question = common.question_format.clone();
-                let trivia = Trivia::new_selection(params, question, "string", answers);
+                let trivia = Trivia::new_selection(params, question, tinylang::ExprType::String, answers);
                 Ok((trivia, expectations))
             }
         }
@@ -392,10 +407,7 @@ mod tests {
     fn test_card_tag(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = MultipleChoiceDef::CardTag {
-            left: selectors::Card {
-                difficulty: -0.5,
-                stats: vec![],
-            },
+            left: selectors::Card::new(-0.5),
             right: selectors::Tag {
                 difficulty: -0.5,
                 which: decks[0]
@@ -446,10 +458,7 @@ mod tests {
                     .next()
                     .unwrap(),
             },
-            right: selectors::Card {
-                difficulty: -0.5,
-                stats: vec![],
-            },
+            right: selectors::Card::new(-0.5),
             params: MultipleChoiceCommon {
                 min_true: 1,
                 max_true: 1,
@@ -478,14 +487,8 @@ mod tests {
     fn test_pairing(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = MultipleChoiceDef::Pairing {
-            left: selectors::Card {
-                difficulty: -0.5,
-                stats: vec![],
-            },
-            right: selectors::Card {
-                difficulty: -0.5,
-                stats: vec![],
-            },
+            left: selectors::Card::new(-0.5),
+            right: selectors::Card::new(-0.5),
             separator: '+',
             pairing_id: 0,
             predicate: Some(
@@ -503,7 +506,9 @@ mod tests {
         };
         let common = TriviaDefCommon {
             deck_id: 3,
-            question_format: "Pick the fake couple.".into(),
+            question_format: "Pick the fr[]
+            r[]
+            r[]ake couple.".into(),
         };
         let (trivia, exps) = definition.get_trivia(&decks[3], &common)?;
         writeln!(

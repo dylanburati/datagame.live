@@ -4,19 +4,30 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use rustler::{Decoder, Encoder, NifMap, NifUnitEnum};
+use rustler::{Decoder, Encoder, NifMap, NifUnitEnum, NifTaggedEnum};
+use smallvec::SmallVec;
 
 use crate::{
     probability::SampleTree,
-    tinylang::OwnedExprValue,
+    tinylang::{OwnedExprValue, self},
     types::{CardTable, Deck},
 };
+
+
+pub struct ActivePairing {
+    pub edge_infos: BTreeMap<(usize, usize), Option<String>>,
+}
+
+pub struct ActiveTagDef {
+    pub edge_sources: HashMap<String, SmallVec<[usize; 4]>>,
+}
 
 pub struct ActiveDeck {
     pub id: u64,
     pub data: CardTable,
     pub pairings: Vec<ActivePairing>,
-    pub views: RefCell<HashMap<u64, DeckView>>,
+    pub tag_defs: Vec<ActiveTagDef>,
+    views: RefCell<HashMap<u64, DeckView>>,
 }
 
 impl ActiveDeck {
@@ -41,10 +52,24 @@ impl ActiveDeck {
                 ActivePairing { edge_infos }
             })
             .collect();
+        let tag_defs = data
+            .tag_defs
+            .iter()
+            .map(|td| {
+                let mut edge_sources = HashMap::new();
+                for (i, tcell) in td.values.iter().enumerate() {
+                    for t in tcell {
+                        edge_sources.entry(t.clone()).or_insert(SmallVec::new()).push(i);
+                    }
+                }
+                ActiveTagDef { edge_sources }
+            })
+            .collect();
         Self {
             id,
             data,
             pairings,
+            tag_defs,
             views: RefCell::new(HashMap::default()),
         }
     }
@@ -78,10 +103,6 @@ impl ActiveDeck {
             .or_insert_with(|| DeckView::new(&self.data, difficulty));
         f(view.iter())
     }
-}
-
-pub struct ActivePairing {
-    pub edge_infos: BTreeMap<(usize, usize), Option<String>>,
 }
 
 pub struct DeckView {
@@ -140,9 +161,23 @@ pub mod selectors {
         pub expression: tinylang::Expression,
         pub return_type: tinylang::ExprType,
     }
+    pub struct PairingNested {
+        pub left: usize,
+        pub which: usize,
+    }
     pub struct Card {
         pub difficulty: f64,
         pub stats: Vec<StatNested>,
+        pub pairing: Option<PairingNested>,
+    }
+    impl Card {
+        pub fn new(difficulty: f64) -> Self {
+            Self {
+                difficulty,
+                stats: vec![],
+                pairing: None,
+            }
+        }
     }
     pub struct Tag {
         pub difficulty: f64,
@@ -169,6 +204,7 @@ pub mod instances {
     pub struct Card {
         pub index: usize,
         pub stats: Vec<Stat>,
+        pub pairing_info: Option<String>,
     }
 
     #[derive(Debug, Clone)]
@@ -178,12 +214,13 @@ pub mod instances {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, NifMap)]
 pub struct TriviaDefCommon {
     pub deck_id: u64,
     pub question_format: String,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, NifTaggedEnum)]
 pub enum TriviaExp {
     /// The selection must contain every ID in the list
     All { ids: Vec<u8> },
@@ -198,15 +235,20 @@ pub enum TriviaExp {
     AllPos { ids: Vec<u8>, min_pos: u8 },
 }
 
+#[derive(Debug, Clone, Copy, NifUnitEnum)]
+pub enum RankingType {
+    Asc,
+    Min,
+    Desc,
+    Max,
+}
+
 /// Compat
-#[derive(Debug, NifUnitEnum)]
+#[derive(Debug, NifTaggedEnum)]
 pub enum TriviaAnswerType {
     Selection,
     Hangman,
-    StatAsc,
-    StatMin,
-    StatDesc,
-    StatMax,
+    Ranking(RankingType),
 }
 
 impl Display for TriviaAnswerType {
@@ -234,13 +276,13 @@ impl Display for TriviaAnswer {
 }
 
 /// Compat
-#[derive(Debug)]
+#[derive(Debug, NifMap)]
 pub struct Trivia {
     pub question: String,
     pub answer_type: TriviaAnswerType,
     pub min_answers: u8,
     pub max_answers: u8,
-    pub question_value_type: String,
+    pub question_value_type: tinylang::ExprType,
     pub options: Vec<TriviaAnswer>,
     pub prefilled_answers: Vec<TriviaAnswer>,
 }

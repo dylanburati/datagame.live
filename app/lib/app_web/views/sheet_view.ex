@@ -41,7 +41,7 @@ defmodule AppWeb.SheetView do
     end)
   end
 
-  def render("deck.json", %{data: deck}) do
+  def render("deck.json", deck) do
     Map.update!(deck, :data, &card_table_json/1)
   end
 

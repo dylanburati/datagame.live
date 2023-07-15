@@ -10,14 +10,13 @@ use super::{
     engine::{CardCond, Select, TriviaGen},
     types::{
         instances, selectors, ActiveDeck, GradeableTrivia, SanityCheck, Trivia, TriviaAnswer,
-        TriviaAnswerType, TriviaDefCommon,
+        TriviaAnswerType, TriviaDefCommon, RankingType,
     },
     ErrorKind, Result,
 };
 
 pub struct RankingCommon {
-    pub is_asc: bool,
-    pub is_single: bool,
+    pub ranking_type: RankingType,
     pub total: u8,
 }
 
@@ -33,8 +32,20 @@ impl SanityCheck for RankingCommon {
 }
 
 impl RankingCommon {
+    pub fn typical(ranking_type: RankingType, total: u8) -> Self {
+        Self { ranking_type, total }
+    }
+
+    fn is_single(&self) -> bool {
+        matches!(self.ranking_type, RankingType::Min | RankingType::Max)
+    }
+
+    fn is_asc(&self) -> bool {
+        matches!(self.ranking_type, RankingType::Min | RankingType::Asc)
+    }
+
     fn num_answers(&self) -> u8 {
-        if self.is_single {
+        if self.is_single() {
             1
         } else {
             self.total
@@ -61,18 +72,12 @@ impl Trivia {
     pub fn new_ranking(
         params: &RankingCommon,
         question: String,
-        question_value_type: &str,
+        question_value_type: tinylang::ExprType,
         options: Vec<TriviaAnswer>,
     ) -> Self {
-        let answer_type = match (params.is_asc, params.is_single) {
-            (true, true) => TriviaAnswerType::StatMin,
-            (true, false) => TriviaAnswerType::StatAsc,
-            (false, true) => TriviaAnswerType::StatMax,
-            (false, false) => TriviaAnswerType::StatDesc,
-        };
         Self {
             question,
-            answer_type,
+            answer_type: TriviaAnswerType::Ranking(params.ranking_type),
             min_answers: params.num_answers(),
             max_answers: params.num_answers(),
             question_value_type: question_value_type.into(),
@@ -100,7 +105,7 @@ where
     let mut order: Vec<_> = numeric.into_iter().enumerate().collect();
     order.sort_by(|(_, a), (_, b)| {
         let o = a.partial_cmp(b).unwrap_or(Ordering::Equal);
-        if params.is_asc {
+        if params.is_asc() {
             o
         } else {
             o.reverse()
@@ -118,7 +123,7 @@ where
             }
         }
     }
-    let expectations = if params.is_single {
+    let expectations = if params.is_single() {
         let ids = groups.drain(..).next().unwrap();
         vec![TriviaExp::Any { ids }]
     } else {
@@ -179,14 +184,7 @@ impl TriviaGen for RankingDef {
                     }
                     None => common.question_format.clone(),
                 };
-                let question_value_type = match right.return_type {
-                    tinylang::ExprType::Number => "number",
-                    tinylang::ExprType::Date => "string",
-                    _ => panic!(
-                        "RankingDef::Card: right.stats[0] must have return type Number or Date"
-                    ),
-                };
-                let trivia = Trivia::new_ranking(params, question, question_value_type, answers);
+                let trivia = Trivia::new_ranking(params, question, right.return_type, answers);
                 Ok((trivia, expectations))
             }
             RankingDef::CardCard {
@@ -249,14 +247,7 @@ impl TriviaGen for RankingDef {
                     },
                 );
                 let question = common.question_format.clone();
-                let question_value_type = match stat.return_type {
-                    tinylang::ExprType::Number => "number",
-                    tinylang::ExprType::Date => "string",
-                    _ => panic!(
-                        "RankingDef::Card: right.stats[0] must have return type Number or Date"
-                    ),
-                };
-                let trivia = Trivia::new_ranking(params, question, question_value_type, answers);
+                let trivia = Trivia::new_ranking(params, question, stat.return_type, answers);
                 Ok((trivia, expectations))
             }
         }
@@ -278,8 +269,7 @@ mod tests {
     #[rstest]
     fn test_card_number(
         decks: &[Deck],
-        #[values(false, true)] is_asc: bool,
-        #[values(false, true)] is_single: bool,
+        #[values(RankingType::Min, RankingType::Asc, RankingType::Max, RankingType::Desc)] typ: RankingType,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::Card {
@@ -290,8 +280,7 @@ mod tests {
                 return_type: ExprType::Number,
             },
             params: RankingCommon {
-                is_asc,
-                is_single,
+                ranking_type: typ,
                 total: 3,
             },
         };
@@ -306,7 +295,7 @@ mod tests {
             trivia,
             exps
         )?;
-        if !is_asc && !is_single {
+        if matches!(typ, RankingType::Min) {
             for _ in 0..1000 {
                 let _ = definition.get_trivia(&decks[2], &common)?;
             }
@@ -317,8 +306,7 @@ mod tests {
     #[rstest]
     fn test_card_date(
         decks: &[Deck],
-        #[values(false, true)] is_asc: bool,
-        #[values(false, true)] is_single: bool,
+        #[values(RankingType::Min, RankingType::Asc, RankingType::Max, RankingType::Desc)] typ: RankingType,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::Card {
@@ -329,8 +317,7 @@ mod tests {
                 return_type: ExprType::Date,
             },
             params: RankingCommon {
-                is_asc,
-                is_single,
+                ranking_type: typ,
                 total: 3,
             },
         };
@@ -345,7 +332,7 @@ mod tests {
             trivia,
             exps
         )?;
-        if !is_asc && !is_single {
+        if matches!(typ, RankingType::Min) {
             for _ in 0..1000 {
                 let _ = definition.get_trivia(&decks[3], &common)?;
             }
@@ -357,24 +344,14 @@ mod tests {
     fn test_card_squared(decks: &[Deck]) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::CardCard {
-            left: selectors::Card {
-                difficulty: -0.5,
-                stats: vec![],
-            },
-            right: selectors::Card {
-                difficulty: -0.5,
-                stats: vec![],
-            },
+            left: selectors::Card::new(-0.5),
+            right: selectors::Card::new(-0.5),
             stat: selectors::StatNested {
                 expression: expr("L\"Coordinates\" <-> R\"Coordinates\"").unwrap(),
                 return_type: ExprType::Number,
             },
             separator: '↔',
-            params: RankingCommon {
-                is_asc: true,
-                is_single: true,
-                total: 3,
-            },
+            params: RankingCommon::typical(RankingType::Min, 3),
         };
         let common = TriviaDefCommon {
             deck_id: 4,

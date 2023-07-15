@@ -23,7 +23,7 @@ use self::{
     hangman::{HangmanCommon, HangmanDef},
     multiple_choice::{MultipleChoiceCommon, MultipleChoiceDef},
     ranking::{RankingCommon, RankingDef},
-    types::selectors,
+    types::{selectors, RankingType}, engine::TriviaGen,
 };
 
 pub fn scale_popularity(deck: &mut Deck) {
@@ -87,6 +87,10 @@ error_chain! {
             display("type error in {:?}: {}", src, msg)
         }
         // generation-time
+        InvalidTriviaDefId(id: usize) {
+            description("invalid TriviaDef id")
+            display("invalid TriviaDef id: {}", id)
+        }
         NotEnoughData(c: u8) {
             description("not enough data")
             display("expected at least {} valid item(s) for TriviaDef", c)
@@ -103,8 +107,26 @@ pub struct KnowledgeBase {
 }
 
 impl KnowledgeBase {
-    fn get_deck(&self, deck_id: u64) -> Option<&ActiveDeck> {
+    pub fn get_deck(&self, deck_id: u64) -> Option<&ActiveDeck> {
         self.decks.iter().find(|d| d.id == deck_id)
+    }
+
+    fn require_deck(&self, deck_id: u64) -> Result<&ActiveDeck> {
+        self.get_deck(deck_id)
+            .ok_or_else(|| ErrorKind::InvalidDeckId(deck_id).into())
+    }
+
+    pub fn get_trivia(&self, trivia_def_id: usize) -> Result<GradeableTrivia> {
+        let trivia_def = self
+            .trivia_defs
+            .get(trivia_def_id)
+            .ok_or_else(|| ErrorKind::InvalidTriviaDefId(trivia_def_id))?;
+        let deck = self.require_deck(trivia_def.common().deck_id)?;
+        match trivia_def {
+            TriviaDef::MultipleChoice(body, common) => body.get_trivia(deck, common),
+            TriviaDef::Ranking(body, common) => body.get_trivia(deck, common),
+            TriviaDef::Hangman(body, common) => body.get_trivia(deck, common),
+        }
     }
 }
 
@@ -115,11 +137,12 @@ pub enum TriviaDef {
 }
 
 impl TriviaDef {
-    fn _deck(base: &KnowledgeBase, deck_id: u64) -> Result<&ActiveDeck> {
-        let deck = base
-            .get_deck(deck_id)
-            .ok_or_else(|| ErrorKind::InvalidDeckId(deck_id))?;
-        Ok(deck)
+    pub fn common(&self) -> &TriviaDefCommon {
+        match self {
+            TriviaDef::MultipleChoice(_, v) => v,
+            TriviaDef::Ranking(_, v) => v,
+            TriviaDef::Hangman(_, v) => v,
+        }
     }
 
     fn _expression_exprtype(
@@ -145,7 +168,7 @@ impl TriviaDef {
         stat_expr_src: &str,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let (stat_expr, return_type) = Self::_expression_exprtype(deck, stat_expr_src)?;
         if !matches!(return_type, tinylang::ExprType::String) {
             return Err(ErrorKind::Msg(format!(
@@ -180,14 +203,11 @@ impl TriviaDef {
         tag_name: &str,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let tag_id = deck
             .get_tag_index(tag_name)
             .ok_or_else(|| ErrorKind::InvalidTagName(tag_name.into()))?;
-        let left = selectors::Card {
-            difficulty: difficulties.0,
-            stats: vec![],
-        };
+        let left = selectors::Card::new(difficulties.0);
         let right = selectors::Tag {
             difficulty: difficulties.1,
             which: tag_id,
@@ -208,7 +228,7 @@ impl TriviaDef {
         tag_name: &str,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let tag_id = deck
             .get_tag_index(tag_name)
             .ok_or_else(|| ErrorKind::InvalidTagName(tag_name.into()))?;
@@ -216,10 +236,7 @@ impl TriviaDef {
             difficulty: difficulties.0,
             which: tag_id,
         };
-        let right = selectors::Card {
-            difficulty: difficulties.1,
-            stats: vec![],
-        };
+        let right = selectors::Card::new(difficulties.1);
         let body = MultipleChoiceDef::TagCard {
             left,
             right,
@@ -238,7 +255,7 @@ impl TriviaDef {
         separator: char,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let predicate = if let Some(predicate_src) = maybe_predicate_src {
             let (expression, return_type) = Self::_expression_exprtype(deck, predicate_src)?;
             if !matches!(return_type, tinylang::ExprType::Bool) {
@@ -255,14 +272,8 @@ impl TriviaDef {
         let pairing_id = deck
             .get_pairing_index(pairing_name)
             .ok_or_else(|| ErrorKind::InvalidPairingName(pairing_name.into()))?;
-        let left = selectors::Card {
-            difficulty: difficulties.0,
-            stats: vec![],
-        };
-        let right = selectors::Card {
-            difficulty: difficulties.1,
-            stats: vec![],
-        };
+        let left = selectors::Card::new(difficulties.0);
+        let right = selectors::Card::new(difficulties.1);
         let body = MultipleChoiceDef::Pairing {
             left,
             right,
@@ -283,7 +294,7 @@ impl TriviaDef {
         stat_expr_src: &str,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let (stat_expr, return_type) = Self::_expression_exprtype(deck, stat_expr_src)?;
         if !matches!(
             return_type,
@@ -322,7 +333,7 @@ impl TriviaDef {
         separator: char,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let (stat_expr, return_type) = Self::_expression_exprtype(deck, stat_expr_src)?;
         if !matches!(
             return_type,
@@ -334,14 +345,8 @@ impl TriviaDef {
             ))
             .into());
         }
-        let left = selectors::Card {
-            difficulty: difficulties.0,
-            stats: vec![],
-        };
-        let right = selectors::Card {
-            difficulty: difficulties.1,
-            stats: vec![],
-        };
+        let left = selectors::Card::new(difficulties.0);
+        let right = selectors::Card::new(difficulties.1);
         let stat = selectors::StatNested {
             expression: stat_expr,
             return_type,
@@ -364,7 +369,7 @@ impl TriviaDef {
         stat_expr_src: &str,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let (stat_expr, return_type) = Self::_expression_exprtype(deck, stat_expr_src)?;
         if !matches!(
             return_type,
@@ -393,7 +398,7 @@ impl TriviaDef {
         stat_expr_src: &str,
     ) -> Result<Self> {
         params.sanity_check()?;
-        let deck = Self::_deck(base, common.deck_id)?;
+        let deck = base.require_deck(common.deck_id)?;
         let (stat_expr, return_type) = Self::_expression_exprtype(deck, stat_expr_src)?;
         if !matches!(return_type, tinylang::ExprType::String) {
             return Err(ErrorKind::Msg(format!(
@@ -442,11 +447,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             question_format: "Rank these {} movies from highest to lowest Letterboxd rating."
                 .into(),
         },
-        RankingCommon {
-            is_asc: false,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Desc, 3),
         (-1.5,),
         true,
         "R\"Letterboxd rating\"",
@@ -458,11 +459,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 4,
             question_format: "Rank these songs from most to least Spotify plays.".into(),
         },
-        RankingCommon {
-            is_asc: true,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Desc, 3),
         (-0.75,),
         true,
         "R\"Spotify plays\"",
@@ -474,11 +471,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 3,
             question_format: "Rank these people from most to least popular on Wikipedia.".into(),
         },
-        RankingCommon {
-            is_asc: false,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Desc, 3),
         (-1.625,),
         true,
         "R\"Wikipedia views\"",
@@ -490,11 +483,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 3,
             question_format: "Rank these people from oldest to youngest.".into(),
         },
-        RankingCommon {
-            is_asc: true,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Asc, 3),
         (-1.625,),
         true,
         "R\"Birth date\"",
@@ -535,11 +524,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 2,
             question_format: "Rank these places from most to least popular on Wikipedia.".into(),
         },
-        RankingCommon {
-            is_asc: false,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Desc, 3),
         (-2.25,),
         true,
         "R\"Wikipedia views\"",
@@ -551,11 +536,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 2,
             question_format: "Rank these places by population (highest first).".into(),
         },
-        RankingCommon {
-            is_asc: false,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Desc, 3),
         (-1.625,),
         true,
         "R\"Population\"",
@@ -567,11 +548,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 2,
             question_format: "Pick the closest pair of cities geographically.".into(),
         },
-        RankingCommon {
-            is_asc: false,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Min, 3),
         (-1.25, -1.25),
         "L\"Coordinates\" <-> R\"Coordinates\"",
         '↔',
@@ -595,11 +572,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             question_format: "Rank these characters from most to fewest fanfiction works on AO3."
                 .into(),
         },
-        RankingCommon {
-            is_asc: true,
-            is_single: false,
-            total: 3,
-        },
+        RankingCommon::typical(RankingType::Desc, 3),
         (-1.75,),
         true,
         "R\"AO3 fanfics\"",
