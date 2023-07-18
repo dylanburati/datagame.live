@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     probability::ReservoirSample,
-    tinylang::{self, IntermediateExpr, OwnedExprValue},
+    tinylang::{self, IntermediateExpr, OwnedExprValue, PartialContext},
     types::EdgeSide,
 };
 
@@ -154,15 +154,15 @@ impl Select for selectors::Card {
                 }
                 for (expr, side) in analyze_exprs.iter() {
                     let check = match side {
-                        EdgeSide::Left => expr.has_vars(Some(i), None),
-                        EdgeSide::Right => expr.has_vars(None, Some(i)),
+                        EdgeSide::Left => expr.has_vars(&PartialContext::Left(i)),
+                        EdgeSide::Right => expr.has_vars(&PartialContext::Right(i)),
                     };
                     if !check {
                         return None;
                     }
                 }
                 for (expr, left) in eval_exprs.iter() {
-                    let check = expr.get_value(left.unwrap_or(0), i).unwrap();
+                    let check = expr.get_value(left.unwrap_or(0), i);
                     match check {
                         Some(OwnedExprValue::Bool(true)) => (),
                         _ => return None,
@@ -197,7 +197,7 @@ impl Select for selectors::Card {
                 }
                 let mut stats = vec![];
                 for (expr, value_type) in stat_exprs.iter() {
-                    if let Some(value) = expr.get_value(0, i).unwrap() {
+                    if let Some(value) = expr.get_value(0, i) {
                         stats.push(instances::Stat {
                             value,
                             value_type: *value_type,

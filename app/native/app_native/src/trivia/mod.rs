@@ -154,8 +154,7 @@ impl TriviaDef {
         let return_type = expression
             .optimize(&deck.data, &deck.data)
             .map_err(|msg| ErrorKind::TinylangTypeError(expr_src.into(), msg))?
-            .get_type()
-            .map_err(|msg| ErrorKind::TinylangTypeError(expr_src.into(), msg))?;
+            .get_type();
         Ok((expression, return_type))
     }
 

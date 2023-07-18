@@ -80,7 +80,7 @@ impl Trivia {
             answer_type: TriviaAnswerType::Ranking(params.ranking_type),
             min_answers: params.num_answers(),
             max_answers: params.num_answers(),
-            question_value_type: question_value_type.into(),
+            question_value_type,
             options,
             prefilled_answers: vec![],
         }
@@ -221,7 +221,6 @@ impl TriviaGen for RankingDef {
                     |id, (inst, inst2)| {
                         let value = expr
                             .get_value(inst.index, inst2.index)
-                            .unwrap()
                             .expect("null-checker lied");
                         let (num, question_value) = match value {
                             OwnedExprValue::Number(v) => (v, v.into()),

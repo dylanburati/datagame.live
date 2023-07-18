@@ -1010,16 +1010,14 @@ mod tests {
         let (card_table, _) = parse_value_range(movies());
         let expr = expr("(L\"Release Date\" - R\"Release Date\")").unwrap();
         let expr = expr.optimize(&card_table, &card_table).unwrap();
-        assert_eq!(expr.get_type().unwrap(), ExprType::Number);
+        assert_eq!(expr.get_type(), ExprType::Number);
         assert_eq!(
             expr.get_value(0, 13)
-                .unwrap()
                 .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap()),
             Some(2261.0)
         );
         assert_eq!(
             expr.get_value(0, 14)
-                .unwrap()
                 .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap()),
             None
         );
@@ -1027,11 +1025,9 @@ mod tests {
             for j in 0..14 {
                 let ltr = expr
                     .get_value(i, j)
-                    .unwrap()
                     .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap());
                 let rtl = expr
                     .get_value(j, i)
-                    .unwrap()
                     .map(|r| match_it!(r, it, OwnedExprValue::Number(it)).unwrap());
                 assert_eq!(ltr.map(|x| -x), rtl);
             }

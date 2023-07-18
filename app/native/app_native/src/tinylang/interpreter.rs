@@ -1,7 +1,7 @@
 use std::{borrow::Cow, cmp::Ordering, f64::consts::PI};
 
 extern crate derive_more;
-use derive_more::From;
+use derive_more::{Display, From};
 use rustler::NifUnitEnum;
 use smallvec::SmallVec;
 
@@ -9,29 +9,7 @@ use crate::types::{Card, CardTable, EdgeSide, NaiveDateTimeExt, StatArray};
 
 use super::parser::{BinOp, Expression, UnOp};
 
-trait TryOps: Sized {
-    type Error;
-
-    fn bool(self) -> Result<Self, Self::Error>;
-    fn not(self) -> Result<Self, Self::Error>;
-    fn neg(self) -> Result<Self, Self::Error>;
-    fn eq(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn neq(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn lt(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn lte(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn gt(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn gte(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn and(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn or(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn add(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn sub(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn mul(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn div(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn pow(self, rhs: Self) -> Result<Self, Self::Error>;
-    fn dist(self, rhs: Self) -> Result<Self, Self::Error>;
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, NifUnitEnum)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, NifUnitEnum)]
 pub enum ExprType {
     Bool,
     Number,
@@ -42,321 +20,6 @@ pub enum ExprType {
     IntArray,
     #[allow(dead_code)]
     StringArray,
-}
-
-#[rustfmt::skip]
-impl TryOps for ExprType {
-    type Error = String;
-
-    fn bool(self) -> Result<Self, Self::Error> {
-        Ok(ExprType::Bool)
-    }
-
-    fn not(self) -> Result<Self, Self::Error> {
-        Ok(ExprType::Bool)
-    }
-
-    fn neg(self) -> Result<Self, Self::Error> {
-        if self == ExprType::Number {
-            Ok(self)
-        } else {
-            Err(format!("- does not apply to ({:?})", self))
-        }
-    }
-
-    fn eq(self, rhs: Self) -> Result<Self, Self::Error> {
-        if self == rhs {
-            Ok(ExprType::Bool)
-        } else {
-            Err(format!("== and != do not apply to ({:?}, {:?})", self, rhs))
-        }
-    }
-    fn neq(self, rhs: Self) -> Result<Self, Self::Error> { self.eq(rhs) }
-
-    fn lt(self, rhs: Self) -> Result<Self, Self::Error> {
-        match self {
-            lt @ (ExprType::Number | ExprType::Date) if lt == rhs => Ok(ExprType::Bool),
-            _ => Err(format!(
-                "<, <=, >=, and > do not apply to ({:?}, {:?})",
-                self, rhs
-            )),
-        }
-    }
-    fn lte(self, rhs: Self) -> Result<Self, Self::Error> { self.lt(rhs) }
-    fn gt(self, rhs: Self) -> Result<Self, Self::Error> { self.lt(rhs) }
-    fn gte(self, rhs: Self) -> Result<Self, Self::Error> { self.lt(rhs) }
-
-    fn and(self, rhs: Self) -> Result<Self, Self::Error> {
-        if matches!((self, rhs), (ExprType::Bool, ExprType::Bool)) {
-            Ok(ExprType::Bool)
-        } else {
-            Err(format!(
-                "`and` and `or` do not apply to ({:?}, {:?})",
-                self, rhs
-            ))
-        }
-    }
-    fn or(self, rhs: Self) -> Result<Self, Self::Error> { self.and(rhs) }
-
-    fn add(self, rhs: Self) -> Result<Self, Self::Error> {
-        if matches!((self, rhs), (ExprType::Number, ExprType::Number)) {
-            Ok(ExprType::Number)
-        } else {
-            Err(format!(
-                "+, *, /, and ** do not apply to ({:?}, {:?})",
-                self, rhs
-            ))
-        }
-    }
-
-    fn sub(self, rhs: Self) -> Result<Self, Self::Error> {
-        match self {
-            lt @ (ExprType::Number | ExprType::Date) if lt == rhs => Ok(ExprType::Number),
-            _ => Err(format!("- does not apply to ({:?}, {:?})", self, rhs)),
-        }
-    }
-
-    fn mul(self, rhs: Self) -> Result<Self, Self::Error> { self.add(rhs) }
-    fn div(self, rhs: Self) -> Result<Self, Self::Error> { self.add(rhs) }
-    fn pow(self, rhs: Self) -> Result<Self, Self::Error> { self.add(rhs) }
-
-    fn dist(self, rhs: Self) -> Result<Self, Self::Error> {
-        if matches!((self, rhs), (ExprType::LatLng, ExprType::LatLng)) {
-            Ok(ExprType::Number)
-        } else {
-            Err(format!( "<-> does not apply to ({:?}, {:?})", self, rhs ))
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, From)]
-pub enum ExprValue<'a> {
-    Bool(bool),
-    Number(f64),
-    LatLng((f64, f64)),
-    Date(NaiveDateTimeExt),
-    String(Cow<'a, str>),
-    IntArray(Cow<'a, [i64]>),
-    StringArray(Cow<'a, [String]>),
-}
-
-impl<'a> ExprValue<'a> {
-    pub fn get_bool(&self) -> Option<&bool> {
-        match self {
-            ExprValue::Bool(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_number(&self) -> Option<&f64> {
-        match self {
-            ExprValue::Number(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_lat_lng(&self) -> Option<&(f64, f64)> {
-        match self {
-            ExprValue::LatLng(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_date(&self) -> Option<&NaiveDateTimeExt> {
-        match self {
-            ExprValue::Date(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_string(&self) -> Option<&str> {
-        match self {
-            ExprValue::String(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_int_array(&self) -> Option<&[i64]> {
-        match self {
-            ExprValue::IntArray(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    pub fn get_string_array(&self) -> Option<&[String]> {
-        match self {
-            ExprValue::StringArray(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    fn equals(&self, rhs: &ExprValue) -> Option<bool> {
-        match self {
-            ExprValue::Bool(lhs) => rhs.get_bool().map(|v| lhs == v),
-            ExprValue::Number(lhs) => rhs.get_number().map(|v| lhs == v),
-            ExprValue::LatLng(lhs) => rhs.get_lat_lng().map(|v| lhs == v),
-            ExprValue::Date(lhs) => rhs.get_date().map(|v| lhs == v),
-            ExprValue::String(lhs) => rhs.get_string().map(|v| lhs == v),
-            ExprValue::IntArray(lhs) => rhs.get_int_array().map(|v| lhs == &v),
-            ExprValue::StringArray(lhs) => rhs.get_string_array().map(|v| lhs == &v),
-        }
-    }
-
-    fn cmp(&self, rhs: &ExprValue) -> Option<Ordering> {
-        match self {
-            ExprValue::Number(lhs) => rhs.get_number().map(|v| lhs.total_cmp(v)),
-            ExprValue::Date(lhs) => rhs.get_date().map(|v| lhs.cmp(v)),
-            _ => None,
-        }
-    }
-}
-
-#[rustfmt::skip]
-impl<'a> TryOps for ExprValue<'a> {
-    type Error = ();
-
-    fn bool(self) -> Result<Self, Self::Error> {
-        match self {
-            ExprValue::Bool(v) => Ok(ExprValue::Bool(v)),
-            _ => Ok(ExprValue::Bool(true)),
-        }
-    }
-
-    fn not(self) -> Result<Self, Self::Error> {
-        match self {
-            ExprValue::Bool(v) => Ok(ExprValue::Bool(!v)),
-            _ => Ok(ExprValue::Bool(false)),
-        }
-    }
-
-    fn neg(self) -> Result<Self, Self::Error> {
-        let val = self.get_number().map(|x| -*x).ok_or(())?;
-        Ok(val.into())
-    }
-
-    fn eq(self, rhs: Self) -> Result<Self, Self::Error> {
-        let val = self.equals(&rhs).ok_or(())?;
-        Ok(val.into())
-    }
-    fn neq(self, rhs: Self) -> Result<Self, Self::Error> { 
-        let val = self.equals(&rhs).ok_or(())?;
-        Ok((!val).into())
-    }
-
-    fn lt(self, rhs: Self) -> Result<Self, Self::Error> {
-        let cv = self.cmp(&rhs).ok_or(())?;
-        let val = matches!(cv, Ordering::Less);
-        Ok(val.into())
-    }
-    fn lte(self, rhs: Self) -> Result<Self, Self::Error> {
-        let cv = self.cmp(&rhs).ok_or(())?;
-        let val = matches!(cv, Ordering::Less | Ordering::Equal);
-        Ok(val.into())
-    }
-    fn gt(self, rhs: Self) -> Result<Self, Self::Error> {
-        let cv = self.cmp(&rhs).ok_or(())?;
-        let val = matches!(cv, Ordering::Greater);
-        Ok(val.into())
-    }
-    fn gte(self, rhs: Self) -> Result<Self, Self::Error> {
-        let cv = self.cmp(&rhs).ok_or(())?;
-        let val = matches!(cv, Ordering::Greater | Ordering::Equal);
-        Ok(val.into())
-    }
-
-    fn and(self, rhs: Self) -> Result<Self, Self::Error> {
-        let lhs = self.get_bool().ok_or(())?;
-        if !lhs {
-            return Ok(ExprValue::Bool(false));
-        }
-        Ok(rhs)
-    }
-    fn or(self, rhs: Self) -> Result<Self, Self::Error> {
-        let lhs = self.get_bool().ok_or(())?;
-        if *lhs {
-            return Ok(ExprValue::Bool(true));
-        }
-        Ok(rhs)
-    }
-
-    fn add(self, rhs: Self) -> Result<Self, Self::Error> {
-        let x1 = self.get_number().ok_or(())?;
-        let x2 = rhs.get_number().ok_or(())?;
-        Ok((x1 + x2).into())
-    }
-
-    fn sub(self, rhs: Self) -> Result<Self, Self::Error> {
-        match self {
-            ExprValue::Number(x1) => {
-                let x2 = rhs.get_number().ok_or(())?;
-                Ok((x1 - x2).into())
-            },
-            ExprValue::Date(x1) => {
-                let x2 = rhs.get_date().ok_or(())?;
-                let ms = x1.signed_duration_since(**x2).num_milliseconds() as f64;
-                Ok((ms / 1000.0 / 60.0 / 60.0 / 24.0).into())
-            },
-            _ => Err(()),
-        }
-    }
-
-    fn mul(self, rhs: Self) -> Result<Self, Self::Error> {
-        let x1 = self.get_number().ok_or(())?;
-        let x2 = rhs.get_number().ok_or(())?;
-        Ok((x1 * x2).into())
-    }
-    fn div(self, rhs: Self) -> Result<Self, Self::Error> {
-        let x1 = self.get_number().ok_or(())?;
-        let x2 = rhs.get_number().ok_or(())?;
-        Ok((x1 / x2).into())
-    }
-    fn pow(self, rhs: Self) -> Result<Self, Self::Error> {
-        let x1 = self.get_number().ok_or(())?;
-        let x2 = rhs.get_number().ok_or(())?;
-        Ok(x1.powf(*x2).into())
-    }
-    
-    fn dist(self, rhs: Self) -> Result<Self, Self::Error> {
-        const FLATTENING: f64 = 1.0 / 298.257223563;
-        const RADIUS_KM: f64 = 6378.137;
-        let (mut lat1, mut lon1) = self.get_lat_lng().ok_or(())?;
-        let (mut lat2, mut lon2) = rhs.get_lat_lng().ok_or(())?;
-        lat1 *= PI / 180.0;
-        lon1 *= PI / 180.0;
-        lat2 *= PI / 180.0;
-        lon2 *= PI / 180.0;
-
-        #[inline]
-        fn haversin(x: f64) -> f64 {
-            let res = f64::sin(x / 2.0);
-            res * res
-        }
-        #[inline]
-        fn sin2(x: f64) -> f64 {
-            let res = f64::sin(x);
-            res * res
-        }
-        #[inline]
-        fn cos2(x: f64) -> f64 {
-            let res = f64::cos(x);
-            res * res
-        }
-
-        // lambert's formula
-        let b1 = f64::atan((1.0 - FLATTENING) * lat1.tan());
-        let b2 = f64::atan((1.0 - FLATTENING) * lat2.tan());
-        let dlambda = f64::abs(lon1 - lon2);
-        let dphi = f64::abs(b1 - b2);
-        let central2 = haversin(dphi) + haversin(dlambda) * (1.0 - haversin(dphi) - haversin(lat1 + lat2));
-        let halfcentral = central2.sqrt().asin();
-        let central = 2.0 * halfcentral;
-        let p = 0.5 * (b1 + b2);
-        let q = 0.5 * (b2 - b1);
-        let x = (central - f64::sin(central)) * sin2(p) * cos2(q) / cos2(halfcentral);
-        let y = (central + f64::sin(central)) * sin2(q) * cos2(p) / sin2(halfcentral);
-        let dist_km = RADIUS_KM * (central - 0.5 * FLATTENING * (x + y));
-        Ok(dist_km.into())
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, From)]
@@ -405,39 +68,400 @@ impl<'a> ColumnGet<'a, String> for StringColumn<'a> {
     }
 }
 
-pub enum IntermediateExpr<'a> {
+#[derive(Debug, Clone, Copy)]
+struct EvalContext {
+    left_idx: usize,
+    right_idx: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PartialContext {
+    Left(usize),
+    Right(usize),
+}
+
+trait Evaluate<'a, T> {
+    fn evaluate(&'a self, ctx: EvalContext) -> Option<T>;
+    fn has_vars(&'a self, ctx: &PartialContext) -> bool;
+}
+
+enum IBool<'a> {
+    NotNilBool {
+        child: Box<IBool<'a>>,
+    },
+    NotNilNumber {
+        child: Box<INumber<'a>>,
+    },
+    NotNilLatLng {
+        child: Box<ILatLng<'a>>,
+    },
+    NotNilDate {
+        child: Box<IDate<'a>>,
+    },
+    NotNilString {
+        child: Box<IString<'a>>,
+    },
+    Not {
+        child: Box<IBool<'a>>,
+    },
+    EqBool {
+        lhs: Box<IBool<'a>>,
+        rhs: Box<IBool<'a>>,
+        invert: bool,
+    },
+    EqNumber {
+        lhs: Box<INumber<'a>>,
+        rhs: Box<INumber<'a>>,
+        invert: bool,
+    },
+    EqLatLng {
+        lhs: Box<ILatLng<'a>>,
+        rhs: Box<ILatLng<'a>>,
+        invert: bool,
+    },
+    EqDate {
+        lhs: Box<IDate<'a>>,
+        rhs: Box<IDate<'a>>,
+        invert: bool,
+    },
+    EqString {
+        lhs: Box<IString<'a>>,
+        rhs: Box<IString<'a>>,
+        invert: bool,
+    },
+    CmpNumber {
+        lhs: Box<INumber<'a>>,
+        rhs: Box<INumber<'a>>,
+        ordering: Ordering,
+        invert: bool,
+    },
+    CmpDate {
+        lhs: Box<IDate<'a>>,
+        rhs: Box<IDate<'a>>,
+        ordering: Ordering,
+        invert: bool,
+    },
+    And {
+        lhs: Box<IBool<'a>>,
+        rhs: Box<IBool<'a>>,
+    },
+    Or {
+        lhs: Box<IBool<'a>>,
+        rhs: Box<IBool<'a>>,
+    },
+}
+
+enum INumber<'a> {
     Number {
         value: f64,
-    },
-    Date {
-        value: NaiveDateTimeExt,
     },
     NumberVariable {
         side: EdgeSide,
         values: DirectColumn<'a, f64>,
     },
+    Neg {
+        child: Box<INumber<'a>>,
+    },
+    Add {
+        lhs: Box<INumber<'a>>,
+        rhs: Box<INumber<'a>>,
+    },
+    SubNumber {
+        lhs: Box<INumber<'a>>,
+        rhs: Box<INumber<'a>>,
+    },
+    SubDate {
+        lhs: Box<IDate<'a>>,
+        rhs: Box<IDate<'a>>,
+    },
+    Mul {
+        lhs: Box<INumber<'a>>,
+        rhs: Box<INumber<'a>>,
+    },
+    Div {
+        lhs: Box<INumber<'a>>,
+        rhs: Box<INumber<'a>>,
+    },
+    Pow {
+        lhs: Box<INumber<'a>>,
+        rhs: Box<INumber<'a>>,
+    },
+    Dist {
+        lhs: Box<ILatLng<'a>>,
+        rhs: Box<ILatLng<'a>>,
+    },
+}
+
+enum ILatLng<'a> {
     LatLngVariable {
         side: EdgeSide,
         values: DirectColumn<'a, (f64, f64)>,
+    },
+}
+
+enum IDate<'a> {
+    Date {
+        value: NaiveDateTimeExt,
     },
     DateVariable {
         side: EdgeSide,
         values: DirectColumn<'a, NaiveDateTimeExt>,
     },
+}
+
+enum IString<'a> {
     StringVariable {
         side: EdgeSide,
         values: StringColumn<'a>,
     },
-    Unary {
-        op: UnOp,
-        child: Box<IntermediateExpr<'a>>,
-    },
-    Binary {
-        op: BinOp,
-        lhs: Box<IntermediateExpr<'a>>,
-        rhs: Box<IntermediateExpr<'a>>,
-    },
 }
+
+impl Evaluate<'_, bool> for IBool<'_> {
+    fn evaluate(&self, ctx: EvalContext) -> Option<bool> {
+        match self {
+            IBool::NotNilBool { child } => Some(
+                child.has_vars(&PartialContext::Left(ctx.left_idx))
+                    && child.has_vars(&PartialContext::Right(ctx.right_idx)),
+            ),
+            IBool::NotNilNumber { child } => Some(
+                child.has_vars(&PartialContext::Left(ctx.left_idx))
+                    && child.has_vars(&PartialContext::Right(ctx.right_idx)),
+            ),
+            IBool::NotNilLatLng { child } => Some(
+                child.has_vars(&PartialContext::Left(ctx.left_idx))
+                    && child.has_vars(&PartialContext::Right(ctx.right_idx)),
+            ),
+            IBool::NotNilDate { child } => Some(
+                child.has_vars(&PartialContext::Left(ctx.left_idx))
+                    && child.has_vars(&PartialContext::Right(ctx.right_idx)),
+            ),
+            IBool::NotNilString { child } => Some(
+                child.has_vars(&PartialContext::Left(ctx.left_idx))
+                    && child.has_vars(&PartialContext::Right(ctx.right_idx)),
+            ),
+            IBool::Not { child } => child.evaluate(ctx).map(|x| !x),
+            IBool::EqBool { lhs, rhs, invert } => {
+                Some(*invert != (lhs.evaluate(ctx)? == rhs.evaluate(ctx)?))
+            }
+            IBool::EqNumber { lhs, rhs, invert } => {
+                Some(*invert != (lhs.evaluate(ctx)? == rhs.evaluate(ctx)?))
+            }
+            IBool::EqLatLng { lhs, rhs, invert } => {
+                Some(*invert != (lhs.evaluate(ctx)? == rhs.evaluate(ctx)?))
+            }
+            IBool::EqDate { lhs, rhs, invert } => {
+                Some(*invert != (lhs.evaluate(ctx)? == rhs.evaluate(ctx)?))
+            }
+            IBool::EqString { lhs, rhs, invert } => {
+                Some(*invert != (lhs.evaluate(ctx)? == rhs.evaluate(ctx)?))
+            }
+            IBool::CmpNumber {
+                lhs,
+                rhs,
+                ordering,
+                invert,
+            } => {
+                let lv = lhs.evaluate(ctx)?;
+                let rv = rhs.evaluate(ctx)?;
+                Some(*invert != (lv.total_cmp(&rv) == *ordering))
+            }
+            IBool::CmpDate {
+                lhs,
+                rhs,
+                ordering,
+                invert,
+            } => {
+                let lv = lhs.evaluate(ctx)?;
+                let rv = rhs.evaluate(ctx)?;
+                Some(*invert != (lv.cmp(&rv) == *ordering))
+            }
+            IBool::And { lhs, rhs } => Some(lhs.evaluate(ctx)? && rhs.evaluate(ctx)?),
+            IBool::Or { lhs, rhs } => Some(lhs.evaluate(ctx)? || rhs.evaluate(ctx)?),
+        }
+    }
+
+    fn has_vars(&self, ctx: &PartialContext) -> bool {
+        match self {
+            IBool::NotNilBool { child: _ } => true,
+            IBool::NotNilNumber { child: _ } => true,
+            IBool::NotNilLatLng { child: _ } => true,
+            IBool::NotNilDate { child: _ } => true,
+            IBool::NotNilString { child: _ } => true,
+            IBool::Not { child } => child.has_vars(ctx),
+            IBool::EqBool { lhs, rhs, .. } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::EqNumber { lhs, rhs, .. } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::EqLatLng { lhs, rhs, .. } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::EqDate { lhs, rhs, .. } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::EqString { lhs, rhs, .. } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::CmpNumber { lhs, rhs, .. } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::CmpDate { lhs, rhs, .. } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::And { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            IBool::Or { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+        }
+    }
+}
+
+impl Evaluate<'_, f64> for INumber<'_> {
+    fn evaluate(&self, ctx: EvalContext) -> Option<f64> {
+        match self {
+            INumber::Number { value } => Some(*value),
+            INumber::NumberVariable { side, values } => values
+                .get(left_or_right(side, ctx.left_idx, ctx.right_idx))
+                .copied(),
+            INumber::Neg { child } => child.evaluate(ctx).map(|x| -x),
+            INumber::Add { lhs, rhs } => Some(lhs.evaluate(ctx)? + rhs.evaluate(ctx)?),
+            INumber::SubNumber { lhs, rhs } => Some(lhs.evaluate(ctx)? - rhs.evaluate(ctx)?),
+            INumber::SubDate { lhs, rhs } => {
+                let lv = lhs.evaluate(ctx)?;
+                let rv = rhs.evaluate(ctx)?;
+                let ms = lv.signed_duration_since(*rv).num_milliseconds() as f64;
+                Some(ms / 1000.0 / 60.0 / 60.0 / 24.0)
+            }
+            INumber::Mul { lhs, rhs } => Some(lhs.evaluate(ctx)? * rhs.evaluate(ctx)?),
+            INumber::Div { lhs, rhs } => Some(lhs.evaluate(ctx)? / rhs.evaluate(ctx)?),
+            INumber::Pow { lhs, rhs } => {
+                let lv = lhs.evaluate(ctx)?;
+                let rv = rhs.evaluate(ctx)?;
+                Some(lv.powf(rv))
+            }
+            INumber::Dist { lhs, rhs } => {
+                const FLATTENING: f64 = 1.0 / 298.257223563;
+                const RADIUS_KM: f64 = 6378.137;
+                let (mut lat1, mut lon1) = lhs.evaluate(ctx)?;
+                let (mut lat2, mut lon2) = rhs.evaluate(ctx)?;
+                lat1 *= PI / 180.0;
+                lon1 *= PI / 180.0;
+                lat2 *= PI / 180.0;
+                lon2 *= PI / 180.0;
+
+                #[inline]
+                fn haversin(x: f64) -> f64 {
+                    let res = f64::sin(x / 2.0);
+                    res * res
+                }
+                #[inline]
+                fn sin2(x: f64) -> f64 {
+                    let res = f64::sin(x);
+                    res * res
+                }
+                #[inline]
+                fn cos2(x: f64) -> f64 {
+                    let res = f64::cos(x);
+                    res * res
+                }
+
+                // lambert's formula
+                let b1 = f64::atan((1.0 - FLATTENING) * lat1.tan());
+                let b2 = f64::atan((1.0 - FLATTENING) * lat2.tan());
+                let dlambda = f64::abs(lon1 - lon2);
+                let dphi = f64::abs(b1 - b2);
+                let central2 = haversin(dphi)
+                    + haversin(dlambda) * (1.0 - haversin(dphi) - haversin(lat1 + lat2));
+                let halfcentral = central2.sqrt().asin();
+                let central = 2.0 * halfcentral;
+                let p = 0.5 * (b1 + b2);
+                let q = 0.5 * (b2 - b1);
+                let x = (central - f64::sin(central)) * sin2(p) * cos2(q) / cos2(halfcentral);
+                let y = (central + f64::sin(central)) * sin2(q) * cos2(p) / sin2(halfcentral);
+                let dist_km = RADIUS_KM * (central - 0.5 * FLATTENING * (x + y));
+                Some(dist_km)
+            }
+        }
+    }
+
+    fn has_vars(&self, ctx: &PartialContext) -> bool {
+        match self {
+            INumber::Number { value: _ } => true,
+            INumber::NumberVariable { side, values } => match (ctx, side) {
+                (PartialContext::Left(i), EdgeSide::Left) => values.get(*i).is_some(),
+                (PartialContext::Right(i), EdgeSide::Right) => values.get(*i).is_some(),
+                _ => true,
+            },
+            INumber::Neg { child } => child.has_vars(ctx),
+            INumber::Add { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            INumber::SubNumber { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            INumber::SubDate { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            INumber::Mul { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            INumber::Div { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            INumber::Pow { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+            INumber::Dist { lhs, rhs } => lhs.has_vars(ctx) && rhs.has_vars(ctx),
+        }
+    }
+}
+
+impl Evaluate<'_, (f64, f64)> for ILatLng<'_> {
+    fn evaluate(&self, ctx: EvalContext) -> Option<(f64, f64)> {
+        match self {
+            ILatLng::LatLngVariable { side, values } => values
+                .get(left_or_right(side, ctx.left_idx, ctx.right_idx))
+                .copied(),
+        }
+    }
+
+    fn has_vars(&self, ctx: &PartialContext) -> bool {
+        match self {
+            ILatLng::LatLngVariable { side, values } => match (ctx, side) {
+                (PartialContext::Left(i), EdgeSide::Left) => values.get(*i).is_some(),
+                (PartialContext::Right(i), EdgeSide::Right) => values.get(*i).is_some(),
+                _ => true,
+            },
+        }
+    }
+}
+
+impl Evaluate<'_, NaiveDateTimeExt> for IDate<'_> {
+    fn evaluate(&self, ctx: EvalContext) -> Option<NaiveDateTimeExt> {
+        match self {
+            IDate::Date { value } => Some(*value),
+            IDate::DateVariable { side, values } => values
+                .get(left_or_right(side, ctx.left_idx, ctx.right_idx))
+                .copied(),
+        }
+    }
+
+    fn has_vars(&self, ctx: &PartialContext) -> bool {
+        match self {
+            IDate::Date { value: _ } => true,
+            IDate::DateVariable { side, values } => match (ctx, side) {
+                (PartialContext::Left(i), EdgeSide::Left) => values.get(*i).is_some(),
+                (PartialContext::Right(i), EdgeSide::Right) => values.get(*i).is_some(),
+                _ => true,
+            },
+        }
+    }
+}
+
+impl<'a> Evaluate<'a, Cow<'a, str>> for IString<'a> {
+    fn evaluate(&'a self, ctx: EvalContext) -> Option<Cow<'a, str>> {
+        match self {
+            IString::StringVariable { side, values } => values
+                .get(left_or_right(side, ctx.left_idx, ctx.right_idx))
+                .map(|x| x.into()),
+        }
+    }
+
+    fn has_vars(&self, ctx: &PartialContext) -> bool {
+        match self {
+            IString::StringVariable { side, values } => match (ctx, side) {
+                (PartialContext::Left(i), EdgeSide::Left) => values.get(*i).is_some(),
+                (PartialContext::Right(i), EdgeSide::Right) => values.get(*i).is_some(),
+                _ => true,
+            },
+        }
+    }
+}
+
+#[derive(From)]
+enum IExpr<'a> {
+    Bool(IBool<'a>),
+    Number(INumber<'a>),
+    LatLng(ILatLng<'a>),
+    Date(IDate<'a>),
+    String(IString<'a>),
+}
+
+#[derive(From)]
+pub struct IntermediateExpr<'a>(IExpr<'a>);
 
 impl Expression {
     pub fn optimize<'a>(
@@ -445,16 +469,25 @@ impl Expression {
         left: &'a CardTable,
         right: &'a CardTable,
     ) -> Result<IntermediateExpr<'a>, String> {
+        Ok(self.optimize_impl(left, right)?.into())
+    }
+
+    fn optimize_impl<'a>(
+        &self,
+        left: &'a CardTable,
+        right: &'a CardTable,
+    ) -> Result<IExpr<'a>, String> {
         match self {
-            Expression::Number { value } => Ok(IntermediateExpr::Number { value: *value }),
-            Expression::Date { value } => Ok(IntermediateExpr::Date { value: *value }),
+            Expression::Number { value } => Ok(INumber::Number { value: *value }.into()),
+            Expression::Date { value } => Ok(IDate::Date { value: *value }.into()),
             Expression::Variable { side, key } => {
                 if key == "Card" {
-                    let data = left_or_right(side, left, right);
-                    return Ok(IntermediateExpr::StringVariable {
+                    let data: &CardTable = left_or_right(side, left, right);
+                    let ie = IString::StringVariable {
                         side: *side,
-                        values: TitleColumn(data.cards.as_slice()).into()
-                    });
+                        values: TitleColumn(data.cards.as_slice()).into(),
+                    };
+                    return Ok(ie.into());
                 }
                 let mut iter = match side {
                     EdgeSide::Left => left.stat_defs.iter(),
@@ -463,40 +496,217 @@ impl Expression {
                 let col = iter
                     .find(|sd| &sd.label == key)
                     .ok_or_else(|| format!("Stat {} not found", key))?;
-                match &col.data {
-                    StatArray::Number { unit: _, values } => Ok(IntermediateExpr::NumberVariable {
+                let ie = match &col.data {
+                    StatArray::Number { unit: _, values } => (INumber::NumberVariable {
                         side: *side,
                         values: DirectColumn(values.as_slice()),
-                    }),
-                    StatArray::Date { values } => Ok(IntermediateExpr::DateVariable {
+                    })
+                    .into(),
+                    StatArray::Date { values } => (IDate::DateVariable {
                         side: *side,
                         values: DirectColumn(values.as_slice()),
-                    }),
-                    StatArray::String { values } => Ok(IntermediateExpr::StringVariable {
+                    })
+                    .into(),
+                    StatArray::String { values } => (IString::StringVariable {
                         side: *side,
                         values: DirectColumn(values.as_slice()).into(),
-                    }),
-                    StatArray::LatLng { values } => Ok(IntermediateExpr::LatLngVariable {
+                    })
+                    .into(),
+                    StatArray::LatLng { values } => (ILatLng::LatLngVariable {
                         side: *side,
                         values: DirectColumn(values.as_slice()),
-                    }),
-                }
+                    })
+                    .into(),
+                };
+                Ok(ie)
             }
             Expression::Unary { op, child } => {
-                let child = child.0.optimize(left, right)?;
-                Ok(IntermediateExpr::Unary {
-                    op: *op,
-                    child: Box::new(child),
-                })
+                let ce = child.0.optimize_impl(left, right)?;
+                match op {
+                    UnOp::Bool => match ce {
+                        IExpr::Bool(child) => Ok(IBool::NotNilBool {
+                            child: Box::new(child),
+                        }
+                        .into()),
+                        IExpr::Number(child) => Ok(IBool::NotNilNumber {
+                            child: Box::new(child),
+                        }
+                        .into()),
+                        IExpr::LatLng(child) => Ok(IBool::NotNilLatLng {
+                            child: Box::new(child),
+                        }
+                        .into()),
+                        IExpr::Date(child) => Ok(IBool::NotNilDate {
+                            child: Box::new(child),
+                        }
+                        .into()),
+                        IExpr::String(child) => Ok(IBool::NotNilString {
+                            child: Box::new(child),
+                        }
+                        .into()),
+                    },
+                    UnOp::Not => match ce {
+                        IExpr::Bool(child) => Ok(IBool::Not {
+                            child: Box::new(child),
+                        }
+                        .into()),
+                        other => Err(format!("`not` is not defined for ({})", other.ty())),
+                    },
+                    UnOp::Neg => match ce {
+                        IExpr::Number(child) => Ok(INumber::Neg {
+                            child: Box::new(child),
+                        }
+                        .into()),
+                        other => Err(format!("`-` is not defined for ({})", other.ty())),
+                    },
+                }
             }
             Expression::Binary { op, lhs, rhs } => {
-                let lhs = lhs.0.optimize(left, right)?;
-                let rhs = rhs.0.optimize(left, right)?;
-                Ok(IntermediateExpr::Binary {
-                    op: *op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                })
+                let lhs = lhs.0.optimize_impl(left, right)?;
+                let rhs = rhs.0.optimize_impl(left, right)?;
+                match op {
+                    op @ (BinOp::Eq | BinOp::Neq) => {
+                        let invert = matches!(op, BinOp::Neq);
+                        match (lhs, rhs) {
+                            (IExpr::Bool(left), IExpr::Bool(right)) => Ok(IBool::EqBool {
+                                lhs: Box::new(left),
+                                rhs: Box::new(right),
+                                invert,
+                            }
+                            .into()),
+                            (IExpr::Number(left), IExpr::Number(right)) => Ok(IBool::EqNumber {
+                                lhs: Box::new(left),
+                                rhs: Box::new(right),
+                                invert,
+                            }
+                            .into()),
+                            (IExpr::LatLng(left), IExpr::LatLng(right)) => Ok(IBool::EqLatLng {
+                                lhs: Box::new(left),
+                                rhs: Box::new(right),
+                                invert,
+                            }
+                            .into()),
+                            (IExpr::Date(left), IExpr::Date(right)) => Ok(IBool::EqDate {
+                                lhs: Box::new(left),
+                                rhs: Box::new(right),
+                                invert,
+                            }
+                            .into()),
+                            (IExpr::String(left), IExpr::String(right)) => Ok(IBool::EqString {
+                                lhs: Box::new(left),
+                                rhs: Box::new(right),
+                                invert,
+                            }
+                            .into()),
+                            (l, r) => Err(format!(
+                                "`{}` is not defined for ({}, {})",
+                                op,
+                                l.ty(),
+                                r.ty()
+                            )),
+                        }
+                    }
+                    op @ (BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte) => {
+                        let (ordering, invert) = match op {
+                            BinOp::Lt => (Ordering::Less, false),
+                            BinOp::Lte => (Ordering::Greater, true),
+                            BinOp::Gt => (Ordering::Greater, false),
+                            BinOp::Gte => (Ordering::Less, true),
+                            _ => panic!(),
+                        };
+                        match (lhs, rhs) {
+                            (IExpr::Number(left), IExpr::Number(right)) => Ok(IBool::CmpNumber {
+                                lhs: Box::new(left),
+                                rhs: Box::new(right),
+                                ordering,
+                                invert,
+                            }
+                            .into()),
+                            (IExpr::Date(left), IExpr::Date(right)) => Ok(IBool::CmpDate {
+                                lhs: Box::new(left),
+                                rhs: Box::new(right),
+                                ordering,
+                                invert,
+                            }
+                            .into()),
+                            (l, r) => Err(format!(
+                                "`{}` is not defined for ({}, {})",
+                                op,
+                                l.ty(),
+                                r.ty()
+                            )),
+                        }
+                    }
+                    BinOp::And => match (lhs, rhs) {
+                        (IExpr::Bool(left), IExpr::Bool(right)) => Ok(IBool::And {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`and` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                    BinOp::Or => match (lhs, rhs) {
+                        (IExpr::Bool(left), IExpr::Bool(right)) => Ok(IBool::Or {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`or` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                    BinOp::Add => match (lhs, rhs) {
+                        (IExpr::Number(left), IExpr::Number(right)) => Ok(INumber::Add {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`+` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                    BinOp::Sub => match (lhs, rhs) {
+                        (IExpr::Number(left), IExpr::Number(right)) => Ok(INumber::SubNumber {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (IExpr::Date(left), IExpr::Date(right)) => Ok(INumber::SubDate {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`-` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                    BinOp::Mul => match (lhs, rhs) {
+                        (IExpr::Number(left), IExpr::Number(right)) => Ok(INumber::Mul {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`*` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                    BinOp::Div => match (lhs, rhs) {
+                        (IExpr::Number(left), IExpr::Number(right)) => Ok(INumber::Div {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`/` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                    BinOp::Pow => match (lhs, rhs) {
+                        (IExpr::Number(left), IExpr::Number(right)) => Ok(INumber::Pow {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`**` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                    BinOp::Dist => match (lhs, rhs) {
+                        (IExpr::LatLng(left), IExpr::LatLng(right)) => Ok(INumber::Dist {
+                            lhs: Box::new(left),
+                            rhs: Box::new(right),
+                        }
+                        .into()),
+                        (l, r) => Err(format!("`+` is not defined for ({}, {})", l.ty(), r.ty())),
+                    },
+                }
             }
         }
     }
@@ -510,167 +720,46 @@ fn left_or_right<T>(side: &EdgeSide, left: T, right: T) -> T {
     }
 }
 
+impl<'a> IExpr<'a> {
+    pub fn ty(&self) -> ExprType {
+        match self {
+            IExpr::Bool(_) => ExprType::Bool,
+            IExpr::Number(_) => ExprType::Number,
+            IExpr::LatLng(_) => ExprType::LatLng,
+            IExpr::Date(_) => ExprType::Date,
+            IExpr::String(_) => ExprType::String,
+        }
+    }
+}
+
 impl<'a> IntermediateExpr<'a> {
-    pub fn get_type(&self) -> Result<ExprType, String> {
-        match self {
-            IntermediateExpr::Number { value: _ } => Ok(ExprType::Number),
-            IntermediateExpr::Date { value: _ } => Ok(ExprType::Date),
-            IntermediateExpr::NumberVariable { side: _, values: _ } => Ok(ExprType::Number),
-            IntermediateExpr::LatLngVariable { side: _, values: _ } => Ok(ExprType::LatLng),
-            IntermediateExpr::DateVariable { side: _, values: _ } => Ok(ExprType::Date),
-            IntermediateExpr::StringVariable { side: _, values: _ } => Ok(ExprType::String),
-            IntermediateExpr::Unary { op, child } => {
-                let child_type = child.get_type()?;
-                match op {
-                    UnOp::Bool => child_type.bool(),
-                    UnOp::Not => child_type.not(),
-                    UnOp::Neg => child_type.neg(),
-                }
-            }
-            IntermediateExpr::Binary { op, lhs, rhs } => {
-                let lhs_type = lhs.get_type()?;
-                let rhs_type = rhs.get_type()?;
-                match op {
-                    BinOp::Eq => lhs_type.eq(rhs_type),
-                    BinOp::Neq => lhs_type.neq(rhs_type),
-                    BinOp::Lt => lhs_type.lt(rhs_type),
-                    BinOp::Lte => lhs_type.lte(rhs_type),
-                    BinOp::Gt => lhs_type.gt(rhs_type),
-                    BinOp::Gte => lhs_type.gte(rhs_type),
-                    BinOp::And => lhs_type.and(rhs_type),
-                    BinOp::Or => lhs_type.or(rhs_type),
-                    BinOp::Add => lhs_type.add(rhs_type),
-                    BinOp::Sub => lhs_type.sub(rhs_type),
-                    BinOp::Mul => lhs_type.mul(rhs_type),
-                    BinOp::Div => lhs_type.div(rhs_type),
-                    BinOp::Pow => lhs_type.pow(rhs_type),
-                    BinOp::Dist => lhs_type.dist(rhs_type),
-                }
-            }
+    pub fn get_type(&self) -> ExprType {
+        self.0.ty()
+    }
+
+    pub fn has_vars(&self, ctx: &PartialContext) -> bool {
+        match &self.0 {
+            IExpr::Bool(inner) => inner.has_vars(ctx),
+            IExpr::Number(inner) => inner.has_vars(ctx),
+            IExpr::LatLng(inner) => inner.has_vars(ctx),
+            IExpr::Date(inner) => inner.has_vars(ctx),
+            IExpr::String(inner) => inner.has_vars(ctx),
         }
     }
 
-    pub fn has_vars(&self, left_idx: Option<usize>, right_idx: Option<usize>) -> bool {
-        match self {
-            IntermediateExpr::Number { value: _ } => true,
-            IntermediateExpr::Date { value: _ } => true,
-            IntermediateExpr::NumberVariable { side, values } => {
-                let maybe_index = left_or_right(side, left_idx, right_idx);
-                if let Some(index) = maybe_index {
-                    values.get(index).is_some()
-                } else {
-                    true
-                }
-            }
-            IntermediateExpr::LatLngVariable { side, values } => {
-                let maybe_index = left_or_right(side, left_idx, right_idx);
-                if let Some(index) = maybe_index {
-                    values.get(index).is_some()
-                } else {
-                    true
-                }
-            }
-            IntermediateExpr::DateVariable { side, values } => {
-                let maybe_index = left_or_right(side, left_idx, right_idx);
-                if let Some(index) = maybe_index {
-                    values.get(index).is_some()
-                } else {
-                    true
-                }
-            }
-            IntermediateExpr::StringVariable { side, values } => {
-                let maybe_index = left_or_right(side, left_idx, right_idx);
-                if let Some(index) = maybe_index {
-                    values.get(index).is_some()
-                } else {
-                    true
-                }
-            }
-            IntermediateExpr::Unary { op: _, child } => child.has_vars(left_idx, right_idx),
-            IntermediateExpr::Binary { op: _, lhs, rhs } => {
-                lhs.has_vars(left_idx, right_idx) && rhs.has_vars(left_idx, right_idx)
-            }
+    pub fn get_value(&self, left_idx: usize, right_idx: usize) -> Option<OwnedExprValue> {
+        let ctx = EvalContext {
+            left_idx,
+            right_idx,
+        };
+        match &self.0 {
+            IExpr::Bool(inner) => inner.evaluate(ctx).map(OwnedExprValue::Bool),
+            IExpr::Number(inner) => inner.evaluate(ctx).map(OwnedExprValue::Number),
+            IExpr::LatLng(inner) => inner.evaluate(ctx).map(OwnedExprValue::LatLng),
+            IExpr::Date(inner) => inner.evaluate(ctx).map(OwnedExprValue::Date),
+            IExpr::String(inner) => inner
+                .evaluate(ctx)
+                .map(|x| OwnedExprValue::String(x.into_owned())),
         }
-    }
-
-    fn get_expr_value(&self, left_idx: usize, right_idx: usize) -> Result<Option<ExprValue>, ()> {
-        match self {
-            IntermediateExpr::Number { value } => Ok(Some(ExprValue::Number(*value))),
-            IntermediateExpr::Date { value } => Ok(Some(ExprValue::Date(*value))),
-            IntermediateExpr::NumberVariable { side, values } => {
-                let index = left_or_right(side, left_idx, right_idx);
-                let ev = values.get(index).copied().map(ExprValue::Number);
-                Ok(ev)
-            }
-            IntermediateExpr::LatLngVariable { side, values } => {
-                let index = left_or_right(side, left_idx, right_idx);
-                let ev = values.get(index).copied().map(ExprValue::LatLng);
-                Ok(ev)
-            }
-            IntermediateExpr::DateVariable { side, values } => {
-                let index = left_or_right(side, left_idx, right_idx);
-                let ev = values.get(index).copied().map(ExprValue::Date);
-                Ok(ev)
-            }
-            IntermediateExpr::StringVariable { side, values } => {
-                let index = left_or_right(side, left_idx, right_idx);
-                let ev = values.get(index).map(|s| ExprValue::String(s.into()));
-                Ok(ev)
-            }
-            IntermediateExpr::Unary { op, child } => {
-                if let Some(child_value) = child.get_expr_value(left_idx, right_idx)? {
-                    let ev = match op {
-                        UnOp::Bool => child_value.bool(),
-                        UnOp::Not => child_value.not(),
-                        UnOp::Neg => child_value.neg(),
-                    }?;
-                    Ok(Some(ev))
-                } else {
-                    Ok(None)
-                }
-            }
-            IntermediateExpr::Binary { op, lhs, rhs } => {
-                if let Some(lhs_value) = lhs.get_expr_value(left_idx, right_idx)? {
-                    if let Some(rhs_value) = rhs.get_expr_value(left_idx, right_idx)? {
-                        let ev = match op {
-                            BinOp::Eq => lhs_value.eq(rhs_value),
-                            BinOp::Neq => lhs_value.neq(rhs_value),
-                            BinOp::Lt => lhs_value.lt(rhs_value),
-                            BinOp::Lte => lhs_value.lte(rhs_value),
-                            BinOp::Gt => lhs_value.gt(rhs_value),
-                            BinOp::Gte => lhs_value.gte(rhs_value),
-                            BinOp::And => lhs_value.and(rhs_value),
-                            BinOp::Or => lhs_value.or(rhs_value),
-                            BinOp::Add => lhs_value.add(rhs_value),
-                            BinOp::Sub => lhs_value.sub(rhs_value),
-                            BinOp::Mul => lhs_value.mul(rhs_value),
-                            BinOp::Div => lhs_value.div(rhs_value),
-                            BinOp::Pow => lhs_value.pow(rhs_value),
-                            BinOp::Dist => lhs_value.dist(rhs_value),
-                        }?;
-                        return Ok(Some(ev));
-                    }
-                }
-                Ok(None)
-            }
-        }
-    }
-
-    pub fn get_value(
-        &self,
-        left_idx: usize,
-        right_idx: usize,
-    ) -> Result<Option<OwnedExprValue>, ()> {
-        let maybe_ev = self.get_expr_value(left_idx, right_idx)?;
-        let maybe_oev = maybe_ev.map(|ev| match ev {
-            ExprValue::Bool(v) => OwnedExprValue::Bool(v),
-            ExprValue::Number(v) => OwnedExprValue::Number(v),
-            ExprValue::LatLng(v) => OwnedExprValue::LatLng(v),
-            ExprValue::Date(v) => OwnedExprValue::Date(v),
-            ExprValue::String(v) => OwnedExprValue::String(v.into_owned()),
-            ExprValue::IntArray(v) => OwnedExprValue::IntArray(v.into_owned()),
-            ExprValue::StringArray(v) => OwnedExprValue::StringArray(SmallVec::from(&v[..])),
-        });
-        Ok(maybe_oev)
     }
 }
