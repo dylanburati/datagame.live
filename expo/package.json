@@ -10,6 +10,7 @@
     "eject": "expo eject"
   },
   "dependencies": {
+    "@expo/webpack-config": "^0.17.2",
     "@formatjs/intl-datetimeformat": "^6.4.3",
     "@formatjs/intl-displaynames": "^6.2.3",
     "@formatjs/intl-getcanonicallocales": "^2.0.5",
