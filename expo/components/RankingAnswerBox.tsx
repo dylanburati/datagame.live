@@ -108,13 +108,8 @@ export function RankingAnswerBox({
     .map((id) => styledOptions.find(({ option }) => option.id === id))
     .filter((opt): opt is StyledTriviaOption => opt !== undefined);
   useLayoutEffect(() => {
-    if (triviaAnswers.size < trivia.minAnswers) {
-      setTriviaAnswers(
-        triviaAnswers.clear().extend(trivia.options.map((e) => e.id))
-      );
-      setDoneAnswering(true);
-    }
-  });
+    setDoneAnswering(true);
+  }, [setDoneAnswering, trivia]);
 
   return (
     <>

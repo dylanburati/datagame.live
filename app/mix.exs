@@ -54,6 +54,7 @@ defmodule App.MixProject do
       {:heap, "~> 3.0"},
       {:bcrypt_elixir, "~> 3.0"},
       {:rustler, "~> 0.28.0"},
+      {:corsica, "~> 2.0"},
       {:gradient, github: "esl/gradient", only: [:dev], runtime: false}
     ]
   end

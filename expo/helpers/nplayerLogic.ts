@@ -178,7 +178,7 @@ export function shouldShowBottomPanel(phase: RoomPhase) {
   return phase !== RoomPhase.LOBBY && phase !== RoomPhase.RESULTS;
 }
 
-export function hasNumericSelectionOrder(trivia: Trivia) {
+export function hasTotalSelectionOrder(trivia: Trivia) {
   const { answerType } = trivia;
   return answerType === 'stat.asc' || answerType === 'stat.desc';
 }
@@ -288,7 +288,7 @@ export function getCorrectArray(state: RoomFeedbackState) {
   );
   const optionIds = trivia.options.map((o) => o.id);
   const correctArray = evaluateExpectations(expectations, answers, optionIds);
-  if (hasNumericSelectionOrder(trivia)) {
+  if (hasTotalSelectionOrder(trivia)) {
     return {
       correctArray,
       changeInRanking: getChangeInRanking(expectations, answers, optionIds),

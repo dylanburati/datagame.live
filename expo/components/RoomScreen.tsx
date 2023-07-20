@@ -18,10 +18,15 @@ import {
   RoomState,
   triviaIsPresent,
   ROOM_PHASE_LABELS,
+  hasTotalSelectionOrder,
 } from '../helpers/nplayerLogic';
 import { ChannelHook, useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
-import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
+import {
+  RoomIncomingMessage,
+  RoomOutgoingMessage,
+  TriviaOption,
+} from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { styles } from '../styles';
 import { hangmanEvents } from '../tests/hangmanEvents';
@@ -229,9 +234,12 @@ export function RoomScreen() {
   }, [room.error]);
 
   const turnId = triviaIsPresent(room.state) ? room.state.turnId : -1;
-  const prefilled = triviaIsPresent(room.state)
-    ? room.state.trivia.prefilledAnswers
-    : undefined;
+  let prefilled: TriviaOption<any>[] | undefined;
+  if (triviaIsPresent(room.state)) {
+    prefilled = hasTotalSelectionOrder(room.state.trivia)
+      ? room.state.trivia.options
+      : room.state.trivia.prefilledAnswers;
+  }
   useEffect(() => {
     if (triviaAnswerState.turnId !== turnId) {
       setTriviaAnswerState({

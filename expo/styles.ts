@@ -81,6 +81,9 @@ export const styles = StyleSheet.create({
   flexShrink: {
     flexShrink: 1,
   },
+  flexShrink2: {
+    flexShrink: 2,
+  },
   flexInitial: {
     flexGrow: 0,
     flexShrink: 1,
@@ -94,6 +97,9 @@ export const styles = StyleSheet.create({
   },
   flexBasis16: {
     flexBasis: 16,
+  },
+  flexBasis54: {
+    flexBasis: 54,
   },
   relative: {
     position: 'relative',
@@ -350,7 +356,7 @@ export const styles = StyleSheet.create({
     color: '#fff',
   },
   textBlueAccent: {
-    color: '#1D4ED8',
+    color: '#006ED8',
   },
   textBlue: {
     color: '#1D4ED8',
@@ -532,9 +538,6 @@ export const styles = StyleSheet.create({
   },
   maxW40Px: {
     maxWidth: 40,
-  },
-  maxH54Px: {
-    maxHeight: 54,
   },
   aspect1: {
     aspectRatio: 1,

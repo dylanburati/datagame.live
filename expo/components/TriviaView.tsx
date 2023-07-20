@@ -4,7 +4,7 @@ import { OrderedSet } from '../helpers/data';
 import {
   RoomPhase,
   RoomStateWithTrivia,
-  hasNumericSelectionOrder,
+  hasTotalSelectionOrder,
 } from '../helpers/nplayerLogic';
 import { KeyboardAnswerBox } from './KeyboardAnswerBox';
 import { MultipleChoiceAnswerBox } from './MultipleChoiceAnswerBox';
@@ -44,7 +44,7 @@ export function TriviaView({
   const advanceBtnTextStyle = canAdvance
     ? styles.textWhite
     : styles.textPenFaint;
-  const AnswerBox = hasNumericSelectionOrder(state.trivia)
+  const AnswerBox = hasTotalSelectionOrder(state.trivia)
     ? RankingAnswerBox
     : state.trivia.answerType === 'hangman'
     ? KeyboardAnswerBox

@@ -15,7 +15,6 @@ defmodule AppWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug :merge_resp_headers, [{"access-control-allow-origin", "*"}]
   end
 
   scope "/", AppWeb do
