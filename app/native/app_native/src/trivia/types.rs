@@ -4,15 +4,14 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use rustler::{Decoder, Encoder, NifMap, NifUnitEnum, NifTaggedEnum};
+use rustler::{Decoder, Encoder, NifMap, NifTaggedEnum, NifUnitEnum};
 use smallvec::SmallVec;
 
 use crate::{
     probability::SampleTree,
-    tinylang::{OwnedExprValue, self},
+    tinylang::{self, OwnedExprValue},
     types::{CardTable, Deck},
 };
-
 
 pub struct ActivePairing {
     pub edge_infos: BTreeMap<(usize, usize), Option<String>>,
@@ -59,7 +58,10 @@ impl ActiveDeck {
                 let mut edge_sources = HashMap::new();
                 for (i, tcell) in td.values.iter().enumerate() {
                     for t in tcell {
-                        edge_sources.entry(t.clone()).or_insert(SmallVec::new()).push(i);
+                        edge_sources
+                            .entry(t.clone())
+                            .or_insert(SmallVec::new())
+                            .push(i);
                     }
                 }
                 ActiveTagDef { edge_sources }
@@ -257,6 +259,39 @@ impl Display for TriviaAnswerType {
     }
 }
 
+#[derive(Debug, Clone, Copy, NifUnitEnum)]
+pub enum StatAxisMod {
+    Age,
+    Distance,
+}
+
+#[derive(Debug, Clone, Copy, NifMap)]
+pub struct StatAnnotation {
+    pub axis_mod: Option<StatAxisMod>,
+    pub axis_min: Option<f64>,
+    pub axis_max: Option<f64>,
+}
+
+impl From<StatAxisMod> for StatAnnotation {
+    fn from(value: StatAxisMod) -> Self {
+        Self {
+            axis_mod: Some(value),
+            axis_min: None,
+            axis_max: None,
+        }
+    }
+}
+
+impl From<(f64, f64)> for StatAnnotation {
+    fn from(value: (f64, f64)) -> Self {
+        Self {
+            axis_mod: None,
+            axis_min: Some(value.0),
+            axis_max: Some(value.1),
+        }
+    }
+}
+
 /// Compat
 #[derive(Debug, NifMap)]
 pub struct TriviaAnswer {
@@ -283,6 +318,7 @@ pub struct Trivia {
     pub min_answers: u8,
     pub max_answers: u8,
     pub question_value_type: tinylang::ExprType,
+    pub stat_annotation: Option<StatAnnotation>,
     pub options: Vec<TriviaAnswer>,
     pub prefilled_answers: Vec<TriviaAnswer>,
 }

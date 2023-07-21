@@ -2,15 +2,15 @@ use std::cmp::Ordering;
 
 use crate::{
     tinylang::{self, OwnedExprValue},
-    trivia::types::TriviaExp,
+    trivia::types::{StatAxisMod, TriviaExp},
     types::NaiveDateTimeExt,
 };
 
 use super::{
     engine::{CardCond, Select, TriviaGen},
     types::{
-        instances, selectors, ActiveDeck, GradeableTrivia, SanityCheck, Trivia, TriviaAnswer,
-        TriviaAnswerType, TriviaDefCommon, RankingType,
+        instances, selectors, ActiveDeck, GradeableTrivia, RankingType, SanityCheck,
+        StatAnnotation, Trivia, TriviaAnswer, TriviaAnswerType, TriviaDefCommon,
     },
     ErrorKind, Result,
 };
@@ -18,6 +18,7 @@ use super::{
 pub struct RankingCommon {
     pub ranking_type: RankingType,
     pub total: u8,
+    pub stat_annotation: Option<StatAnnotation>,
 }
 
 impl SanityCheck for RankingCommon {
@@ -32,8 +33,24 @@ impl SanityCheck for RankingCommon {
 }
 
 impl RankingCommon {
+    pub fn new(
+        ranking_type: RankingType,
+        total: u8,
+        stat_annotation: Option<StatAnnotation>,
+    ) -> Self {
+        Self {
+            ranking_type,
+            total,
+            stat_annotation,
+        }
+    }
+
     pub fn typical(ranking_type: RankingType, total: u8) -> Self {
-        Self { ranking_type, total }
+        Self {
+            ranking_type,
+            total,
+            stat_annotation: None,
+        }
     }
 
     fn is_single(&self) -> bool {
@@ -41,7 +58,14 @@ impl RankingCommon {
     }
 
     fn is_asc(&self) -> bool {
-        matches!(self.ranking_type, RankingType::Min | RankingType::Asc)
+        self.is_inverted() != matches!(self.ranking_type, RankingType::Min | RankingType::Asc)
+    }
+
+    fn is_inverted(&self) -> bool {
+        matches!(
+            self.stat_annotation.and_then(|x| x.axis_mod),
+            Some(StatAxisMod::Age)
+        )
     }
 
     fn num_answers(&self) -> u8 {
@@ -81,6 +105,7 @@ impl Trivia {
             min_answers: params.num_answers(),
             max_answers: params.num_answers(),
             question_value_type,
+            stat_annotation: params.stat_annotation,
             options,
             prefilled_answers: vec![],
         }
@@ -268,7 +293,13 @@ mod tests {
     #[rstest]
     fn test_card_number(
         decks: &[Deck],
-        #[values(RankingType::Min, RankingType::Asc, RankingType::Max, RankingType::Desc)] typ: RankingType,
+        #[values(
+            RankingType::Min,
+            RankingType::Asc,
+            RankingType::Max,
+            RankingType::Desc
+        )]
+        typ: RankingType,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::Card {
@@ -278,10 +309,7 @@ mod tests {
                 expression: expr("R\"Spotify plays\"").unwrap(),
                 return_type: ExprType::Number,
             },
-            params: RankingCommon {
-                ranking_type: typ,
-                total: 3,
-            },
+            params: RankingCommon::typical(typ, 3),
         };
         let common = TriviaDefCommon {
             deck_id: 2,
@@ -305,7 +333,13 @@ mod tests {
     #[rstest]
     fn test_card_date(
         decks: &[Deck],
-        #[values(RankingType::Min, RankingType::Asc, RankingType::Max, RankingType::Desc)] typ: RankingType,
+        #[values(
+            RankingType::Min,
+            RankingType::Asc,
+            RankingType::Max,
+            RankingType::Desc
+        )]
+        typ: RankingType,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let decks: Vec<_> = decks.iter().cloned().map(ActiveDeck::new).collect();
         let definition = RankingDef::Card {
@@ -315,10 +349,7 @@ mod tests {
                 expression: expr("R\"Birth date\"").unwrap(),
                 return_type: ExprType::Date,
             },
-            params: RankingCommon {
-                ranking_type: typ,
-                total: 3,
-            },
+            params: RankingCommon::typical(typ, 3),
         };
         let common = TriviaDefCommon {
             deck_id: 3,

@@ -151,7 +151,7 @@ export function RoomStatusBar({ room }: RoomStatusBarProps) {
             ),
             <View
               key={`c-${player.id}`}
-              style={[styles.flexBasis54, styles.flexShrink]}
+              style={[styles.maxH54Px, styles.flexBasis54, styles.flexShrink]}
             >
               <AnimatedRoomAvatar
                 icon={icon}

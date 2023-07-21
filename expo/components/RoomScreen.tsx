@@ -131,7 +131,6 @@ function roomReducer(
         ? RoomPhase.ROOM_FEEDBACK
         : RoomPhase.DIRECT_FEEDBACK,
       expectedAnswers: message.expectedAnswers,
-      statAnnotation: message?.statAnnotation,
       deadline: message.isFinal
         ? message.deadline + state.clockDiffMs
         : state.deadline,

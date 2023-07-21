@@ -113,6 +113,7 @@ impl Trivia {
             min_answers: params.min_answers(),
             max_answers: params.max_answers(),
             question_value_type,
+            stat_annotation: None,
             options,
             prefilled_answers: vec![],
         }

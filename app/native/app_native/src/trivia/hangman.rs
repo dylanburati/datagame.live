@@ -46,6 +46,7 @@ impl Trivia {
             min_answers: 1,
             max_answers: 1,
             question_value_type: tinylang::ExprType::IntArray,
+            stat_annotation: None,
             options,
             prefilled_answers,
         }

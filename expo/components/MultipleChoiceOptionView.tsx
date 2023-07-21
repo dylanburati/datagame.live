@@ -77,7 +77,7 @@ export function MultipleChoiceOptionView({
             <Text style={[styles.textMd, styles.italic]}>
               <TriviaStatDisplay
                 option={item}
-                statAnnotation={state.statAnnotation}
+                statAnnotation={state.trivia.statAnnotation}
               />
             </Text>
           )}

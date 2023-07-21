@@ -18,7 +18,8 @@ function getStyledOptions(
   state: RoomStateWithTrivia,
   defaultBg: ViewStyle
 ): StyledTriviaOption[] {
-  const { phase, trivia, statAnnotation } = state;
+  const { phase, trivia } = state;
+  const { statAnnotation } = trivia;
   const hasNumeric =
     trivia.questionValueType === 'date' ||
     trivia.questionValueType === 'number';
@@ -28,18 +29,26 @@ function getStyledOptions(
       chipStyle: [defaultBg],
     }));
   }
-  const axisMin = statAnnotation?.axisMin;
-  const axisMax = statAnnotation?.axisMax;
+  let axisMin = statAnnotation?.axisMin;
+  let axisMax = statAnnotation?.axisMax;
 
   const graded = expectedAnswersArePresent(state)
     ? getCorrectArray(state)
     : { correctArray: [] };
-  const numeric =
-    trivia.questionValueType === 'date'
-      ? trivia.options.map(({ questionValue }) =>
-          new Date(questionValue).getTime()
-        )
-      : trivia.options.map(({ questionValue }) => questionValue);
+  let numeric: number[];
+  if (trivia.questionValueType === 'date') {
+    numeric = trivia.options.map(({ questionValue }) =>
+      new Date(questionValue).getTime()
+    );
+    if (statAnnotation?.axisMod === 'age') {
+      const now = Date.now();
+      numeric = numeric.map((x) => now - x);
+      axisMin = 0;
+      axisMax = 1000 * 60 * 60 * 24 * 365.25 * 100;
+    }
+  } else {
+    numeric = trivia.options.map(({ questionValue }) => questionValue);
+  }
   const axisConsideredVals = [
     ...numeric,
     ...(axisMin != null ? [axisMin] : []),

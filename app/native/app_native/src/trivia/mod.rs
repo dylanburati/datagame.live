@@ -20,10 +20,11 @@ pub use types::{
 };
 
 use self::{
+    engine::TriviaGen,
     hangman::{HangmanCommon, HangmanDef},
     multiple_choice::{MultipleChoiceCommon, MultipleChoiceDef},
     ranking::{RankingCommon, RankingDef},
-    types::{selectors, RankingType}, engine::TriviaGen,
+    types::{selectors, RankingType, StatAxisMod},
 };
 
 pub fn scale_popularity(deck: &mut Deck) {
@@ -446,7 +447,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             question_format: "Rank these {} movies from highest to lowest Letterboxd rating."
                 .into(),
         },
-        RankingCommon::typical(RankingType::Desc, 3),
+        RankingCommon::new(RankingType::Desc, 3, Some((0.0, 5.0).into())),
         (-1.5,),
         true,
         "R\"Letterboxd rating\"",
@@ -482,7 +483,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 3,
             question_format: "Rank these people from oldest to youngest.".into(),
         },
-        RankingCommon::typical(RankingType::Asc, 3),
+        RankingCommon::new(RankingType::Desc, 3, Some(StatAxisMod::Age.into())),
         (-1.625,),
         true,
         "R\"Birth date\"",
@@ -547,7 +548,7 @@ pub fn seed(base: &mut KnowledgeBase) -> Result<()> {
             deck_id: 2,
             question_format: "Pick the closest pair of cities geographically.".into(),
         },
-        RankingCommon::typical(RankingType::Min, 3),
+        RankingCommon::new(RankingType::Min, 3, Some(StatAxisMod::Distance.into())),
         (-1.25, -1.25),
         "L\"Coordinates\" <-> R\"Coordinates\"",
         '↔',

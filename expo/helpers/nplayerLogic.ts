@@ -4,7 +4,6 @@ import {
   RoomScoreEntry,
   Trivia,
   TriviaExpectation,
-  TriviaStatAnnotation,
 } from './api';
 import { OrderedSet } from './data';
 
@@ -124,7 +123,6 @@ export type RoomQuestionState = RoomLobbyState & {
   trivia: Trivia;
   turnId: number;
   participantId?: number;
-  statAnnotation?: TriviaStatAnnotation;
   receivedAnswers: Map<number, number[]>;
   deadline: number;
   durationMillis: number;

@@ -539,6 +539,9 @@ export const styles = StyleSheet.create({
   maxW40Px: {
     maxWidth: 40,
   },
+  maxH54Px: {
+    maxHeight: 54,
+  },
   aspect1: {
     aspectRatio: 1,
   },

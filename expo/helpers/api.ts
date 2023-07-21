@@ -60,17 +60,16 @@ export type TriviaOption<T> = {
 };
 
 export type TaggedTriviaOption =
-  | { kind: 'date' } & TriviaOption<string>
-  | { kind: 'number' } & TriviaOption<number>
-  | { kind: 'number[]' } & TriviaOption<number[]>
-  | { kind: 'string' } & TriviaOption<string>
-  | { kind: 'string[]' } & TriviaOption<string[]>
-
+  | ({ kind: 'date' } & TriviaOption<string>)
+  | ({ kind: 'number' } & TriviaOption<number>)
+  | ({ kind: 'number[]' } & TriviaOption<number[]>)
+  | ({ kind: 'string' } & TriviaOption<string>)
+  | ({ kind: 'string[]' } & TriviaOption<string[]>);
 
 type TriviaOptionLists<T> = {
   options: TriviaOption<T>[];
   prefilledAnswers: TriviaOption<T>[];
-}
+};
 
 // export type TriviaStatType =
 //   | 'number'
@@ -87,13 +86,14 @@ export type Trivia = {
   answerType: string;
   minAnswers: number;
   maxAnswers: number;
+  statAnnotation?: TriviaStatAnnotation;
 } & (
-  | { questionValueType: 'date' } & TriviaOptionLists<string>
-  | { questionValueType: 'number' } & TriviaOptionLists<number>
-  | { questionValueType: 'number[]' } & TriviaOptionLists<number[]>
-  | { questionValueType: 'string' } & TriviaOptionLists<string>
-  | { questionValueType: 'string[]' } & TriviaOptionLists<string[]>
-)
+  | ({ questionValueType: 'date' } & TriviaOptionLists<string>)
+  | ({ questionValueType: 'number' } & TriviaOptionLists<number>)
+  | ({ questionValueType: 'number[]' } & TriviaOptionLists<number[]>)
+  | ({ questionValueType: 'string' } & TriviaOptionLists<string>)
+  | ({ questionValueType: 'string[]' } & TriviaOptionLists<string[]>)
+);
 
 export type TriviaStatAnnotation = {
   axisMod?: string;
