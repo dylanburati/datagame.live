@@ -18,10 +18,15 @@ import {
   RoomState,
   triviaIsPresent,
   ROOM_PHASE_LABELS,
+  hasTotalSelectionOrder,
 } from '../helpers/nplayerLogic';
 import { ChannelHook, useChannel, useStateNoCmp } from '../helpers/hooks';
 import { roomStorageKey, storeJson } from '../helpers/storage';
-import { RoomIncomingMessage, RoomOutgoingMessage } from '../helpers/api';
+import {
+  RoomIncomingMessage,
+  RoomOutgoingMessage,
+  TriviaOption,
+} from '../helpers/api';
 import { OrderedSet } from '../helpers/data';
 import { styles } from '../styles';
 import { hangmanEvents } from '../tests/hangmanEvents';
@@ -120,16 +125,12 @@ function roomReducer(
     message.answers.forEach(({ userId, answered }) => {
       state.receivedAnswers.set(userId, answered);
     });
-    const triviaStats = message.stats
-      ? { ...message.stats, values: new Map(message.stats.values) }
-      : undefined;
     return {
       ...state,
       phase: message.isFinal
         ? RoomPhase.ROOM_FEEDBACK
         : RoomPhase.DIRECT_FEEDBACK,
       expectedAnswers: message.expectedAnswers,
-      triviaStats,
       deadline: message.isFinal
         ? message.deadline + state.clockDiffMs
         : state.deadline,
@@ -232,9 +233,12 @@ export function RoomScreen() {
   }, [room.error]);
 
   const turnId = triviaIsPresent(room.state) ? room.state.turnId : -1;
-  const prefilled = triviaIsPresent(room.state)
-    ? room.state.trivia.prefilledAnswers
-    : undefined;
+  let prefilled: TriviaOption<any>[] | undefined;
+  if (triviaIsPresent(room.state)) {
+    prefilled = hasTotalSelectionOrder(room.state.trivia)
+      ? room.state.trivia.options
+      : room.state.trivia.prefilledAnswers;
+  }
   useEffect(() => {
     if (triviaAnswerState.turnId !== turnId) {
       setTriviaAnswerState({

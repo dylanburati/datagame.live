@@ -85,7 +85,7 @@ defmodule App.Utils do
     Map.merge(map, %{inserted_at: dt, updated_at: dt})
   end
 
-  @spec maybe_filter(Enumerable, boolean, (Enum.element -> boolean)) :: Enumerable
+  @spec maybe_filter(Enum.t, boolean, (Enum.element -> boolean)) :: Enum.t
   def maybe_filter(enum, false, _fun), do: enum
   def maybe_filter(enum, true, fun) do
     Enum.filter(enum, fun)
@@ -103,21 +103,17 @@ defmodule App.Utils do
     Map.put(map, key, supplier.())
   end
 
-  def hex_random(num_chars) do
-    hex_random(num_chars, "0123456789abcdef")
-  end
-
+  @spec to_base16(non_neg_integer, String.t) :: String.t
   def to_base16(num, alpha) when is_number(num) do
-    cond do
-      num < 16 ->
-        String.at(alpha, num &&& 15)
-      true ->
-        to_base16(num >>> 4, alpha) <> String.at(alpha, num &&& 15)
+    with ch when is_binary(ch) <- String.at(alpha, num &&& 15) do
+      if num < 16, do: ch, else: to_base16(num >>> 4, alpha) <> ch
+    else
+      _ -> raise ArgumentError, "to_base16 requires a 16-character alphabet"
     end
   end
 
-  def from_base16_recur([], _alpha_map), do: {:ok, 0}
-  def from_base16_recur([ch | rest_chars], alpha_map) do
+  defp from_base16_recur([], _alpha_map), do: {:ok, 0}
+  defp from_base16_recur([ch | rest_chars], alpha_map) do
     # char_lst is reversed
     with {:ok, num} <- from_base16_recur(rest_chars, alpha_map) do
       case Map.get(alpha_map, ch) do
@@ -127,6 +123,7 @@ defmodule App.Utils do
     end
   end
 
+  @spec from_base16(String.t, String.t) :: {:ok, non_neg_integer} | :error
   def from_base16(str, alpha \\ "0123456789abcdef") when is_binary(str) do
     alpha_map = String.to_charlist(alpha)
     |> Enum.with_index()
@@ -137,10 +134,13 @@ defmodule App.Utils do
     )
   end
 
+  @spec from_base16!(String.t, String.t) :: non_neg_integer
   def from_base16!(str, alpha \\ "0123456789abcdef") when is_binary(str) do
-    with {:ok, res} <- from_base16!(str, alpha), do: res
+    {:ok, res} = from_base16(str, alpha)
+    res
   end
 
+  @spec hex_random(non_neg_integer, String.t) :: String.t
   def hex_random(num_chars, alpha) do
     num_bytes = ceil(num_chars / 2.0)
     blist = :rand.bytes(num_bytes) |> :binary.bin_to_list()
@@ -148,6 +148,33 @@ defmodule App.Utils do
       String.at(alpha, (b >>> 4) &&& 15) <> String.at(alpha, b &&& 15)
     end)
     |> String.slice(0, num_chars)
+  end
+
+  @spec hex_random(non_neg_integer) :: String.t
+  def hex_random(num_chars) do
+    hex_random(num_chars, "0123456789abcdef")
+  end
+
+  def image_url(%{id: id, title: title}) do
+    svg = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 50">
+      <defs>
+        <linearGradient id="gradient-#{Integer.to_string(id)}" gradientTransform="rotate(90)">
+          <stop offset="5%" stop-color="#{hash_color(title)}" />
+          <stop offset="95%" stop-color="#{hash_color(title <> "x")}" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="30" height="50" rx="4" fill="url(#gradient-#{Integer.to_string(id)})" />
+    </svg>
+    """
+    "data:image/svg+xml,#{URI.encode(svg, &(&1 not in ~C"#<>"))}"
+  end
+
+  defp hash_color(str) do
+    [r, g, b] = :crypto.hash(:md5, str)
+    |> :binary.bin_to_list()
+    |> Enum.take(3)
+    "rgb(#{r}, #{g}, #{b})"
   end
 
   @spec find_last([elem], default, (elem -> boolean)) :: elem | default when elem: var, default: var

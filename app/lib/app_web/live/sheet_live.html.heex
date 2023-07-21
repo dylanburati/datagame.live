@@ -1,0 +1,111 @@
+<div id="scroll-container" class="flex-grow" style="overflow-y: auto">
+  <div id="top-controls">
+    <ul id="tablist" role="tablist" class="flex flex-row container border-t bg-black">
+      <li role="presentation" class="block mx-4">
+        <a role="tab" href="#filter-view" id="tab1" aria-selected="true" class="block interactable text-sm px-2 py-1 active">FILTER</a>
+      </li>
+      <li role="presentation" class="block mx-4">
+        <a role="tab" href="#review" id="tab2" class="block interactable text-sm px-2 py-1">REVIEW</a>
+      </li>
+    </ul>
+    <section role="tabpanel" id="filter-view" aria-labelledby="tab1" class="container py-2 bg-black">
+      <div class="flex flex-row">
+        <label id="filter-input-label" class="visuallyhidden">Filter expression</label>
+        <input id="filter-input" aria-labelledby="filter-input-label" type="text" style="flex-grow: 100;" placeholder="Search">
+      </div>
+    </section>
+    <section role="tabpanel" id="review" aria-labelledby="tab2" class="container hidden py-2 bg-black">
+      <div class="flex flex-row items-start">
+        <div>
+          <ul id="warning-list" class="hidden list-disc list-inside px-5 py-2 border rounded border-yellow-400">
+          </ul>
+        </div>
+        <span class="flex-grow" style="width: 1rem;"></span>
+        <button id="refresh" class="bg-blue interactable mr-2" phx-click="refresh">
+          <label class="visuallyhidden">Refresh</label>
+          <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-4">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-refresh" fill="currentColor"></use>
+          </svg>
+        </button>
+        <button id="publish" class="bg-green interactable" phx-click="publish">Publish</button>
+      </div>
+      <div id="publish-container" class="hidden">
+        <pre class="bg-surface p-3 text-sm leading-tight"></pre>
+      </div>
+    </section>
+  </div>
+  <p id="error-box" class="text-red hidden"></p>
+  <div class="px-4 pb-2" style="overflow-x: auto">
+    <table id="sheet-table">
+      <caption>Loading...</caption>
+    </table>
+  </div>
+</div>
+<nav id="bottom-controls" class="py-2 bg-black">
+  <div class="container flex">
+    <select class="interactable py-1-5 whitespace-nowrap" style="text-overflow: ellipsis; overflow: hidden" aria-label="Deck Picker"></select>
+    <span class="flex-grow" style="width: 1rem;"></span>
+    <nav role="navigation" aria-label="Pagination Navigation">
+      <ul id="pagination" class="pagination flex items-center">
+        <li>
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">First</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
+              <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-first" fill="currentColor"></use>
+            </svg>
+          </button>
+        </li><li>
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">Previous</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
+              <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-previous" fill="currentColor"></use>
+            </svg>
+          </button>
+        </li><li id="pagination-readout" class="whitespace-nowrap leading-none pt-1 mx-2">
+        </li><li>
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">Next</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
+              <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-next" fill="currentColor"></use>
+            </svg>
+          </button>
+        </li><li>
+          <button class="disabled interactable leading-none" aria-disabled="true">
+            <label class="visuallyhidden">Last</label>
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
+              <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-last" fill="currentColor"></use>
+            </svg>
+          </button>
+        </li>
+      </ul>
+    </nav>
+  </div>
+</nav>
+<svg style="display: none" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="icon-refresh" aria-labeledby="title-refresh" role="image">
+    <title id="title-refresh">Refresh</title>
+    <path d="M26,18A10,10,0,1,1,16,8h6.1821l-3.5844,3.5854L20,13l6-6L20,1,18.5977,2.414,22.1851,6H16A12,12,0,1,0,28,18Z" />
+  </g>
+  <g id="icon-page-first" aria-labeledby="title-page-first" aria-describedby="desc-page-first">
+    <title id="title-page-first">First</title>
+    <desc id="desc-page-first">Go to first page</desc>
+    <polygon points="14,16 24,6 25.4,7.4 16.8,16 25.4,24.6 24,26 "/>
+    <rect x="8" y="4" width="2" height="24"/>
+  </g>
+  <g id="icon-page-previous" aria-labeledby="title-page-previous" aria-describedby="desc-page-previous">
+    <title id="title-page-previous">Previous</title>
+    <desc id="desc-page-previous">Go to previous page</desc>
+    <polygon points="10,16 20,6 21.4,7.4 12.8,16 21.4,24.6 20,26 "/>
+  </g>
+  <g id="icon-page-next" aria-labeledby="title-page-next" aria-describedby="desc-page-next">
+    <title id="title-page-next">Next</title>
+    <desc id="desc-page-next">Go to next page</desc>
+    <polygon points="22,16 12,26 10.6,24.6 19.2,16 10.6,7.4 12,6 "/>
+  </g>
+  <g id="icon-page-last" aria-labeledby="title-page-last" aria-describedby="desc-page-last">
+    <title id="title-page-last">Last</title>
+    <desc id="desc-page-last">Go to last page</desc>
+    <polygon points="18,16 8,26 6.6,24.6 15.2,16 6.6,7.4 8,6 "/>
+    <rect x="22" y="4" width="2" height="24"/>
+  </g>
+</svg>

@@ -1,0 +1,24 @@
+<section class="mt-8">
+  <%= if @action == :create do %>
+    <h1 class="text-center font-light">Register or <a href={Routes.user_path(@conn, :login)}>log in</a></h1>
+  <% else %>
+    <h1 class="text-center font-light">Log in or <a href={Routes.user_path(@conn, :new)}>register</a></h1>
+  <% end %>
+  <div class="flex justify-center mt-6">
+    <.form let={f} for={@changeset} action={Routes.user_path(@conn, @action)} class="flex flex-col items-stretch" style="row-gap: 0.5rem">
+      <div>
+        <%= label f, :username %>
+        <%= text_input f, :username, required: true, class: "interactable w-full" %>
+        <%= error_tag f, :username %>
+      </div>
+
+      <div>
+        <%= label f, :password %>
+        <%= password_input f, :password, required: true, class: "interactable w-full" %>
+        <%= error_tag f, :password %>
+      </div>
+
+      <%= submit (if @action == :create, do: "Register", else: "Login"), class: "bg-green text-white interactable" %>
+    </.form>
+  </div>
+</section>

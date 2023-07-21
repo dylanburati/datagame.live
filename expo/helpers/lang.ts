@@ -24,3 +24,7 @@ export function comparingBy<T>(
     return ak - (bk as number);
   };
 }
+
+export function assertUnreachable(_: never): never {
+  throw new Error('should be unreachable');
+}

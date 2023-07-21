@@ -1,25 +1,39 @@
 defmodule AppWeb.Router do
   use AppWeb, :router
 
+  import AppWeb.UserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
-    plug :fetch_flash
+    plug :fetch_live_flash
+    plug :put_root_layout, {AppWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_user
   end
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug :merge_resp_headers, [{"access-control-allow-origin", "*"}]
   end
 
   scope "/", AppWeb do
     pipe_through :browser
 
     get "/", PageController, :index
-    get "/sheet", PageController, :sheet
-    get "/sheet-advanced", PageController, :sheet_advanced
+    get "/user/register", UserController, :new
+    post "/user/register", UserController, :create
+    get "/user/login", UserController, :login
+    post "/user/login", UserController, :verify
+    get "/user/logout", UserController, :logout
+
+    live_session :default, on_mount: {AppWeb.LiveAuth, :assign_current_user} do
+      live "/explore/:id", ExplorerLive, :index
+    end
+
+    live_session :admin, on_mount: {AppWeb.LiveAuth, :require_admin} do
+      live "/sheet/:id", SheetLive, :index
+    end
   end
 
   scope "/api", AppWeb do

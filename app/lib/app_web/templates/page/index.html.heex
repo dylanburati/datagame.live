@@ -1,43 +1,18 @@
 <section class="mt-8">
-  <div class="card bg-black flex flex-row flex-wrap md:flex-nowrap">
-    <div class="flex-basis-1 md:flex-basis-5/13 p-3 pl-5 pt-5">
-      <form id="gsheet-link-form" class="mb-5 flex flex-col lg:flex-row items-stretch" style="row-gap: 0.5rem">
-        <input type="text" name="link" required placeholder="Paste a Google Sheet link" class="flex-1 interactable">
-
-        <button class="bg-green text-white interactable" type="submit">Import</button>
-      </form>
-      <p class="text-center text-xs mb-2">OR</p>
-      <p class="text-center leading-tight">
-        create a sheet from the
-        <a target="_blank" rel="noopener" href="https://docs.google.com/spreadsheets/d/1sPtgHK-dDX5t98qd_6rd8B_YbZrmvobi8nLhQMbRDMM/edit#gid=0">official template</a>
-      </p>
-    </div>
-    <div class="flex-1 border-t md:border-t-0 md:border-l mt-2">
-      <div class="p-3">
-        promo promo promo promo
-      </div>
-      <img
-        src={Routes.static_path(@conn, "/images/google-sheets-matrix.jpg")}
-        style="width: 100%; height: calc(min(100vw, 560px)); object-fit: cover; object-position: left;"
-      >
-    </div>
+  <h1 class="text-center font-extralight" style="font-size: 2rem">Explore</h1>
+  <div class="deck-grid">
+    <%= for deck <- @decks do %>
+      <a class="deck-link interactable" href={Routes.explorer_path(@conn, :index, Integer.to_string(deck.id))}>
+        <img alt={deck.title} src={deck.image_url || App.Utils.image_url(deck)} />
+      </a>
+    <% end %>
   </div>
 </section>
 
+<%= if @current_user == nil do %>
+<%= render AppWeb.UserView, "form.html", Map.put(assigns, :action, :create) %>
+<% end %>
+
 <script type="text/javascript">
-const form = document.getElementById('gsheet-link-form');
-form.elements.link.addEventListener('input', evt => {
-  evt.target.setCustomValidity('');
-});
-form.addEventListener('submit', evt => {
-  evt.preventDefault();
-  const input = evt.target.elements.link;
-  const href = input.value;
-  const match = /(?:https?:\/\/)?docs.google.com\/spreadsheets\/d\/([^/]*)/.exec(href);
-  if (match) {
-    window.location = `${window.pageRoutes.sheet}?id=${match[1]}`;
-  } else {
-    input.setCustomValidity('Not recognized as a Google Sheet URL');
-  }
-});
+
 </script>

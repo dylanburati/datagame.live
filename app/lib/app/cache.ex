@@ -7,55 +7,48 @@ defmodule App.Cache do
     GenServer.start_link(__MODULE__, [], opts)
   end
 
-  def new_atomic(key) do
-    GenServer.call(__MODULE__, {:new_atomic, key})
-  end
-
-  def delete_atomic(key) do
-    GenServer.call(__MODULE__, {:delete_atomic, key})
-  end
-
-  def fetch_atomic(key) do
-    GenServer.call(__MODULE__, {:fetch_atomic, key})
-  end
-
-  def get_atomic(key, default \\ nil) do
-    case GenServer.call(__MODULE__, {:fetch_atomic, key}) do
-      {:ok, value} -> value
-      :error -> default
-    end
-  end
-
-  def set_atomic(key, value) do
-    GenServer.call(__MODULE__, {:set_atomic, key, value})
-  end
-
-  def try_incr_atomic(key, exp_value) do
-    GenServer.call(__MODULE__, {:try_incr_atomic, key, exp_value})
-  end
-
+  @spec lookup(any) :: any | nil
   def lookup(key) do
     GenServer.call(__MODULE__, {:lookup, key})
   end
 
+  @spec insert(any, any) :: :ok
   def insert(key, value) do
     GenServer.call(__MODULE__, {:insert, key, @never_expires, value})
   end
 
+  @spec insert_with_ttl(any, any, number) :: :ok
   def insert_with_ttl(key, value, ttl) do
     expires = System.system_time(:microsecond) + floor(1000000 * ttl)
     GenServer.call(__MODULE__, {:insert, key, expires, value})
   end
 
-  @spec update(any, cache_val, (cache_val -> cache_val)) :: cache_val when cache_val: var
-  def update(key, default_val, updater) do
-    GenServer.call(__MODULE__, {:update, key, fn -> default_val end, updater})
+  @spec update(any, ({:ok, cache_val} | :error -> cache_val)) :: cache_val when cache_val: var
+  def update(key, updater) do
+    GenServer.call(__MODULE__, {:update, key, updater})
   end
 
   @spec replace!(any, (cache_val -> cache_val)) :: cache_val when cache_val: var
-  def replace!(key, updater) do
-    GenServer.call(__MODULE__,
-      {:update, key, fn -> raise "Cache doesn't contain key: #{inspect(key)}" end, updater})
+  def replace!(key, replacer) do
+    GenServer.call(__MODULE__, {:update, key, fn
+      {:ok, val} -> replacer.(val)
+      :error -> raise "Cache doesn't contain key: #{inspect(key)}"
+    end})
+  end
+
+  @spec m_lookup(any) :: any | nil
+  def m_lookup(key) do
+    GenServer.call(__MODULE__, {:m_lookup, key})
+  end
+
+  @spec m_insert(any, cache_val) :: cache_val when cache_val: var
+  def m_insert(key, value) do
+    GenServer.call(__MODULE__, {:m_insert, key, value})
+  end
+
+  @spec m_update(any, ({:ok, cache_val} | :error -> cache_val)) :: cache_val when cache_val: var
+  def m_update(key, updater) do
+    GenServer.call(__MODULE__, {:m_update, key, updater})
   end
 
   @impl true
@@ -124,18 +117,34 @@ defmodule App.Cache do
   end
 
   @impl true
-  def handle_call({:update, key, default_supplier, updater}, _from, state) do
+  def handle_call({:update, key, updater}, _from, state) do
     now = System.system_time(:microsecond)
     result = case :ets.lookup(:app_cache, key) do
       [{^key, exp_time, value}] when now < exp_time ->
-        next_val = updater.(value)
+        next_val = updater.({:ok, value})
         :ets.insert(:app_cache, {key, exp_time, next_val})
         next_val
       _ ->
-        default_val = default_supplier.()
+        default_val = updater.(:error)
         :ets.insert(:app_cache, {key, @never_expires, default_val})
         default_val
     end
     {:reply, result, state}
+  end
+
+  @impl true
+  def handle_call({:m_lookup, key}, _from, state) do
+    {:reply, Map.get(state, key), state}
+  end
+
+  @impl true
+  def handle_call({:m_insert, key, value}, _from, state) do
+    {:reply, value, Map.put(state, key, value)}
+  end
+
+  @impl true
+  def handle_call({:m_update, key, updater}, _from, state) do
+    value = Map.fetch(state, key) |> updater.()
+    {:reply, value, Map.put(state, key, value)}
   end
 end

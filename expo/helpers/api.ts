@@ -59,52 +59,47 @@ export type TriviaOption<T> = {
   questionValue: T;
 };
 
-export type TriviaStatType =
-  | 'number'
-  | 'string'
-  | 'date'
-  | 'dollar_amount'
-  | 'km_distance'
-  | 'lat_lon';
+export type TaggedTriviaOption =
+  | ({ kind: 'date' } & TriviaOption<string>)
+  | ({ kind: 'number' } & TriviaOption<number>)
+  | ({ kind: 'number[]' } & TriviaOption<number[]>)
+  | ({ kind: 'string' } & TriviaOption<string>)
+  | ({ kind: 'string[]' } & TriviaOption<string[]>);
 
-export type TriviaQuestionValueType = 'string' | 'string[]' | 'number';
+type TriviaOptionLists<T> = {
+  options: TriviaOption<T>[];
+  prefilledAnswers: TriviaOption<T>[];
+};
+
+// export type TriviaStatType =
+//   | 'number'
+//   | 'string'
+//   | 'date'
+//   | 'dollar_amount'
+//   | 'km_distance'
+//   | 'lat_lon';
+
+// export type TriviaQuestionValueType = 'string' | 'string[]' | 'number';
 
 export type Trivia = {
   question: string;
   answerType: string;
   minAnswers: number;
   maxAnswers: number;
+  statAnnotation?: TriviaStatAnnotation;
 } & (
-  | {
-      questionValueType: null;
-      options: TriviaOption<undefined>[];
-      prefilledAnswers: TriviaOption<undefined>[];
-    }
-  | {
-      questionValueType: 'string';
-      options: TriviaOption<string>[];
-      prefilledAnswers: TriviaOption<string>[];
-    }
-  | {
-      questionValueType: 'string[]';
-      options: TriviaOption<string[]>[];
-      prefilledAnswers: TriviaOption<string[]>[];
-    }
-  | {
-      questionValueType: 'number[]';
-      options: TriviaOption<number[]>[];
-      prefilledAnswers: TriviaOption<number[]>[];
-    }
+  | ({ questionValueType: 'date' } & TriviaOptionLists<string>)
+  | ({ questionValueType: 'number' } & TriviaOptionLists<number>)
+  | ({ questionValueType: 'number[]' } & TriviaOptionLists<number[]>)
+  | ({ questionValueType: 'string' } & TriviaOptionLists<string>)
+  | ({ questionValueType: 'string[]' } & TriviaOptionLists<string[]>)
 );
 
-export type TriviaStatDef = {
-  label: string;
-  type: TriviaStatType;
+export type TriviaStatAnnotation = {
   axisMod?: string;
   axisMin?: number;
   axisMax?: number;
 };
-
 export type RoomScoreEntry = {
   userId: number;
   score: number;
@@ -117,12 +112,15 @@ export type RoomAnswersEntry = {
 };
 
 export type TriviaExpectation =
+  | { kind: 'all'; ids: number[] }
+  | { kind: 'none'; ids: number[] }
+  | { kind: 'none_lenient'; ids: number[]; max: number }
+  | { kind: 'any'; ids: number[] }
   | {
-      kind: 'all';
-      group: number[];
-      minPos?: number;
-    }
-  | { kind: 'any'; group: number[] };
+      kind: 'all_pos';
+      ids: number[];
+      minPos: number;
+    };
 
 export type LazyTriviaExpectation = TriviaExpectation | { kind: 'matchrank' };
 
@@ -170,10 +168,7 @@ export type RoomIncomingMessage =
       scores: RoomScoreEntry[];
       answers: RoomAnswersEntry[];
       expectedAnswers: LazyTriviaExpectation[];
-      stats?: {
-        values: [number, number][];
-        definition: TriviaStatDef;
-      };
+      statAnnotation?: TriviaStatAnnotation;
       deadline: number;
       durationMillis: number;
     }

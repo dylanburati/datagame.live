@@ -4,7 +4,6 @@ import {
   RoomScoreEntry,
   Trivia,
   TriviaExpectation,
-  TriviaStatDef,
 } from './api';
 import { OrderedSet } from './data';
 
@@ -124,10 +123,6 @@ export type RoomQuestionState = RoomLobbyState & {
   trivia: Trivia;
   turnId: number;
   participantId?: number;
-  triviaStats?: {
-    values: Map<number, number>;
-    definition: TriviaStatDef;
-  };
   receivedAnswers: Map<number, number[]>;
   deadline: number;
   durationMillis: number;
@@ -152,6 +147,7 @@ export type StyledTriviaOption = {
   chipStyle: ViewProps['style'];
   barGraph?: ViewProps['style'];
   directionIndicator?: string;
+  numericValue?: number;
 };
 
 export function isFeedbackStage(phase: RoomPhase) {
@@ -180,7 +176,7 @@ export function shouldShowBottomPanel(phase: RoomPhase) {
   return phase !== RoomPhase.LOBBY && phase !== RoomPhase.RESULTS;
 }
 
-export function hasNumericSelectionOrder(trivia: Trivia) {
+export function hasTotalSelectionOrder(trivia: Trivia) {
   const { answerType } = trivia;
   return answerType === 'stat.asc' || answerType === 'stat.desc';
 }
@@ -192,20 +188,19 @@ function evaluateExpectations(
 ) {
   const minimumPositions = new Map(optionIds.map((k) => [k, -1]));
   const maximumPositions = new Map(optionIds.map((k) => [k, -1]));
-  for (const expObject of expectations) {
-    const { kind, group } = expObject;
-    if (kind === 'all') {
-      const minPos = expObject.minPos ?? 0;
-      const maxPos =
-        expObject.minPos !== undefined
-          ? minPos + group.length - 1
-          : optionIds.length - 1;
-      group.forEach((id) => {
-        minimumPositions.set(id, minPos);
-        maximumPositions.set(id, maxPos);
+  for (const exp of expectations) {
+    if (exp.kind === 'all') {
+      exp.ids.forEach((id) => {
+        minimumPositions.set(id, 0);
+        maximumPositions.set(id, optionIds.length - 1);
       });
-    } else if (kind === 'any') {
-      group.forEach((id) => {
+    } else if (exp.kind === 'all_pos') {
+      exp.ids.forEach((id) => {
+        minimumPositions.set(id, exp.minPos);
+        maximumPositions.set(id, exp.minPos + exp.ids.length - 1);
+      });
+    } else if (exp.kind === 'any') {
+      exp.ids.forEach((id) => {
         minimumPositions.set(id, -1);
         maximumPositions.set(id, 0);
       });
@@ -245,13 +240,13 @@ export function getChangeInRanking(
 ): (number | undefined)[] {
   const bestOrder = expectations
     .flatMap((expObject) =>
-      expObject.kind === 'all' && expObject.minPos !== undefined
-        ? [{ group: expObject.group, minPos: expObject.minPos }]
+      expObject.kind === 'all_pos' && expObject.minPos !== undefined
+        ? [{ ids: expObject.ids, minPos: expObject.minPos }]
         : []
     )
     .sort((a, b) => a.minPos - b.minPos)
-    .flatMap(({ group }) =>
-      group.sort(
+    .flatMap(({ ids }) =>
+      ids.sort(
         (idA, idB) => (answers.get(idA) ?? -1) - (answers.get(idB) ?? -1)
       )
     );
@@ -282,7 +277,7 @@ export function getCorrectArray(state: RoomFeedbackState) {
         }
         return answers2.map((id, index) => ({
           kind: 'all',
-          group: [id],
+          ids: [id],
           minPos: index,
         }));
       }
@@ -291,7 +286,7 @@ export function getCorrectArray(state: RoomFeedbackState) {
   );
   const optionIds = trivia.options.map((o) => o.id);
   const correctArray = evaluateExpectations(expectations, answers, optionIds);
-  if (hasNumericSelectionOrder(trivia)) {
+  if (hasTotalSelectionOrder(trivia)) {
     return {
       correctArray,
       changeInRanking: getChangeInRanking(expectations, answers, optionIds),

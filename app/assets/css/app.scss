@@ -13,13 +13,25 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-code {
+code, .font-mono {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
 
-.container {
-  width: 100%
+.font-extralight {
+  font-weight: 200;
+}
+
+.font-light {
+  font-weight: 300;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+.container, .fluid .container {
+  max-width: 100%
 }
 
 @media (min-width: 640px) {
@@ -48,6 +60,7 @@ code {
 
 :root {
   --color-pen: #ecf0f1;
+  --color-pen-fainter: #9ea4a9;
   --color-pen-faint: #9ea4a9;
   --color-link: #3B92F1;
   --color-link-visited: #7f60f6;
@@ -120,8 +133,16 @@ a {
   }
 }
 
-.align-center {
+.items-start {
+  align-items: flex-start;
+}
+
+.items-center {
   align-items: center;
+}
+
+.items-stretch {
+  align-items: stretch;
 }
 
 .justify-start {
@@ -132,8 +153,16 @@ a {
   justify-content: center;
 }
 
-.justify-space-between {
+.justify-between {
   justify-content: space-between;
+}
+
+.justify-around {
+  justify-content: space-around;
+}
+
+.self-center {
+  align-self: center;
 }
 
 .flex-grow {
@@ -228,6 +257,14 @@ a {
   }
 }
 
+.bg-gray {
+  background-color: #606775;
+
+  &.interactable:hover {
+    background-color: #4B5563;
+  }
+}
+
 .text-white {
   color: white;
 }
@@ -244,6 +281,10 @@ a {
   font-size: 0.875rem;
 }
 
+.text-lg {
+  font-size: 1.125rem;
+}
+
 .text-center {
   text-align: center;
 }
@@ -252,12 +293,20 @@ a {
   text-align: right;
 }
 
+.whitespace-nowrap {
+  white-space: nowrap;
+}
+
 .list-disc {
   list-style-type: disc;
 }
 
 .list-inside {
   list-style-position: inside;
+}
+
+.leading-none {
+  line-height: 1;
 }
 
 .leading-tight {
@@ -280,14 +329,29 @@ a {
   padding: 1.25rem;
 }
 
+.px-2 {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 .px-3 {
   padding-left: 0.75rem;
   padding-right: 0.75rem;
 }
 
+.px-4 {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 .px-5 {
   padding-left: 1.25rem;
   padding-right: 1.25rem;
+}
+
+.py-1 {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
 }
 
 .py-2 {
@@ -298,6 +362,14 @@ a {
 .py-3 {
   padding-top: 0.75rem;
   padding-bottom: 0.75rem;
+}
+
+.pt-1 {
+  padding-top: 0.25rem;
+}
+
+.pt-2 {
+  padding-top: 0.5rem;
 }
 
 .pt-5 {
@@ -319,6 +391,10 @@ a {
 
 .mt-2 {
   margin-top: 0.5rem;
+}
+
+.mt-6 {
+  margin-top: 1.5rem;
 }
 
 .mt-8 {
@@ -345,9 +421,23 @@ a {
   margin-bottom: 2rem;
 }
 
+.ml-1 {
+  margin-left: 0.25rem;
+}
+
 .mx-1 {
   margin-left: 0.25rem;
   margin-right: 0.25rem;
+}
+
+.mx-2 {
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.mx-4 {
+  margin-left: 1rem;
+  margin-right: 1rem;
 }
 
 .h-full {
@@ -356,6 +446,14 @@ a {
 
 .w-full {
   width: 100%;
+}
+
+.w-4 {
+  width: 1rem;
+}
+
+.w-5 {
+  width: 1.25rem;
 }
 
 .w-16 {
@@ -374,6 +472,10 @@ a {
   padding-bottom: 0.375rem;
 }
 
+.viewport-minus-55px {
+  height: calc(100vh - 55px);
+}
+
 /* component defaults */
 .interactable {
   transition: background-color linear 80ms;
@@ -383,7 +485,6 @@ input {
   padding: 0.25rem 0.5rem;
   background-color: var(--color-surface);
   border-radius: 0.25rem;
-  width: 100%;
 
   &.block {
     margin-bottom: 0.5rem;
@@ -413,7 +514,6 @@ select {
   padding: 0.25rem 0.5rem;
   background-color: var(--color-surface);
   border-radius: 0.25rem;
-  min-width: 150px;
 
   &.block {
     margin-bottom: 0.5rem;
@@ -422,6 +522,26 @@ select {
   &.interactable:hover,
   &.interactable:focus {
     background-color: var(--color-primary-surface);
+  }
+}
+
+#tablist a {
+  width: 100%;
+  text-align: center;
+  color: var(--color-pen-faint);
+  border-color: rgba(36, 131, 191, 1);
+  text-decoration: inherit;
+  box-sizing: content-box;
+
+  &.active {
+    border-bottom-width: 1px;
+    color: white;
+  }
+
+  &.interactable:hover,
+  &.interactable:focus {
+    background-color: var(--color-surface);
+    color: white;
   }
 }
 
@@ -451,15 +571,21 @@ button {
 }
 
 .pagination li {
-  display: inline-block;
   & button {
-    padding: 0.375rem;
+    padding: 0.25rem 0.3125rem;
     min-width: 2.5rem;
     text-align: center;
     border-radius: 0;
+    color: white;
 
-    &.interactable:hover {
+    &.interactable:hover, &.interactable:focus {
       background-color: var(--color-surface);
+    }
+
+    &.disabled {
+      cursor: not-allowed;
+      background-color: var(--color-primary-surface);
+      color: var(--color-pen-faint);
     }
 
     &[active] {
@@ -482,6 +608,41 @@ button {
     border-top-right-radius: 0.25rem;
     border-bottom-right-radius: 0.25rem;
   }
+}
+
+.deck-grid {
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 150px);
+  gap: 20px;
+  justify-content: center;
+}
+
+.deck-link {
+  img {
+    z-index: 0;
+    width: 100%;
+    opacity: 0.8;
+    transition: opacity 150ms linear;
+  }
+  &:hover img, &:focus img {
+    opacity: 1;
+  }
+}
+
+#top-controls [role="tabpanel"] {
+  scroll-margin-top: 100px;
+}
+
+.visuallyhidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
 }
 
 /* Alerts and form errors */
@@ -515,7 +676,7 @@ button {
 .invalid-feedback {
   color: #a94442;
   display: block;
-  margin: -1rem 0 2rem;
+  margin: 0.25rem 0;
 }
 button.active {
   border: rgba(36, 131, 191, 1) solid 1px;

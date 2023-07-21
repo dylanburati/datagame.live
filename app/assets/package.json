@@ -1,0 +1,14 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Dylan Burati",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "dayjs": "^1.11.8",
+    "phoenix": "../deps/phoenix",
+    "phoenix_html": "../deps/phoenix_html",
+    "phoenix_live_view": "../deps/phoenix_live_view"
+  }
+}

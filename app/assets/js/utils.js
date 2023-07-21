@@ -131,6 +131,8 @@ export function modify(el, removeChildren, attrs, children) {
   for (const k in attrs) {
     if (k.startsWith('on')) {
       el.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+    } else if (k === '$ref') {
+      attrs[k](el);
     } else if (k !== 'style' && k !== 'className') {
       if (attrs[k] === true) el.setAttribute(k, '');
       else if (attrs[k] !== false) el.setAttribute(k, attrs[k]);
@@ -151,8 +153,8 @@ export function h(tagName, attrs, ...children) {
   const childArr = [];
   children.forEach(item => {
     if (Array.isArray(item)) {
-      childArr.push(...item);
-    } else {
+      childArr.push(...item.filter(e => e != null && e !== false));
+    } else if (item != null && item !== false) {
       childArr.push(item);
     }
   });

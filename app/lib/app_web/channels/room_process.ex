@@ -16,7 +16,7 @@ defmodule AppWeb.RoomProcess do
     :ok = Phoenix.PubSub.unsubscribe(pubsub_server, "__room:" <> room_id)
   end
 
-  @spec update(room_id :: binary(), message :: term()) :: :ok
+  @spec update(String.t, any) :: :ok
   def update(room_id, message) do
     Phoenix.PubSub.broadcast(App.PubSub, "__room:" <> room_id, message)
   end
@@ -170,7 +170,7 @@ defmodule AppWeb.RoomProcess do
     end
   end
 
-  @spec stream(state_agent :: Agent.t(), timeout :: number() | :infinity) :: Stream.t()
+  @spec stream(state_agent :: Agent.agent, timeout :: number() | :infinity) :: Enum.t
   defp stream(state_agent, timeout) do
     Stream.unfold(timeout, fn ms -> pull_event_and_apply(state_agent, ms) end)
   end
@@ -267,14 +267,14 @@ defmodule AppWeb.RoomProcess do
     }
   end
 
-  defp turn_feedback_payload_full(turn_id, current_scores, grade_map, answers_map, trivia, opts \\ []) do
+  defp turn_feedback_payload_full(turn_id, current_scores, grade_map, answers_map, trivia, trivia_exps, opts \\ []) do
     answers_entries = Enum.map(answers_map, fn {k, v} -> %{userId: k, answered: v} end)
     result =
       turn_feedback_payload_partial(turn_id, current_scores, grade_map)
       |> Map.merge(%{
         answers: answers_entries,
         isFinal: Keyword.get(opts, :is_final, false),
-        expectedAnswers: TriviaView.expected_answers_json(trivia.expected_answers),
+        expectedAnswers: TriviaView.expected_answers_json(trivia_exps),
         durationMillis: @turn_feedback_timeout,
         deadline: System.system_time(:millisecond) + @turn_feedback_timeout,
       })
@@ -294,7 +294,7 @@ defmodule AppWeb.RoomProcess do
     past_def_ids = []  # TODO
     game_participants = get_game_participants(state_agent)
 
-    with {:ok, _trivia_def, trivia} <- TriviaService.get_any_trivia(past_def_ids, not: ["matchrank"]) do
+    with {:ok, trivia, trivia_exps} <- TriviaService.get_any_trivia(past_def_ids, not: ["matchrank"]) do
       st_payload = turn_start_payload(turn_id, trivia)
       IO.inspect({:st_payload, st_payload})
       score_payload = %{
@@ -314,7 +314,7 @@ defmodule AppWeb.RoomProcess do
           {:join, client, others_connected}, acc ->
             {acc_grade_map, acc_answers_map} = acc
             fb_message = if Map.has_key?(acc_answers_map, client.user_id) do
-              turn_feedback_payload_full(turn_id, current_scores, acc_grade_map, acc_answers_map, trivia)
+              turn_feedback_payload_full(turn_id, current_scores, acc_grade_map, acc_answers_map, trivia, trivia_exps)
               |> Map.put(:event, "turn:feedback")
             else
               turn_feedback_payload_partial(turn_id, current_scores, acc_grade_map)
@@ -344,7 +344,7 @@ defmodule AppWeb.RoomProcess do
               {_, acc_answers_map} = acc
               reply(client, {:ok, %{}})
               acc_answers_map = Map.put(acc_answers_map, client.user_id, answered)
-              acc_grade_map = TriviaService.grade_answers(trivia, acc_answers_map)
+              acc_grade_map = TriviaService.grade_answers(trivia_exps, acc_answers_map)
 
               if map_size(acc_answers_map) >= length(game_participants) do
                 {:halt, {acc_grade_map, acc_answers_map}}
@@ -353,7 +353,7 @@ defmodule AppWeb.RoomProcess do
                 list_connected_participating_clients(state_agent)
                 |> Enum.each(fn
                   (c = %{user_id: ^uid}) ->
-                    fb_payload = turn_feedback_payload_full(turn_id, current_scores, acc_grade_map, acc_answers_map, trivia)
+                    fb_payload = turn_feedback_payload_full(turn_id, current_scores, acc_grade_map, acc_answers_map, trivia, trivia_exps)
                     push(c, "turn:feedback", fb_payload)
                   c ->
                     fb_payload = turn_feedback_payload_partial(turn_id, current_scores, acc_grade_map)
@@ -381,7 +381,7 @@ defmodule AppWeb.RoomProcess do
         |> Map.merge(current_scores, fn _, v1, v2 -> v1 + v2 end)
       grade_map = Map.new(game_participants, fn k -> {k, Map.get(grade_map, k, false)} end)
       fb_payload = turn_feedback_payload_full(
-        turn_id, current_scores, grade_map, answers_map, trivia, is_final: true
+        turn_id, current_scores, grade_map, answers_map, trivia, trivia_exps, is_final: true
       )
       round_messages = [
         Map.put(st_payload, :event, "turn:start"),

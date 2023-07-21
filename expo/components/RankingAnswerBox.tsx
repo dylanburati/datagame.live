@@ -8,6 +8,7 @@ import {
   RoomPhase,
   expectedAnswersArePresent,
 } from '../helpers/nplayerLogic';
+import { TaggedTriviaOption } from '../helpers/api';
 import { AnimatedChipPicker } from './AnimatedChipPicker';
 import { AnswerBoxProps } from './AnswerBoxProps';
 import { MultipleChoiceOptionView } from './MultipleChoiceOptionView';
@@ -17,35 +18,53 @@ function getStyledOptions(
   state: RoomStateWithTrivia,
   defaultBg: ViewStyle
 ): StyledTriviaOption[] {
-  const { phase, trivia, triviaStats } = state;
-  if (triviaStats == null || !isFeedbackStage(phase)) {
+  const { phase, trivia } = state;
+  const { statAnnotation } = trivia;
+  const hasNumeric =
+    trivia.questionValueType === 'date' ||
+    trivia.questionValueType === 'number';
+  if (!isFeedbackStage(phase) || !hasNumeric) {
     return trivia.options.map((option) => ({
       option,
       chipStyle: [defaultBg],
     }));
   }
+  let axisMin = statAnnotation?.axisMin;
+  let axisMax = statAnnotation?.axisMax;
 
   const graded = expectedAnswersArePresent(state)
     ? getCorrectArray(state)
     : { correctArray: [] };
-  const { values, definition: statDef } = triviaStats;
-  const numeric = trivia.options.map(({ id }) => values.get(id) ?? 0);
+  let numeric: number[];
+  if (trivia.questionValueType === 'date') {
+    numeric = trivia.options.map(({ questionValue }) =>
+      new Date(questionValue).getTime()
+    );
+    if (statAnnotation?.axisMod === 'age') {
+      const now = Date.now();
+      numeric = numeric.map((x) => now - x);
+      axisMin = 0;
+      axisMax = 1000 * 60 * 60 * 24 * 365.25 * 100;
+    }
+  } else {
+    numeric = trivia.options.map(({ questionValue }) => questionValue);
+  }
   const axisConsideredVals = [
     ...numeric,
-    ...(statDef.axisMin != null ? [statDef.axisMin] : []),
-    ...(statDef.axisMax != null ? [statDef.axisMax] : []),
+    ...(axisMin != null ? [axisMin] : []),
+    ...(axisMax != null ? [axisMax] : []),
   ];
   let max = Math.max(...axisConsideredVals);
   let min = Math.min(...axisConsideredVals);
   const padding = Math.max((max - min) / 6, 0.01);
-  if (min !== statDef.axisMin) {
-    if (['dollar_amount', 'number', 'km_distance'].includes(statDef.type)) {
+  if (min !== axisMin) {
+    if (trivia.questionValueType === 'number') {
       min = Math.min(0, min);
     } else {
       min -= padding;
     }
   }
-  if (max !== statDef.axisMax) {
+  if (max !== axisMax) {
     max += padding;
   }
   const changeSignToIndicator = new Map([
@@ -77,6 +96,7 @@ function getStyledOptions(
           width: `${Math.round(100 * frac)}%`,
         },
       ],
+      numericValue: num,
       directionIndicator:
         graded.changeInRanking && getIndicator(graded.changeInRanking[index]),
     };
@@ -89,7 +109,7 @@ export function RankingAnswerBox({
   setTriviaAnswers,
   setDoneAnswering,
 }: AnswerBoxProps) {
-  const { trivia, triviaStats } = state;
+  const { trivia } = state;
   const defaultBg = styles.bgPaperDarker;
   const styledOptions = getStyledOptions(state, defaultBg);
   const orderedOptions = triviaAnswers
@@ -97,13 +117,8 @@ export function RankingAnswerBox({
     .map((id) => styledOptions.find(({ option }) => option.id === id))
     .filter((opt): opt is StyledTriviaOption => opt !== undefined);
   useLayoutEffect(() => {
-    if (triviaAnswers.size < trivia.minAnswers) {
-      setTriviaAnswers(
-        triviaAnswers.clear().extend(trivia.options.map((e) => e.id))
-      );
-      setDoneAnswering(true);
-    }
-  });
+    setDoneAnswering(true);
+  }, [setDoneAnswering, trivia]);
 
   return (
     <>
@@ -125,11 +140,12 @@ export function RankingAnswerBox({
           chipStyle,
         ]}
         disabled={state.phase !== RoomPhase.QUESTION}
-        sorter={({ option: a }, { option: b }) => {
+        sorter={(
+          { option: a, numericValue: av },
+          { option: b, numericValue: bv }
+        ) => {
           const mult = trivia.answerType === 'stat.desc' ? -1 : 1;
-          const av = triviaStats?.values.get(a.id) ?? 0;
-          const bv = triviaStats?.values.get(b.id) ?? 0;
-          const diff = mult * (av - bv);
+          const diff = mult * ((av ?? 0) - (bv ?? 0));
           return diff !== 0 ? diff : a.id - b.id;
         }}
         showSorted={isFeedbackStage(state.phase)}
@@ -141,7 +157,12 @@ export function RankingAnswerBox({
       >
         {({ item: { option, barGraph, directionIndicator }, index }) => (
           <MultipleChoiceOptionView
-            item={option}
+            item={
+              {
+                kind: trivia.questionValueType,
+                ...option,
+              } as TaggedTriviaOption
+            }
             index={index}
             state={state}
             showUnderlay={!!barGraph}

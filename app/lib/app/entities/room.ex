@@ -1,9 +1,24 @@
 defmodule App.Entities.Room do
+  @moduledoc """
+  An entity which records the creation and user membership in a live trivia
+  session managed by `AppWeb.RoomProcess`.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
   import App.Utils
 
   alias App.Entities.RoomUser
+
+  @type t :: %__MODULE__{
+    id: non_neg_integer,
+    code: String.t,
+    creator_id: non_neg_integer,
+    creator: RoomUser.t,
+    users: [RoomUser.t],
+    inserted_at: NaiveDateTime.t,
+    updated_at: NaiveDateTime.t,
+  }
 
   schema "room" do
     field :code, :string, virtual: true
@@ -14,7 +29,11 @@ defmodule App.Entities.Room do
   end
 
   @code_alpha "ABCEFHJLMNRSTVXZ"
-  # random looking codes without the birthday paradox
+
+  @spec id_to_code(non_neg_integer) :: String.t
+  @doc """
+  Converts from a numeric ID to a 4-letter code.
+  """
   def id_to_code(room_id) do
     cond do
       room_id < 0x10000 ->
@@ -25,6 +44,10 @@ defmodule App.Entities.Room do
     end
   end
 
+  @spec code_to_id(String.t) :: {:ok, non_neg_integer} | :error
+  @doc """
+  Converts from a 4-letter code back to a numeric ID.
+  """
   def code_to_id(room_code) do
     with {:ok, num} <- from_base16(room_code, @code_alpha) do
       cond do
@@ -34,7 +57,7 @@ defmodule App.Entities.Room do
     end
   end
 
-  @doc false
+  @spec validations(Ecto.Changeset.t) :: Ecto.Changeset.t
   def validations(room) do
     room
     |> cast(%{}, [])

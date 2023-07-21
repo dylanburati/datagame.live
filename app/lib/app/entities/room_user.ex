@@ -1,8 +1,22 @@
 defmodule App.Entities.RoomUser do
+  @moduledoc """
+  An entity created when a user joins a room, in order to recognize them
+  when rejoining.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
   alias App.Entities.Room
+
+  @type t :: %__MODULE__{
+    id: non_neg_integer,
+    name: String.t,
+    room_id: non_neg_integer,
+    room: Room.t,
+    inserted_at: NaiveDateTime.t,
+    updated_at: NaiveDateTime.t,
+  }
 
   schema "room_user" do
     field :name, :string
@@ -11,7 +25,7 @@ defmodule App.Entities.RoomUser do
     timestamps()
   end
 
-  @doc false
+  @spec validations(Ecto.Changeset.t) :: Ecto.Changeset.t
   def validations(room_user) do
     room_user
     |> validate_required([:name])

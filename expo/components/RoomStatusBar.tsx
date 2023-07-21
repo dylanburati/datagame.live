@@ -41,6 +41,7 @@ class RoomAvatar extends React.Component<RoomAvatarProps> {
           <Circle
             r={48}
             rotation={-90}
+            fill="transparent"
             stroke={borderColor}
             strokeWidth={3}
             strokeDasharray={[borderLength, 99999]}
@@ -145,10 +146,13 @@ export function RoomStatusBar({ room }: RoomStatusBarProps) {
             index === 0 && (
               <View
                 key={`l-${player.id}`}
-                style={[styles.flexBasis16, styles.flexShrink]}
+                style={[styles.flexBasis16, styles.flexShrink2]}
               />
             ),
-            <View key={`c-${player.id}`} style={[styles.maxH54Px]}>
+            <View
+              key={`c-${player.id}`}
+              style={[styles.maxH54Px, styles.flexBasis54, styles.flexShrink]}
+            >
               <AnimatedRoomAvatar
                 icon={icon}
                 borderColor={

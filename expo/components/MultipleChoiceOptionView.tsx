@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, View, ViewProps } from 'react-native';
 import { RoomStateWithTrivia, isFeedbackStage } from '../helpers/nplayerLogic';
 import { TriviaStatDisplay } from './TriviaStatDisplay';
-import { Trivia } from '../helpers/api';
+import { TaggedTriviaOption } from '../helpers/api';
 import { styles } from '../styles';
 import { TriviaMatchRankDisplay } from './TriviaMatchRankDisplay';
 import Svg, { Line } from 'react-native-svg';
@@ -27,7 +27,7 @@ function Underlay({ style }: UnderlayProps) {
 }
 
 export type MultipleChoiceOptionViewProps = {
-  item: Trivia['options'][0];
+  item: TaggedTriviaOption;
   index: number;
   state: RoomStateWithTrivia;
   showUnderlay?: boolean;
@@ -76,9 +76,8 @@ export function MultipleChoiceOptionView({
           {!isMatchRank && (
             <Text style={[styles.textMd, styles.italic]}>
               <TriviaStatDisplay
-                statDef={state.triviaStats?.definition}
-                numValue={state.triviaStats?.values.get(item.id) ?? NaN}
                 option={item}
+                statAnnotation={state.trivia.statAnnotation}
               />
             </Text>
           )}

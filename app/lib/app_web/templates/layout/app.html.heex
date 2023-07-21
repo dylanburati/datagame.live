@@ -1,51 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <link rel="apple-touch-icon" sizes="180x180" href={Routes.static_path(@conn, "/apple-touch-icon.png")}>
-    <link rel="icon" type="image/png" sizes="32x32" href={Routes.static_path(@conn, "/favicon-32x32.png")}>
-    <link rel="icon" type="image/png" sizes="16x16" href={Routes.static_path(@conn, "/favicon-16x16.png")}>
-    <link rel="manifest" href={Routes.static_path(@conn, "/manifest.json")}>
-    <link rel="mask-icon" href={Routes.static_path(@conn, "/safari-pinned-tab.svg")} color="#5bbad5">
-    <meta name="msapplication-TileColor" content="#b91d47">
-    <meta name="theme-color" content="#ffffff">
-    <meta charset="utf-8"/>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Datagame</title>
-    <link rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
-    <script type="text/javascript">
-    window.pageRoutes = {
-      index: "<%= Routes.page_path(@conn, :index) %>",
-      sheet: "<%= Routes.page_path(@conn, :sheet) %>",
-      sheetAdvanced: "<%= Routes.page_path(@conn, :sheet_advanced) %>",
-    };
-    window.apiRoutes = {
-      show: "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :show, "") %>",
-      create: "<%= Routes.url(@conn) <> Routes.sheet_path(@conn, :create) %>",
-      deckList: "<%= Routes.url(@conn) <> Routes.deck_path(@conn, :index) %>",
-      deckUpdate: "<%= Routes.url(@conn) <> Routes.deck_path(@conn, :update, "") %>",
-    };
-    </script>
-    <script defer type="text/javascript" src={Routes.static_path(@conn, "/js/app.js")}></script>
-  </head>
-  <body class="mb-8">
-    <header class="bg-black">
-      <nav class="flex container align-center">
-        <a href={Routes.page_path(@conn, :index)} style="line-height: 0">
-          <img
-            style="height: 55px;"
-            src={Routes.static_path(@conn, "/images/logo1.png")}
-            alt="Datagame"
-          >
-        </a>
-        <span class="flex-grow"></span>
-        <a target="_blank" rel="noreferrer" href="https://dylanburati.github.io">About me</a>
-      </nav>
-    </header>
-    <main role="main" class="container">
-      <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
-      <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
-      <%= @inner_content %>
-    </main>
-  </body>
-</html>
+<header class={Map.get(assigns, :header_class, "") <> " bg-black"}>
+  <nav class="flex container items-center">
+    <a href={Routes.page_path(@conn, :index)} style="line-height: 0">
+      <img
+        style="height: 55px;"
+        src={Routes.static_path(@conn, "/images/logo1.png")}
+        alt="Datagame"
+      >
+    </a>
+    <span class="flex-grow"></span>
+    <%= if @current_user do %>
+      <a class="mr-2" href={Routes.user_path(@conn, :logout)}>Log out</a>
+    <% end %>
+    <a target="_blank" rel="noreferrer" href="https://dylanburati.github.io">About me</a>
+  </nav>
+</header>
+<main role="main" class={Map.get(assigns, :main_class, "container")}>
+  <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
+  <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
+  <%= @inner_content %>
+</main>

@@ -1,0 +1,27 @@
+<header class={Map.get(assigns, :header_class, "") <> " bg-black"}>
+  <nav class="flex container items-center">
+    <a href={Routes.page_path(@socket, :index)} style="line-height: 0">
+      <img
+        style="height: 55px;"
+        src={Routes.static_path(@socket, "/images/logo1.png")}
+        alt="Datagame"
+      >
+    </a>
+    <span class="flex-grow"></span>
+    <%= if @current_user do %>
+      <a class="mr-2" href={Routes.user_path(@socket, :logout)}>Log out</a>
+    <% end %>
+    <a target="_blank" rel="noreferrer" href="https://dylanburati.github.io">About me</a>
+  </nav>
+</header>
+<main role="main" class={Map.get(assigns, :main_class, "container")}>
+  <p class="alert alert-info" role="alert"
+    phx-click="lv:clear-flash"
+    phx-value-key="info"><%= live_flash(@flash, :info) %></p>
+
+  <p class="alert alert-danger" role="alert"
+    phx-click="lv:clear-flash"
+    phx-value-key="error"><%= live_flash(@flash, :error) %></p>
+
+  <%= @inner_content %>
+</main>
