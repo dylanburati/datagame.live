@@ -48,9 +48,11 @@ if config_env() != :test do
       key_pem: System.get_env("GOOGLEAUTH_PRIVATE_KEY")
     ]
 
-  config :app, :admin,
-    hashed_pw_salt: "xNAZFMjH",
-    hashed_pw: System.get_env("DATAGAME_ADMIN_PW") || raise "DATAGAME_ADMIN_PW is missing"
+  config :joken,
+    default_signer: [
+      signer_alg: "HS256",
+      key_octet: System.get_env("DATAGAME_PRIVATE_SIGNER_KEY")
+    ]
 end
 
 # Import environment specific config. This must remain at the bottom

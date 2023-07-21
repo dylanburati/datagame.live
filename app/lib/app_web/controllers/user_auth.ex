@@ -3,9 +3,6 @@ defmodule AppWeb.UserAuth do
   import Phoenix.Controller
 
   alias App.Entities.UserService
-  alias App.Repo
-  alias App.Entities.User
-  alias App.UserToken
   alias AppWeb.Router.Helpers, as: Routes
 
   # Adapted from https://github.com/elixircastsio/148-live-view-auth-pt-2

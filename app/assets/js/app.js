@@ -31,7 +31,7 @@ if (matchers.sheet(pathname)) {
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
-let liveSocket = new LiveSocket("/live", Socket, {
+let liveSocket = new LiveSocket(`${window.basePath.replace(/\/$/, "")}/live`, Socket, {
   params: { _csrf_token: csrfToken },
   
 });
