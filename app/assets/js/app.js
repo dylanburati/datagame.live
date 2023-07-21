@@ -7,7 +7,6 @@ import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
 
 import { SheetPage, ExplorePage } from "./sheet";
-import { SheetAdvancedPage } from "./sheetAdvanced";
 
 const matcher = (pattern) => (input) => {
   const path1 = pattern.split('/');
@@ -25,8 +24,6 @@ const matchers = Object.fromEntries(
 const pathname = window.location.pathname.slice();
 if (matchers.sheet(pathname)) {
   window.vm = new SheetPage();
-} else if (matchers.sheetAdvanced(pathname)) {
-  window.vm = new SheetAdvancedPage();
 } else if (matchers.explore(pathname)) {
   window.vm = new ExplorePage();
 }

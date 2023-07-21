@@ -43,7 +43,7 @@
 </div>
 <nav id="bottom-controls" class="py-2 bg-black">
   <div class="container flex">
-    <select class="interactable py-1-5" style="max-width: calc(max(50px, 50vw - 120px))" aria-label="Deck Picker"></select>
+    <select class="interactable py-1-5 whitespace-nowrap" style="text-overflow: ellipsis; overflow: hidden" aria-label="Deck Picker"></select>
     <span class="flex-grow" style="width: 1rem;"></span>
     <nav role="navigation" aria-label="Pagination Navigation">
       <ul id="pagination" class="pagination flex items-center">
@@ -61,7 +61,7 @@
               <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-previous" fill="currentColor"></use>
             </svg>
           </button>
-        </li><li id="pagination-readout" class="leading-none pt-1 mx-2">
+        </li><li id="pagination-readout" class="whitespace-nowrap leading-none pt-1 mx-2">
         </li><li>
           <button class="disabled interactable leading-none" aria-disabled="true">
             <label class="visuallyhidden">Next</label>

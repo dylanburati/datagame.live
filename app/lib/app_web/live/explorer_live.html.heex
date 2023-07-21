@@ -12,10 +12,38 @@
       <div class="flex flex-row">
         <label id="filter-input-label" class="visuallyhidden">Filter expression</label>
         <input id="filter-input" aria-labelledby="filter-input-label" type="text" style="flex-grow: 100;" placeholder="Search">
+        <button id="filter-help-btn" class="bg-gray interactable leading-none ml-1 p-1">
+          <label id="filter-help-label" class="visuallyhidden">Help</label>
+          <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" class="w-5">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-help" fill="currentColor"></use>
+          </svg>
+        </button>
+      </div>
+      <div id="filter-help" aria-labelledby="filter-help-label" class="hidden mt-2 text-sm">
+        <p class="mb-2">Type one or more conditions to filter the rows.
+        The column name should use underscores instead of spaces, and no special characters - case doesn't matter.
+        Values with spaces in them need to be double quoted.
+        </p>
+        <p class="mb-2">
+        The operators are <code class="bg-surface">: !~ = != &lt; &gt;</code>.
+        </p>
+        <p class="mb-2">Examples:</p>
+        <ul class="list-disc list-inside">
+        <li>birth_date&lt;1999 birth_date:08/08 (Birth date is 1998 or earlier, on August 8th any of those years)</li>
+        <li>coordinates.0&gt;40.7 coordinates.1&lt;-74 (Coordinates are north and west of New York City)</li>
+        <li>director="Greta Gerwig" (One of the Director tags is "Greta Gerwig")</li>
+        <li>card:"Carly" (The Card contains "Carly")</li>
+        </ul>
       </div>
     </section>
-    <section role="tabpanel" id="review" aria-labelledby="tab2" class="container hidden py-2 bg-black">
-      <button id="trivia" class="bg-green interactable" phx-click="trivia">Get question</button>
+    <section role="tabpanel" id="trivia" aria-labelledby="tab2" class="container hidden py-2 bg-black">
+      <div class="flex flex-col">
+        <%= if @current_user == nil do %>
+          <p id="trivia-nodata">There's a playable version in the app. <a class="mr-2" href={Routes.user_path(@socket, :create)}>Sign up</a> to receive a pre-release invite.</p>
+        <% end %>
+        <div id="trivia-body"></div>
+        <button id="trivia-btn" class="bg-green self-center mt-2 interactable" phx-click="trivia">Get question</button>
+      </div>
     </section>
   </div>
   <p id="error-box" class="text-red hidden"></p>
@@ -27,7 +55,7 @@
 </div>
 <nav id="bottom-controls" class="py-2 bg-black">
   <div class="container flex">
-    <h1 id="deck-readout" class="text-lg m-0 pt-1" style="max-width: calc(max(50px, 50vw - 120px))"></h1>
+    <h1 id="deck-readout" class="text-lg m-0 pt-1 whitespace-nowrap" style="text-overflow: ellipsis; overflow: hidden"></h1>
     <span class="flex-grow" style="width: 1rem;"></span>
     <nav role="navigation" aria-label="Pagination Navigation">
       <ul id="pagination" class="pagination flex items-center">
@@ -45,7 +73,7 @@
               <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-page-previous" fill="currentColor"></use>
             </svg>
           </button>
-        </li><li id="pagination-readout" class="leading-none pt-1 mx-2">
+        </li><li id="pagination-readout" class="whitespace-nowrap leading-none pt-1 mx-2">
         </li><li>
           <button class="disabled interactable leading-none" aria-disabled="true">
             <label class="visuallyhidden">Next</label>
@@ -66,6 +94,12 @@
   </div>
 </nav>
 <svg style="display: none" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="icon-help">
+    <title id="title-help">Help</title>
+    <path d="M16,2A14,14,0,1,0,30,16,14,14,0,0,0,16,2Zm0,26A12,12,0,1,1,28,16,12,12,0,0,1,16,28Z"/>
+    <circle cx="16" cy="23.5" r="1.5"/>
+    <path d="M17,8H15.5A4.49,4.49,0,0,0,11,12.5V13h2v-.5A2.5,2.5,0,0,1,15.5,10H17a2.5,2.5,0,0,1,0,5H15v4.5h2V17a4.5,4.5,0,0,0,0-9Z"/>
+  </g>
   <g id="icon-refresh" aria-labeledby="title-refresh" role="image">
     <title id="title-refresh">Refresh</title>
     <path d="M26,18A10,10,0,1,1,16,8h6.1821l-3.5844,3.5854L20,13l6-6L20,1,18.5977,2.414,22.1851,6H16A12,12,0,1,0,28,18Z" />

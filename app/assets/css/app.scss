@@ -161,6 +161,10 @@ a {
   justify-content: space-around;
 }
 
+.self-center {
+  align-self: center;
+}
+
 .flex-grow {
   flex-grow: 1;
 }
@@ -253,6 +257,14 @@ a {
   }
 }
 
+.bg-gray {
+  background-color: #606775;
+
+  &.interactable:hover {
+    background-color: #4B5563;
+  }
+}
+
 .text-white {
   color: white;
 }
@@ -279,6 +291,10 @@ a {
 
 .text-right {
   text-align: right;
+}
+
+.whitespace-nowrap {
+  white-space: nowrap;
 }
 
 .list-disc {
@@ -403,6 +419,10 @@ a {
 
 .mb-8 {
   margin-bottom: 2rem;
+}
+
+.ml-1 {
+  margin-left: 0.25rem;
 }
 
 .mx-1 {

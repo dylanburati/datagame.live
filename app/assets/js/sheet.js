@@ -1,5 +1,6 @@
 import { queryParser, toInteger, toPredicate } from "./advancedQuery";
 import { Result } from "./attoparsec";
+import { relativeDeltaToNow } from "./math";
 import { EffectList, h, modify, prettyPrint } from "./utils";
 
 /**
@@ -40,6 +41,8 @@ export class PagedTableView {
       scrollContainer: document.getElementById('scroll-container'),
       tablist: document.getElementById('tablist'),
       searchInput: document.getElementById('filter-input'),
+      searchHelpButton: document.getElementById('filter-help-btn'),
+      searchHelp: document.getElementById('filter-help'),
       deckPicker: document.querySelector('#bottom-controls select'),
       pagination: document.getElementById('pagination'),
       paginationReadout: document.getElementById('pagination-readout'),
@@ -61,12 +64,17 @@ export class PagedTableView {
   }
 
   setupListeners() {
-    const { searchInput } = this.r;
+    const { searchInput, searchHelpButton, searchHelp } = this.r;
 
     searchInput.addEventListener('input', evt => {
       this.setQueryText(evt.target.value);
       this.setCurrentPage(1);
     });
+    if (searchHelpButton && searchHelp) {
+      searchHelpButton.addEventListener('click', () => {
+        searchHelp.classList.toggle("hidden");
+      });
+    }
   }
 
   repaginate() {
@@ -121,7 +129,7 @@ export class PagedTableView {
     if (tableData == null) {
       paginationReadout.textContent = '';
     } else {
-      paginationReadout.textContent = `Page ${currentPage} of ${pageTotal}`;
+      paginationReadout.textContent = `${currentPage} / ${pageTotal}`;
     }
   }
 
@@ -505,6 +513,8 @@ export class ExplorePage {
     this.r = {
       tablist: document.getElementById('tablist'),
       deckReadout: document.getElementById('deck-readout'),
+      triviaNoData: document.getElementById('trivia-nodata'),
+      triviaBody: document.getElementById('trivia-body'),
     };
 
     this.s = {
@@ -513,12 +523,14 @@ export class ExplorePage {
       query: [],
       queryText: '',
       pageSize: 50,
+      trivia: null,
     }
 
     const effects = new EffectList();
     this.tableView = new PagedTableView(this.s, effects);
     this.setTableData = effects.setter(val => { this.s.tableData = val; });
     this.setCurrentPage = effects.setter(val => { this.s.currentPage = val; });
+    this.setTrivia = effects.setter(val => { this.s.trivia = val; });
     effects.register(() => {
       const { tableData } = this.s;
       if (tableData == null) {
@@ -526,12 +538,21 @@ export class ExplorePage {
       }
       this.r.deckReadout.textContent = tableData.deck.title;
     }, () => [this.s.tableData]);
+    effects.register(this.renderTrivia.bind(this), () => [this.s.trivia]);
 
     window.addEventListener("phx:mount", () => {
       this.setupListeners();
       this.tableView.setupListeners();
     });
-    // this.refresh();
+    window.addEventListener("phx:trivia-result", (evt) => {
+      if (!evt.detail.ok) {
+        console.error(evt.detail);
+        this.setTrivia(null);
+        return;
+      }
+      const { trivia } = evt.detail.ok;
+      this.setTrivia(trivia);
+    });
   }
 
   setupListeners() {
@@ -589,5 +610,70 @@ export class ExplorePage {
       // errorBox.classList.remove('hidden');
       // errorBox.textContent = errorMessage;
     }
+  }
+
+  renderTrivia() {
+    const { triviaBody, triviaNoData } = this.r;
+    const { trivia } = this.s;
+
+    if (triviaNoData) {
+      triviaNoData.style.display = 'none';
+    }
+    if (trivia == null) {
+      modify(triviaBody, true, {}, []);
+      return;
+    }
+    if (trivia.questionValueType === "number[]") {
+      const questionValue = [];
+      for (const o of [...trivia.options, ...(trivia.prefilledAnswers || [])]) {
+        for (const i of o.questionValue) {
+          while (i >= questionValue.length) questionValue.push('');
+          questionValue[i] = o.answer;
+        }
+      }
+      trivia.options = [{ answer: "", id: 0, questionValue: questionValue.join("") }];
+    }
+    if (trivia.questionValueType === "date") {
+      if (trivia.statAnnotation && trivia.statAnnotation.axisMod === "age") {
+        trivia.options = trivia.options.map(e => ({ ...e, questionValue: relativeDeltaToNow(new Date(e.questionValue))[0] }));
+      } else {
+        trivia.options = trivia.options.map(e => ({ ...e, questionValue: new Date(e.questionValue).toLocaleString() }));
+      }
+    }
+    if (trivia.questionValueType === "number") {
+      if (trivia.statAnnotation && trivia.statAnnotation.axisMod === "distance") {
+        trivia.options = trivia.options.map(e => ({ ...e, questionValue: `${Math.round(e.questionValue * 0.621371)} mi` }));
+      } else {
+        trivia.options = trivia.options.map(e => ({ ...e, questionValue: e.questionValue.toLocaleString() }));
+      }
+    }
+    trivia.options.sort(() => Math.random() - 0.5);
+    let ul = null;
+    modify(triviaBody, true, {}, [
+      h("p", { class: "text-center" }, trivia.question),
+      h("ul", { $ref: (el) => ul = el }, trivia.options.map((e, i) =>
+        h("li", { class: "flex flex-wrap" }, [
+          h("div", {}, e.answer.replace(/\n/g, ' · ')),
+          h("span", { class: "flex-grow" }),
+          i === 0 && h(
+            "button",
+            {
+              class: "interactable bg-gray text-white text-sm",
+              style: { padding: '1px 0.25rem' },
+              onClick: () => {
+                if (ul == null) return;
+                const children = [...ul.querySelectorAll('li')];
+                if (children.length !== trivia.options.length) return;
+                children[0].querySelector("button").remove();
+                children.forEach((child, i) => {
+                  child.insertAdjacentText('beforeend', String(trivia.options[i].questionValue));
+                });
+              },
+            },
+            "reveal"
+          ),
+        ])
+      ))
+    ]);
   }
 }

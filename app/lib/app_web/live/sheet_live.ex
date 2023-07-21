@@ -1,4 +1,5 @@
 defmodule AppWeb.SheetLive do
+  require Logger
   use AppWeb, :live_view
 
   alias App.Entities.SheetService
@@ -71,9 +72,11 @@ defmodule AppWeb.SheetLive do
         {:ok, decks_plus} ->
           {assign(socket, decks: publishable_recur(decks_plus)),
             %{"ok" => Phoenix.View.render(AppWeb.SheetView, "sheet.json", %{data: decks_plus})}}
+        {:error, err} when is_binary(err) ->
+          {socket, %{"error" => err}}
         {:error, err} ->
-          {socket,
-            %{"error" => to_string(err)}}
+          :ok = Logger.error(err)
+          {socket, %{"error" => "Unknown error"}}
       end
     end
 

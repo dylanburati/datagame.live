@@ -21,8 +21,6 @@ defmodule AppWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :index
-    get "/sheet", PageController, :sheet
-    get "/sheet-advanced", PageController, :sheet_advanced
     get "/user/register", UserController, :new
     post "/user/register", UserController, :create
     get "/user/login", UserController, :login
