@@ -15,6 +15,7 @@ export function overwriteMap<K, V>(map: Map<K, V>, items: [K, V][]) {
   }
   return map;
 }
+
 export class OrderedSet<T, K = T> {
   map = new Map<K, number>();
   reverseMap: T[] = [];

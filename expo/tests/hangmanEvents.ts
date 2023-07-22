@@ -1,5 +1,5 @@
-import { range } from 'lodash';
 import { RoomIncomingMessage } from '../helpers/api';
+import { intRange } from '../helpers/math';
 
 export const hangmanEvents: RoomIncomingMessage[] = [
   {
@@ -28,7 +28,7 @@ export const hangmanEvents: RoomIncomingMessage[] = [
       maxAnswers: 26,
       minAnswers: 1,
       questionValueType: 'number[]',
-      options: range('A'.charCodeAt(0), 'Z'.charCodeAt(0) + 1).map((ch) => ({
+      options: intRange('A'.charCodeAt(0), 'Z'.charCodeAt(0) + 1).map((ch) => ({
         answer: String.fromCodePoint(ch),
         id: ch - 65,
         questionValue: [

@@ -1,4 +1,3 @@
-import { pick } from 'lodash';
 import objectInspect from 'object-inspect';
 import { loadJson, storeJson } from '../helpers/storage';
 
@@ -103,7 +102,11 @@ export class AsyncStorageLogger {
   _log(severity: string, msg: any) {
     let json;
     if (msg instanceof Error) {
-      json = JSON.stringify(pick(msg, ['message', 'name', 'stack']));
+      const msgObject: any = { name: msg.name, message: msg.message };
+      if (msg.stack) {
+        msgObject.stack = msg.stack;
+      }
+      json = JSON.stringify(msgObject);
     } else {
       json = objectInspect(msg);
     }

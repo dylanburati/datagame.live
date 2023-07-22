@@ -45,7 +45,7 @@ export function argsort<T>(array: T[], sorter: (e1: T, e2: T) => number) {
     .map(([i]) => i);
 }
 
-export function intRange(start: number, end: number, step: number) {
+export function intRange(start: number, end: number, step: number = 1) {
   const result = [];
   for (let num = start; step * (num - end) < 0; num += step) {
     result.push(num);

@@ -1,4 +1,3 @@
-import { memoize } from 'lodash';
 import { AccelerometerMeasurement } from 'expo-sensors';
 
 export enum GamePhase {
@@ -34,7 +33,7 @@ export function timerFormat(
   return `${minutePart > 0 ? minutePart : ''}:${secondPart}`;
 }
 
-const fastSin = memoize((deg) => Math.sin((deg * Math.PI) / 180));
+const fastSin = (deg: number) => Math.sin((deg * Math.PI) / 180);
 
 /**
  * Accelerometer docs: https://developer.apple.com/documentation/coremotion/getting_raw_accelerometer_events

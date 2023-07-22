@@ -1,6 +1,5 @@
 import React from 'react';
 import { useWindowDimensions, View, ViewProps } from 'react-native';
-import { chunk } from 'lodash';
 import { intRange } from '../helpers/math';
 import { styles } from '../styles';
 
@@ -22,6 +21,18 @@ export type GridLayoutProps<T> = {
   data: T[];
   children: (props: GridLayoutProvidedProps<T>) => React.ReactElement | null;
 };
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const result = [];
+  const tail = [];
+  for (let i = 0; i < arr.length; i++) {
+    tail.push(arr[i]);
+    if (i === arr.length - 1 || (i + 1) % n === 0) {
+      result.push(tail.splice(0));
+    }
+  }
+  return result;
+}
 
 export function GridLayout<T>({
   style,
