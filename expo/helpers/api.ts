@@ -16,18 +16,9 @@ export type Deck = {
     name: string;
     count: number;
   }[];
-  tagDefinitions?: {
-    id: number;
-    label: string;
-    valueCounts: {
-      value: string;
-      count: number;
-    }[];
-  };
 };
 
 export type Card = {
-  id: number;
   title: string;
   category?: string;
   popularity?: number;
@@ -37,7 +28,6 @@ export type Card = {
 };
 
 export type Game = {
-  deck: Deck;
   cards: Card[];
 };
 

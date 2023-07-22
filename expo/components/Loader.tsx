@@ -72,6 +72,7 @@ export function Loader({ height = 300 }) {
     <Svg width="100%" height={height}>
       <Path
         d={getFrame(frame + 24, height + 52, -148, 8)}
+        fill="transparent"
         strokeWidth={2}
         strokeLinecap="square"
         stroke="#000"
@@ -79,6 +80,7 @@ export function Loader({ height = 300 }) {
 
       <Path
         d={getFrame(frame, height + 42, 0, -2)}
+        fill="transparent"
         strokeWidth={2}
         strokeLinecap="square"
         stroke="#000"
@@ -86,6 +88,7 @@ export function Loader({ height = 300 }) {
 
       <Path
         d={getFrame(frame - 24, height + 32, 148, -12)}
+        fill="transparent"
         strokeWidth={2}
         strokeLinecap="square"
         stroke="#000"
@@ -93,6 +96,7 @@ export function Loader({ height = 300 }) {
 
       <Path
         d={getFrame(frame - 48, height + 22, 296, -22)}
+        fill="transparent"
         strokeWidth={2}
         strokeLinecap="square"
         stroke="#000"

@@ -1,11 +1,12 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::HashMap};
 
 use error_chain::error_chain;
 
 use crate::{
+    probability::ReservoirSample,
     tinylang::{self, expr},
     trivia::types::SanityCheck,
-    types::Deck,
+    types::{Card, Deck},
 };
 
 mod engine;
@@ -15,8 +16,8 @@ mod ranking;
 mod types;
 
 pub use types::{
-    ActiveDeck, ActivePairing, GradeableTrivia, QValue, Trivia, TriviaAnswer, TriviaAnswerType,
-    TriviaDefCommon, TriviaExp,
+    ActiveDeck, ActivePairing, DeckFeatureSet, GradeableTrivia, QValue, Trivia, TriviaAnswer,
+    TriviaAnswerType, TriviaDefCommon, TriviaExp,
 };
 
 use self::{
@@ -115,6 +116,29 @@ impl KnowledgeBase {
     fn require_deck(&self, deck_id: u64) -> Result<&ActiveDeck> {
         self.get_deck(deck_id)
             .ok_or_else(|| ErrorKind::InvalidDeckId(deck_id).into())
+    }
+
+    pub fn get_cards(
+        &self,
+        deck_id: u64,
+        difficulty: f64,
+        category_boosts: HashMap<String, f64>,
+        limit: usize,
+    ) -> Result<Vec<Card>> {
+        let deck = self.require_deck(deck_id)?;
+        let cards = deck.data
+            .cards
+            .iter()
+            .sample_weighted(limit as usize, |card| {
+                let caty = card
+                    .category
+                    .as_ref()
+                    .and_then(|k| category_boosts.get(k))
+                    .copied()
+                    .unwrap_or(0.0);
+                f64::exp(-difficulty * card.popularity + 0.5 * caty)
+            });
+        Ok(cards.into_iter().cloned().collect())
     }
 
     pub fn get_trivia(&self, trivia_def_id: usize) -> Result<GradeableTrivia> {

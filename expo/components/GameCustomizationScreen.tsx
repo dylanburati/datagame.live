@@ -64,7 +64,11 @@ export function GameCustomizationScreen() {
           navigation.goBack();
         } else {
           navigation.dispatch(
-            StackActions.replace('Game', { ...game, gameLength })
+            StackActions.replace('Game', {
+              ...game,
+              gameLength,
+              title: deck?.title,
+            })
           );
         }
       }

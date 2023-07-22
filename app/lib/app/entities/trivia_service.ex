@@ -1,10 +1,11 @@
 defmodule App.Entities.TriviaService do
 
-  def get_any_trivia_impl(kb, tdefs, id_log) do
-    id_to_deck = Enum.with_index(tdefs)
-    |> Enum.map(fn {%{deck_id: deck_id}, id} -> {id, deck_id} end)
+  def get_any_trivia_impl(kb, deck_details, id_log) do
+    id_to_deck = deck_details
+    |> Enum.flat_map(fn %{id: id, trivia_defs: lst} -> Enum.map(lst, &{&1, id}) end)
+    |> Enum.map(fn {{id, _}, deck_id} -> {id, deck_id} end)
     |> Map.new()
-    id_from_deck = Range.new(0, length(tdefs) - 1)
+    id_from_deck = Enum.map(deck_details, &(&1.id))
     |> Enum.group_by(&Map.get(id_to_deck, &1))
     boost_map = case App.Cache.lookup("TriviaService.boost_map") do
       nil ->
@@ -24,7 +25,7 @@ defmodule App.Entities.TriviaService do
     end
 
     tdef_id = Enum.max_by(
-      Range.new(0, length(tdefs) - 1),
+      Map.keys(id_to_deck),
       fn id -> :math.log(:rand.uniform()) / Map.get(boost_map, id, 1) end,
       fn -> nil end
     )
@@ -35,8 +36,8 @@ defmodule App.Entities.TriviaService do
   end
 
   def get_any_trivia(id_log, _opts \\ []) do
-    with {:ok, kb, tdefs} <- App.Native.cached_trivia_base() do
-      get_any_trivia_impl(kb, tdefs, id_log)
+    with {:ok, kb, deck_details} <- App.Native.cached_trivia_base() do
+      get_any_trivia_impl(kb, deck_details, id_log)
     end
   end
 

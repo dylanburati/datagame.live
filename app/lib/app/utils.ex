@@ -63,6 +63,14 @@ defmodule App.Utils do
     end
   end
 
+  def integer_or_nil(nil), do: nil
+  def integer_or_nil(str) do
+    case Integer.parse(str) do
+      {x, _} -> x
+      :error -> nil
+    end
+  end
+
   def non_empty_or_nil(nil), do: nil
   def non_empty_or_nil(""), do: nil
   def non_empty_or_nil(str), do: str

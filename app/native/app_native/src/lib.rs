@@ -12,7 +12,7 @@ use rustler::{Encoder, Env, Error, NifResult, ResourceArc, Term};
 use trivia::KnowledgeBase;
 
 use crate::{
-    trivia::{ActiveDeck, TriviaDef},
+    trivia::{ActiveDeck, DeckFeatureSet},
     types::{Deck, ExDeck},
 };
 
@@ -99,12 +99,21 @@ fn load_trivia_base(env: Env<'_>, stored: Vec<ExDeck>) -> NifResult<Term<'_>> {
         trivia_defs: vec![],
     };
     trivia::seed(&mut base).map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
-    let trivia_def_list: Vec<_> = base
+    let mut deck_details: Vec<_> = base.decks.iter().map(DeckFeatureSet::from).collect();
+    let mut trivia_def_entries: Vec<_> = base
         .trivia_defs
         .iter()
-        .map(TriviaDef::common)
-        .cloned()
+        .enumerate()
+        .map(|(i, e)| (i as u64, e.common().clone()))
         .collect();
+    deck_details.sort_by_key(|e| e.id);
+    trivia_def_entries.sort_by_key(|(_, e)| e.deck_id);
+    let mut iter = trivia_def_entries.into_iter().peekable();
+    for feat in deck_details.iter_mut() {
+        while iter.peek().map(|(_, e)| e.deck_id) == Some(feat.id) {
+            feat.trivia_defs.push(iter.next().unwrap())
+        }
+    }
     let resource = ResourceArc::new(KnowledgeBaseResource {
         data: Mutex::new(base),
     });
@@ -113,7 +122,7 @@ fn load_trivia_base(env: Env<'_>, stored: Vec<ExDeck>) -> NifResult<Term<'_>> {
         &[
             atoms::ok().encode(env),
             resource.encode(env),
-            trivia_def_list.encode(env),
+            deck_details.encode(env),
         ],
     ))
 }
@@ -138,6 +147,30 @@ fn get_trivia(
     ))
 }
 
+#[rustler::nif]
+fn get_cards(
+    env: Env<'_>,
+    kb_sync: ResourceArc<KnowledgeBaseResource>,
+    deck_id: u64,
+    difficulty: f64,
+    category_boosts: Vec<(String, f64)>,
+    limit: usize,
+) -> NifResult<Term<'_>> {
+    let kb: std::sync::MutexGuard<'_, KnowledgeBase> = kb_sync.data.try_lock().unwrap();
+    let cards = kb
+        .get_cards(
+            deck_id,
+            difficulty,
+            category_boosts.into_iter().collect(),
+            limit,
+        )
+        .map_err(|err| Error::Term(Box::new(format!("{}", err))))?;
+    Ok(rustler::types::tuple::make_tuple(
+        env,
+        &[atoms::ok().encode(env), cards.encode(env)],
+    ))
+}
+
 rustler::init!(
     "Elixir.App.Native",
     [
@@ -145,7 +178,8 @@ rustler::init!(
         prepare_decks,
         deserialize_deck,
         load_trivia_base,
-        get_trivia
+        get_trivia,
+        get_cards,
     ],
     load = load
 );

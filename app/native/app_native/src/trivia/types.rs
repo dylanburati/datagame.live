@@ -147,6 +147,48 @@ impl DeckView {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, NifMap)]
+pub struct TriviaDefCommon {
+    pub deck_id: u64,
+    pub question_format: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, NifMap)]
+pub struct DeckFeatureSet {
+    pub id: u64,
+    pub enabled_count: u64,
+    pub can_select_difficulty: bool,
+    pub category_counts: HashMap<String, u64>,
+    pub trivia_defs: Vec<(u64, TriviaDefCommon)>,
+}
+
+impl From<&ActiveDeck> for DeckFeatureSet {
+    fn from(deck: &ActiveDeck) -> Self {
+        let mut enabled_count = 0;
+        let mut category_counts = HashMap::new();
+        for card in deck.data.cards.iter() {
+            if !card.is_disabled {
+                enabled_count += 1;
+                if let Some(cat) = &card.category {
+                    if !category_counts.contains_key(cat) {
+                        category_counts.insert(cat.clone(), 1);
+                    } else {
+                        *category_counts.get_mut(cat).unwrap() += 1;
+                    }
+                }
+            }
+        }
+        Self {
+            id: deck.id,
+            enabled_count,
+            // TODO disable
+            can_select_difficulty: true,
+            category_counts,
+            trivia_defs: vec![],
+        }
+    }
+}
+
 pub mod selectors {
     use crate::tinylang;
 
@@ -214,12 +256,6 @@ pub mod instances {
         pub which: usize,
         pub value: String,
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, NifMap)]
-pub struct TriviaDefCommon {
-    pub deck_id: u64,
-    pub question_format: String,
 }
 
 #[derive(Debug, PartialEq, Eq, NifTaggedEnum)]

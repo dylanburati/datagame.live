@@ -32,7 +32,6 @@ import { RestClientContext } from './RestClientProvider';
 import { styles } from '../styles';
 
 export type GameData = {
-  id: number;
   title: string;
   answered: boolean;
 }[];
@@ -86,7 +85,7 @@ function gameStateReducer(
           if (question) {
             history = [
               ...history,
-              { id: question.id, title: question.title, answered: confirmed },
+              { title: question.title, answered: confirmed },
             ];
           }
           return {
@@ -121,10 +120,7 @@ function gameStateReducer(
       const question = state.cards.length ? state.cards[0] : null;
       let history = state.history;
       if (question && state.phase === GamePhase.QUESTION) {
-        history = [
-          ...history,
-          { id: question.id, title: question.title, answered: false },
-        ];
+        history = [...history, { title: question.title, answered: false }];
       }
       return { ...state, phase: GamePhase.FINISHED, history };
     }
@@ -232,7 +228,7 @@ export function GameScreen() {
   const { logger } = useContext(RestClientContext);
   const navigation = useNavigationTyped();
   const {
-    params: { deck, cards: propCards, gameLength },
+    params: { title, cards: propCards, gameLength },
   } = useRouteTyped<'Game'>();
   const [isSoundReady, setSoundReady] = useState(false);
   const sounds = useRef({
@@ -447,9 +443,9 @@ export function GameScreen() {
       {phase === GamePhase.FINISHED ? (
         <ScrollView contentContainerStyle={[styles.itemsCenter, styles.mt2]}>
           <Text style={[styles.textLg, styles.m4]}>{score}</Text>
-          {gameState.history.map((item) => (
+          {gameState.history.map((item, i) => (
             <Text
-              key={item.id}
+              key={i}
               style={
                 item.answered
                   ? [styles.textMd]
@@ -469,7 +465,7 @@ export function GameScreen() {
       ) : (
         <>
           <View style={[styles.row, styles.p4]}>
-            <Text>{deck.title}</Text>
+            <Text>{title}</Text>
             <Text>{score}</Text>
           </View>
           <View style={[styles.container, styles.mx4]}>

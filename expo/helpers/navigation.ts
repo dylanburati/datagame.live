@@ -8,7 +8,7 @@ import { Game, RoomUser } from './api';
 
 export type RootStackParamList = {
   Home: undefined;
-  Game: Game & { gameLength: number };
+  Game: Game & { title: string; gameLength: number };
   GameCustomization: { topic: number };
   Room: { roomId: string; savedSession?: RoomUser };
   LogViewer: undefined;

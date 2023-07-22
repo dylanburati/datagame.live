@@ -44,21 +44,22 @@ defmodule AppWeb.ExplorerLive do
     end
   end
 
+  defp get_trivia(socket, kb, []) do
+    {:error, "No trivia defs in deck"}
+  end
   defp get_trivia(socket, kb, tdefs) do
-    deck_tdef_ids = Enum.with_index(tdefs)
-    |> Enum.filter(fn {td, _} -> Integer.to_string(td.deck_id) == socket.assigns.params["id"] end)
-    |> Enum.map(&elem(&1, 1))
-    case deck_tdef_ids do
-      [] -> {:error, "No trivia defs in deck"}
-      lst -> App.Native.get_trivia(kb, Enum.at(lst, :rand.uniform(length(lst)) - 1))
-    end
+    App.Native.get_trivia(kb, Enum.at(tdefs, :rand.uniform(length(tdefs)) - 1))
   end
 
   def handle_info({:load, id}, socket) do
     socket = with {:ok, dbdeck} <- DeckService.show(id) do
       with {:ok, deck} <- App.Native.deserialize_deck(dbdeck),
-           {:ok, kb, tdefs} <- App.Native.cached_trivia_base() do
+           {:ok, kb, decks_details} <- App.Native.cached_trivia_base() do
         deck_json = Phoenix.View.render(AppWeb.SheetView, "deck.json", deck)
+        tdefs = case Enum.find(decks_details, fn d -> d.id == id end) do
+          nil -> []
+          o -> Enum.map(o.trivia_defs, &elem(&1, 0))
+        end
         socket
         |> assign(:trivia_base, {kb, tdefs})
         |> push_event("load", %{"ok" => deck_json})

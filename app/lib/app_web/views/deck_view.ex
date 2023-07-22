@@ -1,7 +1,8 @@
 defmodule AppWeb.DeckView do
+  require Logger
   use AppWeb, :view
 
-  import App.Utils
+  alias App.Entities.GameService
 
   def card_tag_def_json(card_tag_def) do
     %{
@@ -12,21 +13,30 @@ defmodule AppWeb.DeckView do
   end
 
   def deck_json(deck) do
-    %{
+    result = %{
       id: deck.id,
       title: deck.title,
       imageUrl: deck.image_url,
       imageDominantColor: "rgb(96, 96, 96)",
       createdAt: deck.inserted_at,
       updatedAt: deck.updated_at,
-      # numEnabledCards: deck.enabled_count,
     }
-    # |> maybe_put(is_list(deck.category_counts), :categoryCounts, deck.category_counts)
-    # |> maybe_put_lazy(
-    #   Ecto.assoc_loaded?(deck.card_tag_defs),
-    #   :tagDefinitions,
-    #   fn -> Enum.map(deck.card_tag_defs, &card_tag_def_json/1) end
-    # )
+    with {:ok, _, deck_details} <- App.Native.cached_trivia_base(),
+         dextra = Enum.find(deck_details, fn d -> d.id == deck.id end),
+         false <- is_nil(dextra) do
+      Map.merge(result, %{
+        canSelectDifficulty: dextra.can_select_difficulty,
+        canSelectCategories: GameService.can_select_categories?(dextra),
+        categoryCounts: Enum.map(dextra.category_counts, fn {k, v} -> %{name: k, count: v} end)
+      })
+    else
+      {:error, err} ->
+        Logger.error(err)
+        result
+      true ->
+        Logger.error("Deck ID not in trivia base")
+        result
+    end
   end
 
   def render("decks.json", %{decks: decks}) do

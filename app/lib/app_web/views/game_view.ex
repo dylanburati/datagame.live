@@ -12,20 +12,17 @@ defmodule AppWeb.GameView do
 
   def card_json(card) do
     %{
-      id: card.id,
+      # id: card.id,
       title: card.title,
       popularity: card.popularity,
-      category: card.cat1,
+      category: card.category,
     }
-    |> maybe_put_lazy(Ecto.assoc_loaded?(card.tags), :tags, fn ->
-      card_tag_json(card.tags)
-    end)
+    # |> maybe_put_lazy(Ecto.assoc_loaded?(card.tags), :tags, fn ->
+    #   card_tag_json(card.tags)
+    # end)
   end
 
-  def render("game.json", %{deck: deck, cards: cards}) do
-    %{
-      deck: DeckView.deck_json(deck),
-      cards: Enum.map(cards, &card_json/1)
-    }
+  def render("game.json", %{cards: cards}) do
+    %{cards: Enum.map(cards, &card_json/1)}
   end
 end
